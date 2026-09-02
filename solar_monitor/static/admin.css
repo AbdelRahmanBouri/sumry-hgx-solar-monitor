@@ -1,1 +1,55 @@
-:root{color-scheme:dark;--bg:#0b100d;--panel:#141c17;--line:#29372e;--text:#f0f5f1;--muted:#91a097;--accent:#d9f66f;--green:#67d5a0;--red:#ff8c70}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,sans-serif}.eyebrow{color:var(--accent);font-size:11px;letter-spacing:.15em;margin:0 0 5px}h1,h2{margin:0}h1{font-size:32px;letter-spacing:-.04em}h2{font-size:19px}.muted,article>span{color:var(--muted)}button,.button{border:0;border-radius:10px;background:var(--accent);color:#11180e;font-weight:700;padding:11px 15px;text-decoration:none;cursor:pointer;font:inherit}.secondary{background:#253128;color:var(--text)}.warning{background:#ffd071}.auth-page{min-height:100vh;display:grid;place-items:center;padding:20px}.auth-card{width:min(420px,100%);padding:28px;border:1px solid var(--line);border-radius:18px;background:var(--panel)}.auth-card form,.settings{display:grid;gap:14px;margin:24px 0}.auth-card a{color:var(--muted)}label{display:grid;gap:6px;color:var(--muted);font-size:13px}input,select{width:100%;border:1px solid var(--line);border-radius:9px;padding:11px;background:#0c120e;color:var(--text);font:inherit}.error{padding:10px;background:#3a1f1a;color:#ffc4b6;border-radius:8px}.admin-header,.admin-main{width:min(1120px,calc(100% - 28px));margin:auto}.admin-header{display:flex;justify-content:space-between;align-items:center;padding:28px 0 20px}.admin-main{display:grid;grid-template-columns:150px 1fr;gap:16px}nav{display:flex;flex-direction:column;gap:5px}nav button,nav a{text-align:left;background:transparent;color:var(--muted);padding:10px;border-radius:8px;text-decoration:none;font-weight:500}nav button.active{background:#1c2720;color:var(--text)}.view{display:none}.view.active{display:block}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px}.grid article,.panel{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:18px}.grid strong{display:block;font-size:20px;margin-top:10px}.panel{margin-bottom:12px}.panel h2{margin-bottom:12px}.badge{display:inline-block;padding:4px 8px;border-radius:99px;background:#332f18;color:#ffdd77}.actions{display:flex;gap:8px;margin:16px 0}pre{white-space:pre-wrap;word-break:break-all;min-height:100px;background:#090d0b;padding:14px;border-radius:9px;color:#bcc9c0}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.panel-head .button{display:inline-block;margin-left:5px;font-size:12px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}th,td{text-align:left;padding:9px;border-bottom:1px solid var(--line);max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}th{color:var(--muted)}.settings{max-width:500px}#settings-result{color:var(--green)}@media(max-width:700px){.admin-main{display:block}nav{flex-direction:row;overflow:auto;margin-bottom:12px}nav button,nav a{white-space:nowrap}.grid{grid-template-columns:1fr 1fr}.panel-head{display:block}.panel-head>div{margin-top:12px}.panel-head .button{margin:5px 5px 0 0}}@media(max-width:390px){.grid{grid-template-columns:1fr}}
+:root{color-scheme:dark;--bg:#0b100d;--panel:#141c17;--line:#29372e;--text:#f0f5f1;--muted:#91a097;--accent:#d9f66f;--green:#67d5a0;--red:#ff8c70}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,sans-serif}
+.eyebrow{color:var(--accent);font-size:11px;letter-spacing:.15em;margin:0 0 5px}
+h1,h2{margin:0}
+h1{font-size:32px;letter-spacing:-.04em}
+h2{font-size:19px}
+.muted,article>span{color:var(--muted)}
+button,.button{border:0;border-radius:10px;background:var(--accent);color:#11180e;font-weight:700;padding:11px 15px;text-decoration:none;cursor:pointer;font:inherit}
+.secondary{background:#253128;color:var(--text)}
+.warning{background:#ffd071}
+.auth-page{min-height:100vh;display:grid;place-items:center;padding:20px}
+.auth-card{width:min(420px,100%);padding:28px;border:1px solid var(--line);border-radius:18px;background:var(--panel)}
+.auth-card form,.settings{display:grid;gap:14px;margin:24px 0}
+.auth-card a{color:var(--muted)}
+label{display:grid;gap:6px;color:var(--muted);font-size:13px}
+input,select,textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:11px;background:#0c120e;color:var(--text);font:inherit}
+textarea{resize:vertical}
+.error{padding:10px;background:#3a1f1a;color:#ffc4b6;border-radius:8px}
+.admin-header,.admin-main{width:min(1120px,calc(100% - 28px));margin:auto}
+.admin-header{display:flex;justify-content:space-between;align-items:center;padding:28px 0 20px}
+.admin-main{display:grid;grid-template-columns:150px 1fr;gap:16px}
+nav{display:flex;flex-direction:column;gap:5px}
+nav button,nav a{text-align:left;background:transparent;color:var(--muted);padding:10px;border-radius:8px;text-decoration:none;font-weight:500}
+nav button.active{background:#1c2720;color:var(--text)}
+.view{display:none}
+.view.active{display:block}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px}
+.grid article,.panel{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:18px}
+.grid strong{display:block;font-size:20px;margin-top:10px}
+.panel{margin-bottom:12px}
+.panel h2{margin-bottom:12px}
+.badge{display:inline-block;padding:4px 8px;border-radius:99px;background:#332f18;color:#ffdd77}
+.actions{display:flex;gap:8px;margin:16px 0}
+pre{white-space:pre-wrap;word-break:break-all;min-height:100px;background:#090d0b;padding:14px;border-radius:9px;color:#bcc9c0}
+.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.panel-head .button{display:inline-block;margin-left:5px;font-size:12px}
+.table-wrap{overflow:auto}
+table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}
+th,td{text-align:left;padding:9px;border-bottom:1px solid var(--line);max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+th{color:var(--muted)}
+.settings{max-width:500px}
+#settings-result{color:var(--green)}
+details{margin-top:14px}
+details summary{cursor:pointer;color:var(--accent)}
+@media(max-width:700px){.admin-main{display:block}
+nav{flex-direction:row;overflow:auto;margin-bottom:12px}
+nav button,nav a{white-space:nowrap}
+.grid{grid-template-columns:1fr 1fr}
+.panel-head{display:block}
+.panel-head>div{margin-top:12px}
+.panel-head .button{margin:5px 5px 0 0}
+}
+@media(max-width:390px){.grid{grid-template-columns:1fr}
+}
