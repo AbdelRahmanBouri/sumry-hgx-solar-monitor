@@ -43,6 +43,32 @@ class WebTests(unittest.TestCase):
     def test_setup_rejects_bad_token(self):
         self.assertEqual(self.client.get("/admin/setup?token=wrong").status_code, 404)
 
+    def test_pin_locks_after_three_failures_and_password_resets_it(self):
+        token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
+        self.client.post(
+            f"/admin/setup?token={token}",
+            data={"token": token, "username": "admin", "password": "correct-horse-1",
+                  "confirmation": "correct-horse-1"},
+        )
+        response = self.client.post(
+            "/api/admin/security", json={"action": "set", "pin": "246810"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.client.post("/admin/logout")
+        for _ in range(3):
+            self.client.post("/admin/pin-login", data={"pin": "0000"})
+        self.assertTrue(self.db.admin_by_username("admin")["pin_locked"])
+        self.assertEqual(
+            self.client.post("/admin/pin-login", data={"pin": "246810"}).status_code, 302
+        )
+        self.client.post(
+            "/admin/login", data={"username": "admin", "password": "correct-horse-1"}
+        )
+        self.assertFalse(self.db.admin_by_username("admin")["pin_locked"])
+        self.client.post("/admin/logout")
+        response = self.client.post("/admin/pin-login", data={"pin": "246810"})
+        self.assertEqual(response.location, "/admin")
+
 
 if __name__ == "__main__":
     unittest.main()

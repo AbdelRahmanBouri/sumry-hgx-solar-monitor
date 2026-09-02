@@ -106,6 +106,7 @@ def create_app(database: Database, serial_config: SerialConfig | None = None) ->
                 )
                 session.clear()
                 session["admin_user"] = username
+                session["auth_method"] = "password"
                 session.permanent = True
                 audit("admin.created")
                 return redirect(url_for("admin_home"))
@@ -123,14 +124,44 @@ def create_app(database: Database, serial_config: SerialConfig | None = None) ->
             if user and check_password_hash(user["password_hash"], password):
                 session.clear()
                 session["admin_user"] = username
+                session["auth_method"] = "password"
                 session.permanent = True
                 database.record_login(username, now())
+                database.reset_pin_failures(username)
                 audit("auth.login")
                 target = request.args.get("next", "")
                 return redirect(target if target.startswith("/admin") else url_for("admin_home"))
             database.audit(now(), username or None, "auth.failed", request.remote_addr or "")
             error = "Incorrect username or password."
-        return render_template("admin_login.html", error=error)
+        pin_admin = database.pin_admin()
+        return render_template(
+            "admin_login.html", error=error,
+            pin_available=bool(pin_admin and not pin_admin["pin_locked"]),
+            pin_locked=bool(pin_admin and pin_admin["pin_locked"]),
+            pin_error=request.args.get("pin_error"),
+        )
+
+    @app.post("/admin/pin-login")
+    def admin_pin_login():
+        user = database.pin_admin()
+        pin = request.form.get("pin", "")
+        if not user or user["pin_locked"]:
+            return redirect(url_for("admin_login"))
+        if pin.isdigit() and check_password_hash(user["pin_hash"], pin):
+            session.clear()
+            session["admin_user"] = user["username"]
+            session["auth_method"] = "pin"
+            session.permanent = True
+            database.reset_pin_failures(user["username"])
+            database.record_login(user["username"], now())
+            audit("auth.pin_login")
+            return redirect(url_for("admin_home"))
+        failures, locked = database.record_pin_failure(user["username"])
+        database.audit(
+            now(), user["username"], "auth.pin_failed",
+            "PIN locked; full password required" if locked else f"attempt {failures} of 3",
+        )
+        return redirect(url_for("admin_login", pin_error="locked" if locked else "invalid"))
 
     @app.post("/admin/logout")
     @login_required
@@ -173,6 +204,39 @@ def create_app(database: Database, serial_config: SerialConfig | None = None) ->
     @login_required
     def admin_audit():
         return jsonify(database.recent_audit(100))
+
+    @app.route("/api/admin/security", methods=["GET", "POST"])
+    @login_required
+    def admin_security():
+        username = session["admin_user"]
+        user = database.admin_by_username(username)
+        if request.method == "GET":
+            return jsonify({
+                "pin_enabled": bool(user and user["pin_hash"]),
+                "pin_locked": bool(user and user["pin_locked"]),
+                "pin_failures": int(user["pin_failures"] if user else 0),
+                "auth_method": session.get("auth_method", "password"),
+            })
+        if session.get("auth_method") != "password":
+            return jsonify({"error": "Sign in with your full password to change the PIN"}), 403
+        payload = request.get_json(silent=True) or {}
+        action = payload.get("action")
+        if action == "disable":
+            database.set_pin(username, None)
+            audit("security.pin_disabled")
+        elif action == "set":
+            pin = str(payload.get("pin", ""))
+            if not (4 <= len(pin) <= 8 and pin.isdigit()):
+                return jsonify({"error": "PIN must contain 4–8 digits"}), 400
+            database.set_pin(
+                username, generate_password_hash(pin, method="pbkdf2:sha256:600000")
+            )
+            audit("security.pin_set")
+        else:
+            return jsonify({"error": "Unknown action"}), 400
+        user = database.admin_by_username(username)
+        return jsonify({"pin_enabled": bool(user["pin_hash"]), "pin_locked": False,
+                        "pin_failures": 0, "auth_method": session.get("auth_method")})
 
     @app.route("/api/admin/settings", methods=["GET", "POST"])
     @login_required

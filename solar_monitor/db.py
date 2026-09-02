@@ -37,7 +37,10 @@ CREATE TABLE IF NOT EXISTS admin_users (
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    last_login_at TEXT
+    last_login_at TEXT,
+    pin_hash TEXT,
+    pin_failures INTEGER NOT NULL DEFAULT 0,
+    pin_locked INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -60,6 +63,19 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            self._migrate(connection)
+
+    @staticmethod
+    def _migrate(connection: sqlite3.Connection) -> None:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(admin_users)")}
+        additions = {
+            "pin_hash": "TEXT",
+            "pin_failures": "INTEGER NOT NULL DEFAULT 0",
+            "pin_locked": "INTEGER NOT NULL DEFAULT 0",
+        }
+        for name, declaration in additions.items():
+            if name not in columns:
+                connection.execute(f"ALTER TABLE admin_users ADD COLUMN {name} {declaration}")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -137,6 +153,45 @@ class Database:
             connection.execute(
                 "UPDATE admin_users SET last_login_at = ? WHERE username = ?",
                 (timestamp, username),
+            )
+
+    def pin_admin(self) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM admin_users WHERE pin_hash IS NOT NULL ORDER BY id LIMIT 1"
+            ).fetchone()
+        return dict(row) if row else None
+
+    def set_pin(self, username: str, pin_hash: str | None) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE admin_users SET pin_hash = ?, pin_failures = 0, pin_locked = 0 "
+                "WHERE username = ?",
+                (pin_hash, username),
+            )
+
+    def record_pin_failure(self, username: str) -> tuple[int, bool]:
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE admin_users SET pin_failures = pin_failures + 1 WHERE username = ?",
+                (username,),
+            )
+            row = connection.execute(
+                "SELECT pin_failures FROM admin_users WHERE username = ?", (username,)
+            ).fetchone()
+            failures = int(row[0])
+            locked = failures >= 3
+            if locked:
+                connection.execute(
+                    "UPDATE admin_users SET pin_locked = 1 WHERE username = ?", (username,)
+                )
+        return failures, locked
+
+    def reset_pin_failures(self, username: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE admin_users SET pin_failures = 0, pin_locked = 0 WHERE username = ?",
+                (username,),
             )
 
     def get_settings(self) -> dict[str, str]:

@@ -43,6 +43,10 @@ th{color:var(--muted)}
 #settings-result{color:var(--green)}
 details{margin-top:14px}
 details summary{cursor:pointer;color:var(--accent)}
+.divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;margin:18px 0}
+.divider:before,.divider:after{content:"";height:1px;background:var(--line);flex:1}
+.pin-form input{font-size:24px;letter-spacing:.25em;text-align:center}
+#pin-result{color:var(--green)}
 @media(max-width:700px){.admin-main{display:block}
 nav{flex-direction:row;overflow:auto;margin-bottom:12px}
 nav button,nav a{white-space:nowrap}
