@@ -40,9 +40,9 @@ function drawChart(rows) {
   const pad = {left: 42, right: 10, top: 12, bottom: 26};
   const values = rows.flatMap(r => [r.pv_watts, r.ac_load_watts]).filter(Number.isFinite);
   const max = Math.max(...values, 100);
-  ctx.strokeStyle = '#27352c'; ctx.fillStyle = '#91a097'; ctx.font = '11px system-ui';
+  ctx.strokeStyle = '#dce7f5'; ctx.fillStyle = '#66758a'; ctx.font = '11px system-ui';
   for (let i = 0; i <= 4; i++) { const y = pad.top + (height-pad.top-pad.bottom)*i/4; ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(width-pad.right,y); ctx.stroke(); ctx.fillText(Math.round(max*(1-i/4)),2,y+4); }
-  [['pv_watts','#d9f66f'],['ac_load_watts','#74a7ff']].forEach(([key,color]) => { ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); rows.forEach((r,i) => { const x=pad.left+(width-pad.left-pad.right)*i/Math.max(rows.length-1,1); const y=pad.top+(height-pad.top-pad.bottom)*(1-(r[key]||0)/max); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); });
+  [['pv_watts','#f0a525'],['ac_load_watts','#2878e3']].forEach(([key,color]) => { ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); rows.forEach((r,i) => { const x=pad.left+(width-pad.left-pad.right)*i/Math.max(rows.length-1,1); const y=pad.top+(height-pad.top-pad.bottom)*(1-(r[key]||0)/max); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); });
 }
 
 async function refreshHistory() {
@@ -51,4 +51,3 @@ async function refreshHistory() {
 
 refreshStatus(); refreshHistory();
 setInterval(refreshStatus, 5000); setInterval(refreshHistory, 60000);
-
