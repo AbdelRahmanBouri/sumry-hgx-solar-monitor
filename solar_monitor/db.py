@@ -32,6 +32,25 @@ CREATE TABLE IF NOT EXISTS raw_frames (
     decode_note TEXT,
     error TEXT
 );
+CREATE TABLE IF NOT EXISTS admin_users (
+    id INTEGER PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_login_at TEXT
+);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS audit_events (
+    id INTEGER PRIMARY KEY,
+    occurred_at TEXT NOT NULL,
+    username TEXT,
+    action TEXT NOT NULL,
+    detail TEXT
+);
 """
 
 
@@ -95,3 +114,61 @@ class Database:
             ).fetchone()
         return dict(row) if row else None
 
+    def admin_count(self) -> int:
+        with self.connect() as connection:
+            return int(connection.execute("SELECT COUNT(*) FROM admin_users").fetchone()[0])
+
+    def create_admin(self, username: str, password_hash: str, created_at: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO admin_users (username, password_hash, created_at) VALUES (?, ?, ?)",
+                (username, password_hash, created_at),
+            )
+
+    def admin_by_username(self, username: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM admin_users WHERE username = ?", (username,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def record_login(self, username: str, timestamp: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE admin_users SET last_login_at = ? WHERE username = ?",
+                (timestamp, username),
+            )
+
+    def get_settings(self) -> dict[str, str]:
+        with self.connect() as connection:
+            rows = connection.execute("SELECT key, value FROM settings ORDER BY key").fetchall()
+        return {row["key"]: row["value"] for row in rows}
+
+    def set_settings(self, values: dict[str, str], timestamp: str) -> None:
+        with self.connect() as connection:
+            connection.executemany(
+                "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                [(key, value, timestamp) for key, value in values.items()],
+            )
+
+    def audit(self, occurred_at: str, username: str | None, action: str, detail: str = "") -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO audit_events (occurred_at, username, action, detail) VALUES (?, ?, ?, ?)",
+                (occurred_at, username, action, detail),
+            )
+
+    def recent_audit(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM audit_events ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def raw_frames(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM raw_frames ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(row) for row in rows]

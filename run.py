@@ -21,7 +21,7 @@ def main() -> None:
     database = Database(config.storage.database)
     if not args.no_collector:
         start_collector(config.serial, database)
-    app = create_app(database)
+    app = create_app(database, config.serial)
     app.run(host=args.host or config.web.host, port=args.port or config.web.port, debug=False)
 
 

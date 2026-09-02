@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from pathlib import Path
 
 from solar_monitor.db import Database
 from solar_monitor.web import create_app
@@ -26,6 +27,21 @@ class WebTests(unittest.TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Writes disabled", response.data)
+
+    def test_admin_requires_setup_and_login(self):
+        self.assertEqual(self.client.get("/admin").status_code, 302)
+        self.assertEqual(self.client.get("/api/admin/overview").status_code, 401)
+        token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
+        response = self.client.post(
+            f"/admin/setup?token={token}",
+            data={"token": token, "username": "admin", "password": "correct-horse-1",
+                  "confirmation": "correct-horse-1"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.client.get("/api/admin/overview").status_code, 200)
+
+    def test_setup_rejects_bad_token(self):
+        self.assertEqual(self.client.get("/admin/setup?token=wrong").status_code, 404)
 
 
 if __name__ == "__main__":
