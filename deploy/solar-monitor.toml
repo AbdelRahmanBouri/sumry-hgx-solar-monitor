@@ -1,0 +1,13 @@
+[serial]
+port = "auto"
+baudrate = 9600
+timeout_seconds = 1.0
+poll_seconds = 30
+protocol = "sumry_8851_probe"
+
+[web]
+host = "127.0.0.1"
+port = 5000
+
+[storage]
+database = "/var/lib/solar-monitor/solar-monitor.sqlite3"

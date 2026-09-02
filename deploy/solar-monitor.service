@@ -1,0 +1,22 @@
+[Unit]
+Description=SUMRY HGX read-only solar monitor
+After=network.target
+
+[Service]
+Type=simple
+User=solar-monitor
+Group=solar-monitor
+SupplementaryGroups=dialout
+WorkingDirectory=/opt/solar-monitor
+ExecStart=/opt/solar-monitor/.venv/bin/python /opt/solar-monitor/run.py --config /etc/solar-monitor.toml
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/solar-monitor
+
+[Install]
+WantedBy=multi-user.target
+

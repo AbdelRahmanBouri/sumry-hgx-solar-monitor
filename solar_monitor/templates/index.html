@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111915">
+  <title>Solar Monitor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">SUMRY HGX · LOCAL MONITOR</p>
+      <h1>Energy at a glance</h1>
+    </div>
+    <div class="status"><span id="status-dot"></span><span id="connection">Waiting for inverter</span></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <article class="primary-card pv">
+        <span>Solar production</span>
+        <strong><span data-metric="pv_watts">—</span><small> W</small></strong>
+        <p><span data-metric="pv_voltage">—</span> V · <span data-metric="pv_current">—</span> A</p>
+      </article>
+      <article class="primary-card battery">
+        <span>Battery</span>
+        <strong><span data-metric="battery_voltage">—</span><small> V</small></strong>
+        <p><span data-metric="battery_current">—</span> A <span id="battery-direction"></span></p>
+      </article>
+    </section>
+
+    <section class="metrics">
+      <article><span>AC load</span><strong><span data-metric="ac_load_watts">—</span> W</strong><small><span data-metric="ac_load_va">—</span> VA</small></article>
+      <article><span>Output</span><strong><span data-metric="output_voltage">—</span> V</strong><small><span data-metric="output_frequency">—</span> Hz</small></article>
+      <article><span>Inverter temp</span><strong><span data-metric="inverter_temperature">—</span> °C</strong><small>Battery <span data-metric="battery_temperature">—</span> °C</small></article>
+      <article><span>Operating state</span><strong data-metric="operating_state">—</strong><small data-metric="faults">No data</small></article>
+    </section>
+
+    <section class="chart-card">
+      <div class="section-title"><div><span>Power history</span><h2>Last 24 hours</h2></div><div class="legend"><i></i>PV <i></i>Load</div></div>
+      <canvas id="history-chart" height="220" aria-label="24-hour power history"></canvas>
+      <p id="chart-empty">Charting begins after the protocol decoder is confirmed.</p>
+    </section>
+
+    <section class="diagnostic">
+      <div><span>Read-only safety</span><strong>Writes disabled</strong></div>
+      <div><span>Last raw response</span><code id="raw-response">No serial capture yet</code></div>
+    </section>
+  </main>
+  <footer>Local data only · <span id="updated">Never updated</span></footer>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
+
