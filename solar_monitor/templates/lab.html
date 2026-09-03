@@ -13,7 +13,7 @@
   <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/theme.css?v=1">
   <link rel="stylesheet" href="/static/style.css?v=7">
-  <link rel="stylesheet" href="/static/lab-overrides.css?v=5">
+  <link rel="stylesheet" href="/static/lab-overrides.css?v=6">
 </head>
 <body data-dashboard-mode="lab" data-dashboard-design="v3">
   <header class="app-bar">
@@ -88,7 +88,7 @@
     </section>
 
     <section class="today-card card" aria-label="Today's energy">
-      <div><span class="kicker">TODAY</span><h2>Energy summary</h2></div>
+      <div><h2>Today’s energy</h2></div>
       <div class="today-stats">
         <span><small>Solar generated</small><strong id="solar-energy">— kWh</strong></span>
         <span><small>Load consumed</small><strong id="load-energy">— kWh</strong></span>
@@ -97,7 +97,7 @@
     </section>
 
     <section class="readings-heading">
-      <div><span class="kicker">KEY READINGS</span><h2>System details</h2></div>
+      <div><h2>Details</h2></div>
       <button class="customize-open" id="customize-open" type="button">
         <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
         Customize
@@ -142,7 +142,7 @@
 
     <section class="trend-card card" id="trends">
       <div class="trend-heading">
-        <div><span class="kicker">PERFORMANCE</span><h2>Power history</h2><p class="trend-subtitle">Production, demand and battery voltage</p></div>
+        <div><h2>Power history</h2></div>
         <div class="range-control" role="group" aria-label="Chart range">
           <button type="button" data-hours="1">1H</button>
           <button type="button" data-hours="6">6H</button>

@@ -63,6 +63,19 @@ body[data-dashboard-design="v3"] button:active,
 body[data-dashboard-design="v3"] a:active,
 body[data-dashboard-design="v3"] summary:active { transform: scale(.975); }
 body[data-dashboard-design="v3"] main { gap: 12px; }
+body[data-dashboard-design="v3"] .alert { order: -2; }
+body[data-dashboard-design="v3"] .lab-banner { order: -1; }
+body[data-dashboard-design="v3"] .flow-card { order: 1; }
+body[data-dashboard-design="v3"] .trend-card { order: 2; }
+body[data-dashboard-design="v3"] .today-card { order: 3; }
+body[data-dashboard-design="v3"] .readings-heading { order: 4; }
+body[data-dashboard-design="v3"] .summary-grid { order: 5; }
+body[data-dashboard-design="v3"] .extra-metrics-grid { order: 6; }
+body[data-dashboard-design="v3"] .period-card { order: 7; }
+body[data-dashboard-design="v3"] #system { order: 8; }
+body[data-dashboard-design="v3"] #config { order: 9; }
+body[data-dashboard-design="v3"] .fault-history { order: 10; }
+body[data-dashboard-design="v3"] .pi-card { order: 11; }
 
 .lab-banner {
   min-height: 34px;
@@ -198,8 +211,8 @@ body[data-dashboard-design="v3"] .today-stats > span { padding-inline: 12px; }
 body[data-dashboard-design="v3"] .today-stats small { overflow: visible; font-size: 9px; line-height: 1.25; white-space: normal; }
 body[data-dashboard-design="v3"] .today-stats strong { margin-top: 2px; font-size: 14px; white-space: nowrap; }
 
-body[data-dashboard-design="v3"] .readings-heading { min-height: 54px; padding-inline: 3px; }
-body[data-dashboard-design="v3"] .readings-heading h2 { font-size: 21px; }
+body[data-dashboard-design="v3"] .readings-heading { min-height: 44px; align-items: center; padding-inline: 3px; }
+body[data-dashboard-design="v3"] .readings-heading h2 { font-size: 17px; }
 body[data-dashboard-design="v3"] .customize-open {
   min-height: 40px;
   padding-inline: 13px;
@@ -442,10 +455,12 @@ body[data-dashboard-design="v3"] .metric-updated { animation: value-settle .42s 
 @media (min-width: 700px) {
   body[data-dashboard-design="v3"] main { padding-top: 18px; }
   body[data-dashboard-design="v3"] .lab-banner { grid-column: 1 / -1; }
-  body[data-dashboard-design="v3"] .flow-card { grid-row: 2; }
-  body[data-dashboard-design="v3"] .today-card { grid-row: 3; }
-  body[data-dashboard-design="v3"] .readings-heading { grid-row: 2; }
-  body[data-dashboard-design="v3"] .summary-grid { grid-row: 2 / span 2; }
+  body[data-dashboard-design="v3"] .flow-card,
+  body[data-dashboard-design="v3"] .trend-card,
+  body[data-dashboard-design="v3"] .today-card,
+  body[data-dashboard-design="v3"] .readings-heading,
+  body[data-dashboard-design="v3"] .summary-grid { grid-column: 1 / -1; grid-row: auto; }
+  body[data-dashboard-design="v3"] .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); padding-top: 0; }
   body[data-dashboard-design="v3"] .trend-card { padding: 23px 24px 17px; }
   body[data-dashboard-design="v3"] .chart-wrap,
   body[data-dashboard-design="v3"] #power-chart,
@@ -467,6 +482,7 @@ body[data-dashboard-design="v3"] .metric-updated { animation: value-settle .42s 
 
   body[data-dashboard-design="v3"] main {
     grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-auto-flow: row dense;
     gap: 16px;
     padding-top: 26px;
   }
@@ -507,8 +523,8 @@ body[data-dashboard-design="v3"] .metric-updated { animation: value-settle .42s 
   body[data-dashboard-design="v3"] .today-stats small { font-size: 10px; }
   body[data-dashboard-design="v3"] .today-stats strong { font-size: 23px; }
 
-  body[data-dashboard-design="v3"] .readings-heading { min-height: 68px; }
-  body[data-dashboard-design="v3"] .readings-heading h2 { font-size: 26px; }
+  body[data-dashboard-design="v3"] .readings-heading { min-height: 48px; }
+  body[data-dashboard-design="v3"] .readings-heading h2 { font-size: 19px; }
   body[data-dashboard-design="v3"] .summary-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); align-self: stretch; padding-top: 0; }
   body[data-dashboard-design="v3"] .summary-card { min-height: 180px; padding: 20px; }
   body[data-dashboard-design="v3"] .summary-title { font-size: 12px; }
