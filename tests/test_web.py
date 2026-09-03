@@ -44,17 +44,19 @@ class WebTests(unittest.TestCase):
         alias = self.client.get("/solar-potential")
         self.assertEqual(alias.status_code, 200)
 
-    def test_lab_dashboard_uses_shared_graph_and_isolated_menu(self):
-        response = self.client.get("/lab")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Design preview", response.data)
-        self.assertIn(b"/static/style.css", response.data)
-        self.assertIn(b"/static/app.js", response.data)
-        self.assertIn(b"/static/lab-overrides.css", response.data)
-        self.assertIn(b"/static/lab-menu.js", response.data)
+    def test_retired_dashboards_are_gone(self):
+        for path in ("/lab", "/v2"):
+            self.assertEqual(self.client.get(path).status_code, 404)
 
-    def test_live_and_lab_render_chart_tooling(self):
-        for path in ("/", "/lab"):
+    def test_dashboard_loads_its_own_assets(self):
+        response = self.client.get("/")
+        self.assertIn(b"/static/style.css", response.data)
+        self.assertIn(b"/static/dashboard.css", response.data)
+        self.assertIn(b"/static/app.js", response.data)
+        self.assertIn(b"/static/metric-picker.js", response.data)
+
+    def test_dashboard_renders_chart_tooling(self):
+        for path in ("/",):
             response = self.client.get(path)
             self.assertIn(b'id="chart-inspect"', response.data)
             self.assertIn(b'id="chart-pan"', response.data)

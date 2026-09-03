@@ -28,8 +28,9 @@ const allDataBody = document.querySelector('#all-data-body');
 const faultHistoryDetails = document.querySelector('#fault-history');
 const customizeDialog = document.querySelector('#customize-dialog');
 const cardControls = document.querySelector('#card-controls');
-const dashboardMode = document.body.dataset.dashboardMode === 'lab' ? 'lab' : 'dashboard';
-const storageKey = name => `solar-${dashboardMode}-${name}`;
+// Prefix kept as "dashboard" so preferences saved before the lab and v2
+// variants were retired still resolve.
+const storageKey = name => `solar-dashboard-${name}`;
 
 let historyRows = [];
 let todayRows = [];

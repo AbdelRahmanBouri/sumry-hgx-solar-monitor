@@ -149,14 +149,6 @@ def create_app(
     def dashboard():
         return render_template("index.html")
 
-    @app.get("/lab")
-    def dashboard_lab():
-        return render_template("lab.html")
-
-    @app.get("/v2")
-    def dashboard_v2():
-        return render_template("v2.html")
-
     @app.get("/estimate")
     @app.get("/solar-potential")
     def solar_potential():

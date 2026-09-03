@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "solar_monitor" / "static"
 APP_JS = STATIC / "app.js"
 TEMPLATES = ROOT / "solar_monitor" / "templates"
-DASHBOARDS = ("index.html", "lab.html", "v2.html")
+DASHBOARDS = ("index.html",)
 
 # Pages that ship their own script instead of the shared app.js. Each one is
 # checked against its own file, because a page-specific script is exactly as
