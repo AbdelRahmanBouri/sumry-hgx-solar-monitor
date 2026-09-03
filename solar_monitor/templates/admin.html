@@ -28,6 +28,7 @@
       <button data-view="serial">Serial</button>
       <button data-view="data">Data</button>
       <button data-view="settings">Settings</button>
+      <button data-view="estimator">Solar estimate</button>
       <button data-view="security">Security</button>
       <button data-view="audit">Audit</button>
     </nav>
@@ -112,6 +113,29 @@
         <article class="panel"><form id="settings-form" class="settings"><label>Serial port<input name="serial_port" value="auto"></label><label>Baud rate<select name="baudrate"><option>1200</option><option>2400</option><option>4800</option><option selected>9600</option><option>19200</option></select></label><label>Polling rate<select name="poll_seconds"><option value="10">Fast · every 10 seconds</option><option value="30">Recommended · every 30 seconds</option><option value="60">Balanced · every minute</option><option value="120">Light · every 2 minutes</option><option value="300">Low activity · every 5 minutes</option></select></label><label>Serial timeout<input name="timeout_seconds" type="number" min="0.1" max="10" step="0.1"></label><label>Protocol<input name="protocol" readonly></label><label>Routine raw frames<select name="raw_success_days"><option value="3">Keep 3 days</option><option value="7">Keep 7 days</option><option value="14">Keep 14 days</option><option value="30">Keep 30 days</option></select></label><label>Errors &amp; unusual frames<select name="raw_diagnostic_days"><option value="30">Keep 30 days</option><option value="90">Keep 90 days</option><option value="180">Keep 6 months</option><option value="365">Keep 1 year</option></select></label><label>Maximum chart points<select name="history_max_points"><option value="750">750 · lightest</option><option value="1000">1,000 · fast</option><option value="1500">1,500 · recommended</option><option value="2500">2,500 · detailed</option><option value="5000">5,000 · maximum</option></select></label><button type="submit">Save settings</button><span id="settings-result"></span></form><p class="muted">Polling changes apply immediately. The top refresh button requests one additional reading. Storage cleanup runs once daily; decoded samples are not deleted.</p></article>
       </section>
 
+      <section id="estimator" class="view">
+        <div class="view-heading"><span class="eyebrow">FORECAST</span><h2>Solar output estimate</h2></div>
+        <article class="panel">
+          <p>Set this installation's GPS location and array details to model expected output — combining sun position for your coordinates with live cloud-cover data. The result drives the <a href="/estimate">Solar potential</a> page, which compares modelled potential against what the inverter actually captured.</p>
+          <form id="estimator-form" class="settings">
+            <label>Latitude<input name="estimator_latitude" type="number" min="-90" max="90" step="0.0001" inputmode="decimal" placeholder="e.g. 34.0522"></label>
+            <label>Longitude<input name="estimator_longitude" type="number" min="-180" max="180" step="0.0001" inputmode="decimal" placeholder="e.g. -118.2437"></label>
+            <label>Array capacity<div><input name="estimator_capacity_watts" type="number" min="0" max="100000" step="1" inputmode="decimal" placeholder="e.g. 2300"><small>W · 0 turns the estimate off</small></div></label>
+            <label>Performance ratio<input name="estimator_performance_ratio" type="number" min="0.1" max="1" step="0.01" value="0.80"></label>
+            <label>Array tilt<div><input name="estimator_tilt_degrees" type="number" min="0" max="90" step="1" inputmode="decimal" placeholder="e.g. 45"><small>° from horizontal</small></div></label>
+            <label>Array azimuth<div><input name="estimator_azimuth_degrees" type="number" min="0" max="360" step="1" inputmode="decimal" placeholder="e.g. 185"><small>° true · 180 = due south</small></div></label>
+            <label>Roof mounting<select name="estimator_dual_slope"><option value="true">Split across both roof slopes</option><option value="false">All panels on one plane</option></select></label>
+            <label>String layout<select name="estimator_split_strings"><option value="true">Each string spans both slopes</option><option value="false">One string per slope</option></select></label>
+            <button type="button" id="estimator-locate" class="secondary">Use this device's location</button>
+            <button type="submit">Save estimate settings</button>
+            <span id="estimator-result"></span>
+          </form>
+          <p class="muted">Array capacity is the <em>panels'</em> combined rating — here a known 8 × 330 W = 2,640 W — not the 4000 W the HGX solar charger can accept. Leave it at the nameplate. To calibrate against reality, adjust the performance ratio instead: it covers heat, soiling, wiring and conversion losses, and 0.75–0.85 is the credible range. A figure outside that band usually means the tilt, orientation or string layout above is wrong, not the panels.</p>
+          <p class="muted">Tilt and azimuth describe how the panels face: 0° tilt is flat, 180° azimuth is due south. This array is flush on both slopes of the tiny home's roof — four modules per slope, which is what its 4S2P wiring is — so the second half faces the opposite way. Because the two faces cancel, a split array collects within 1–2% of a flat one whatever the pitch, and the performance ratio does the real work. Clear tilt and azimuth to fall back to a flat-plane model.</p>
+          <p class="muted">Weather comes from Open-Meteo and needs internet access; without it the estimate falls back to clear-sky only and the dashboard says so. Bear in mind that a full battery with light load makes the inverter throttle production, so measured output can legitimately fall below a correct estimate.</p>
+        </article>
+      </section>
+
       <section id="security" class="view">
         <div class="view-heading"><span class="eyebrow">ACCESS</span><h2>Quick PIN</h2></div>
         <article class="panel"><p>A 4–8 digit PIN makes repeat access faster. After three incorrect attempts, PIN access stays locked until you sign in with the full password.</p><p id="pin-status" class="muted">Checking…</p><form id="pin-form" class="settings"><label>New PIN<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" required></label><label>Confirm PIN<input name="confirmation" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" required></label><button type="submit">Set or replace PIN</button></form><button id="disable-pin" type="button" class="secondary">Disable PIN</button><p id="pin-result"></p></article>
@@ -123,6 +147,6 @@
       </section>
     </div>
   </main>
-  <script src="{{ url_for('static', filename='admin.js', v=3) }}"></script>
+  <script src="{{ url_for('static', filename='admin.js', v=4) }}"></script>
 </body>
 </html>

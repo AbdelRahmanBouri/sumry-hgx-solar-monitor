@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f7f5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Solar potential">
+  <meta name="description" content="Forecast and uncaptured solar estimates for the SUMRY solar system">
+  <title>Solar Potential</title>
+  <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/theme.css?v=1">
+  <link rel="stylesheet" href="/static/estimate.css?v=4">
+</head>
+<body>
+  <header class="potential-bar">
+    <a class="back-button" href="/" aria-label="Back to live dashboard">
+      <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    </a>
+    <div class="bar-title"><span>Planning</span><strong>Solar potential</strong></div>
+    <div class="bar-live" id="connection-pill"><i></i><span id="connection">Connecting</span><small id="updated">—</small></div>
+  </header>
+
+  <main>
+    <section class="intro-panel panel">
+      <div class="intro-copy">
+        <span class="eyebrow">YOUR <span data-array-kw>2.64</span> kW ARRAY</span>
+        <h1>How much sun could you use?</h1>
+        <p>Compare inverter-captured solar with weather-modelled potential. Opportunity is estimated only when the battery and load appear unable to accept more power.</p>
+      </div>
+      <div class="now-grid">
+        <div><span>Potential now</span><strong><b id="potential-now">—</b><small> W</small></strong></div>
+        <div><span>Captured now</span><strong><b id="captured-now">—</b><small> W</small></strong></div>
+        <div class="opportunity-now"><span>Possible unused</span><strong><b id="unused-now">—</b><small> W</small></strong><em id="confidence-now">Evaluating</em></div>
+      </div>
+    </section>
+
+    <section class="model-notice offline-notice" id="estimator-offline" hidden>
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+      <p><strong>The estimate is switched off.</strong> Set a location and array capacity under <a href="/admin">Admin → Solar estimate</a> to model potential output.</p>
+    </section>
+
+    <section class="model-notice" id="model-notice">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+      <p><strong>Planning estimate, not a meter.</strong> The roof faces south and north at an assumed 3:12 pitch, and the model accounts for the strings spanning both faces. Midday behaviour is still unverified because a full battery throttles production before the peak.</p>
+    </section>
+
+    <section class="chart-panel panel">
+      <div class="panel-heading">
+        <div><span class="eyebrow">CAPTURE VS POTENTIAL</span><h2>Solar window</h2></div>
+        <div class="range-tabs" role="group" aria-label="Solar chart range">
+          <button type="button" data-hours="6">6H</button>
+          <button type="button" data-hours="24" class="active">24H</button>
+          <button type="button" data-hours="48">48H</button>
+        </div>
+      </div>
+      <div class="legend" aria-label="Chart series">
+        <span><i class="captured-key"></i>Captured</span>
+        <span><i class="potential-key"></i>Potential</span>
+        <span><i class="future-key"></i>Forecast</span>
+      </div>
+      <div class="chart-shell">
+        <canvas id="potential-chart" aria-label="Captured and estimated solar potential chart"></canvas>
+        <div class="chart-tooltip" id="potential-tooltip" hidden></div>
+        <div class="chart-empty" id="potential-empty" hidden>No solar data in this window yet.</div>
+      </div>
+      <div class="chart-footer"><span>Drag across the chart for exact values</span><span id="weather-source">Weather loading</span></div>
+    </section>
+
+    <section class="opportunity-panel panel">
+      <div class="panel-heading">
+        <div><span class="eyebrow">ESTIMATED OPPORTUNITY</span><h2>Possible uncaptured solar</h2></div>
+        <strong class="opportunity-total" id="opportunity-total">— kWh</strong>
+      </div>
+      <p class="section-note">Hourly gaps are counted only while the battery is near its charging ceiling. Pale bars are lower-confidence periods and are not added to the total.</p>
+      <div class="hourly-shell">
+        <canvas id="opportunity-chart" aria-label="Hourly possible uncaptured solar energy"></canvas>
+        <div class="chart-empty" id="opportunity-empty" hidden>No high-confidence opportunity detected yet.</div>
+      </div>
+      <div class="energy-breakdown">
+        <div class="energy-bar" aria-hidden="true"><i id="captured-share"></i><b id="unused-share"></b></div>
+        <div><span><i class="captured-key"></i>Captured today<strong id="captured-energy">— kWh</strong></span><span><i class="unused-key"></i>Possible unused<strong id="unused-energy">— kWh</strong></span></div>
+      </div>
+    </section>
+
+    <section class="opportunity-panel panel" id="recoverable" hidden>
+      <div class="panel-heading">
+        <div><span class="eyebrow">RECOVERABLE LOSSES</span><h2>What the install costs you</h2></div>
+        <strong class="opportunity-total" id="recoverable-total">— kWh</strong>
+      </div>
+      <p class="section-note">Unlike a full battery, these are losses in how the array is wired and mounted — they cost labour, not hardware. Modelled over the same window as the chart above.</p>
+      <div class="recoverable-list">
+        <div><span>As wired and mounted today</span><strong id="scenario-asbuilt">— kWh</strong></div>
+        <div><span>Re-land each string on one roof face</span><strong id="scenario-perface">— kWh</strong><em id="scenario-perface-gain">—</em></div>
+        <div><span>…and move the north four to the south slope</span><strong id="scenario-onesplope">— kWh</strong><em id="scenario-onesplope-gain">—</em></div>
+      </div>
+    </section>
+
+    <section class="calculator-panel panel" id="calculator">
+      <div class="panel-heading">
+        <div><span class="eyebrow">WHAT-IF CALCULATOR</span><h2>Give the solar somewhere to go</h2></div>
+        <button class="live-preset" id="use-live" type="button">Use live</button>
+      </div>
+      <p class="section-note">Model a moment when panels could make power but the home and battery may not be accepting it.</p>
+
+      <div class="calculator-layout">
+        <div class="calculator-inputs">
+          <label class="slider-field">
+            <span><b>Available solar</b><output id="available-solar-value">0 W</output></span>
+            <input id="available-solar" type="range" min="0" max="2640" step="10" value="1800">
+            <small>Weather and sunlight potential, capped at your <span data-array-watts>2,640 W</span> nameplate.</small>
+          </label>
+          <label class="slider-field">
+            <span><b>Home load</b><output id="home-load-value">0 W</output></span>
+            <input id="home-load" type="range" min="0" max="4000" step="25" value="500">
+            <small>AC demand that solar can serve through the inverter.</small>
+          </label>
+          <label class="slider-field">
+            <span><b>Battery charge acceptance</b><output id="charge-acceptance-value">0 A</output></span>
+            <input id="charge-acceptance" type="range" min="0" max="80" step="1" value="0">
+            <small>0 A means full/not charging; <span data-charge-limit>80 A</span> is your configured charge limit.</small>
+          </label>
+          <label class="slider-field duration-field">
+            <span><b>Conditions last</b><output id="duration-value">1.0 h</output></span>
+            <input id="duration" type="range" min="0.25" max="8" step="0.25" value="1">
+          </label>
+          <div class="preset-row" aria-label="Calculator presets">
+            <button type="button" data-preset="full">Battery full</button>
+            <button type="button" data-preset="max">Max charging</button>
+            <button type="button" data-preset="quiet">Low-load home</button>
+          </div>
+        </div>
+
+        <div class="calculator-result" aria-live="polite">
+          <span>Estimated uncaptured</span>
+          <strong><b id="calculator-unused-watts">—</b><small> W</small></strong>
+          <div class="result-meter"><i id="calculator-used-bar"></i><b id="calculator-unused-bar"></b></div>
+          <p><b id="calculator-unused-energy">— kWh</b> over the selected time</p>
+          <dl>
+            <div><dt>Solar serving home</dt><dd id="calculator-home-solar">— W</dd></div>
+            <div><dt>Solar charging battery</dt><dd id="calculator-battery-solar">— W</dd></div>
+            <div><dt>Extra usable AC load</dt><dd id="calculator-extra-load">— W</dd></div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <section class="system-panel panel">
+      <div class="panel-heading"><div><span class="eyebrow">MODEL INPUTS</span><h2>Your confirmed system</h2></div></div>
+      <div class="spec-grid">
+        <div><span>Solar modules</span><strong>8 × SunPower 330 W</strong><small>SPR-E20-330-COM</small></div>
+        <div><span>Array wiring</span><strong>4S2P · 2.64 kW</strong><small>218.8 Vmp · 259.6 Voc</small></div>
+        <div><span>Roof faces</span><strong id="spec-orientation">—</strong><small id="spec-pitch">—</small></div>
+        <div><span>Stringing</span><strong id="spec-stringing">—</strong><small>set in Admin → Solar estimate</small></div>
+        <div><span>Inverter</span><strong>SUMRY HGX 4KW</strong><small>24 V / 120 V · 55–300 V MPPT</small></div>
+        <div><span>Battery bank</span><strong>4 × Odyssey AGM</strong><small>24 V 2S2P · about 196 Ah</small></div>
+      </div>
+      <details class="method-details">
+        <summary>How this estimate works <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+        <div>
+          <p><strong>Potential</strong> combines sun position, cloud cover and the array’s <span data-array-watts>2,640 W</span> nameplate with a system performance factor, projected onto each roof face and reduced for the series mismatch between them.</p>
+          <p><strong>Possible unused solar</strong> is the positive gap between modelled potential and inverter-captured PV only when battery voltage indicates the bank is near absorption or float. It can reveal curtailment, but it is not a utility-grade measurement.</p>
+          <p><strong>Calculator</strong> assumes 92% inverter efficiency for AC load and 95% battery charging efficiency. It is a planning tool; actual charger behavior, heat and battery condition will move the result.</p>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <nav class="potential-nav" aria-label="Primary navigation">
+    <a href="/"><svg viewBox="0 0 24 24"><path d="M3 12h7V3H3v9ZM14 21h7v-9h-7v9ZM3 21h7v-5H3v5ZM14 8h7V3h-7v5Z"/></svg><span>Dashboard</span></a>
+    <a href="/estimate" class="active"><svg viewBox="0 0 24 24"><path d="M4 17v-4M10 17V8M16 17v-7M22 17V4"/><path d="M2 20h20"/></svg><span>Potential</span></a>
+    <a href="/admin"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.52V21h-4v-.08A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.52V3h4v.08A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.52 1H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg><span>Admin</span></a>
+  </nav>
+
+  <script src="/static/estimate.js?v=5"></script>
+</body>
+</html>

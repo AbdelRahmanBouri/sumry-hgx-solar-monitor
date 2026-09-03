@@ -22,8 +22,10 @@ from .db import Database
 from .protocols import create_protocol
 from .security import load_or_create_secret
 from .serial_io import discover_usb_serial_ports, escaped_ascii, exchange
+from . import solar_estimate
 
 MANUAL_REFRESH_COOLDOWN_SECONDS = 5.0
+FORECAST_PREVIEW = timedelta(hours=6)
 
 
 def create_app(
@@ -54,9 +56,65 @@ def create_app(
         "raw_success_days": "7",
         "raw_diagnostic_days": "90",
         "history_max_points": "1500",
+        # This installation's site and confirmed array nameplate. There are
+        # eight SunPower SPR-E20-330-COM modules wired 4S2P: 2.64 kW DC,
+        # 218.8 Vmp, 259.6 Voc and 12.08 A Imp.
+        #
+        # The panels are flush-mounted on both slopes of the tiny home's
+        # pitched roof, four per slope. That placement comes from the owner,
+        # not from the wiring: 4S2P describes how the modules are connected
+        # and says nothing about where they sit. `dual_slope` models the split.
+        #
+        # The slopes face north and south (azimuth 5 and 185), read off the
+        # roofline rather than the logged data: the site photos looking north
+        # (camera heading 0.6 deg true) show the home's wide south face under
+        # a horizontal eave, with only a decorative pediment over the door.
+        # A gable end would read as one full triangle across that face; a
+        # level eave means the ridge runs east-west behind it, so the roof
+        # falls toward and away from the camera. The site grid agrees -- the
+        # block walls run north-south and the street runs east-west along the
+        # south edge of the north-up satellite view.
+        #
+        # Consequence worth remembering: four of the eight modules face north.
+        #
+        # And the strings straddle the ridge -- each 4-module series string
+        # carries two modules on each face, rather than one string per face.
+        # Series modules must share a current, so the shaded pair pins what
+        # the sunlit pair may deliver: a few percent in summer, but around a
+        # third at the winter solstice. `split_strings` models that. Re-landing
+        # the strings one-per-face is a wiring change, not a hardware one, and
+        # would remove the loss outright.
+        #
+        # Two faces pointing opposite ways very nearly cancel, so a symmetric
+        # gable collects within 1-2% of a flat array of the same size no
+        # matter the pitch or which way the ridge runs. The exact tilt here
+        # is therefore a low-stakes assumption (a typical 3:12 tiny-home
+        # pitch); the performance ratio is what actually sets the level, and
+        # 0.74 is what this system's own production implies against its known
+        # 2,640 W nameplate.
+        #
+        # Do not be tempted to "fit" a steep single plane to the logged data:
+        # battery-full curtailment removes every midday sample, leaving only
+        # morning and evening, and low-sun-only data always prefers a steep
+        # tilt. That artefact is what these values replace.
+        "estimator_latitude": "34.0522",
+        "estimator_longitude": "-118.2437",
+        "estimator_capacity_watts": "2640",
+        "estimator_performance_ratio": "0.74",
+        "estimator_tilt_degrees": "14",
+        "estimator_azimuth_degrees": "185",
+        "estimator_dual_slope": "true",
+        "estimator_split_strings": "true",
     }
     existing = database.get_settings()
     missing = {key: value for key, value in defaults.items() if key not in existing}
+    # An earlier release stored the estimator keys as empty strings, so a blank
+    # value is also backfilled -- an admin who clears a field on purpose can
+    # still leave the estimator switched off by zeroing the array capacity.
+    missing.update({
+        key: value for key, value in defaults.items()
+        if key.startswith("estimator_") and value and not existing.get(key, "").strip()
+    })
     if missing:
         database.set_settings(missing, now())
     if collector is not None:
@@ -94,6 +152,15 @@ def create_app(
     @app.get("/lab")
     def dashboard_lab():
         return render_template("lab.html")
+
+    @app.get("/v2")
+    def dashboard_v2():
+        return render_template("v2.html")
+
+    @app.get("/estimate")
+    @app.get("/solar-potential")
+    def solar_potential():
+        return render_template("estimate.html")
 
     @app.get("/api/status")
     def status():
@@ -156,6 +223,114 @@ def create_app(
         days = _bounded_int("days", 30, 1, 90)
         since = datetime.now(timezone.utc) - timedelta(days=days)
         return jsonify(database.daily_summary(since.isoformat()))
+
+    @app.get("/api/estimate")
+    def estimate():
+        unconfigured = {
+            "configured": False,
+            "location": None,
+            "capacity_watts": 0,
+            "performance_ratio": 0,
+            "weather_source": None,
+            "points": [],
+        }
+        settings = database.get_settings()
+        try:
+            # Latitude/longitude are blank until an admin sets them, which
+            # raises here and reports the estimator as simply not configured.
+            lat = float(settings["estimator_latitude"])
+            lon = float(settings["estimator_longitude"])
+            capacity_watts = float(settings.get("estimator_capacity_watts") or 0)
+            performance_ratio = float(settings.get("estimator_performance_ratio") or 0.8)
+            # Blank tilt/azimuth means "orientation unknown"; the model then
+            # stays on the horizontal plane instead of inventing an angle.
+            tilt = settings.get("estimator_tilt_degrees", "").strip()
+            azimuth = settings.get("estimator_azimuth_degrees", "").strip()
+            tilt_degrees = float(tilt) if tilt else None
+            azimuth_degrees = float(azimuth) if azimuth else None
+            dual_slope = settings.get("estimator_dual_slope", "false") == "true"
+            split_strings = settings.get("estimator_split_strings", "false") == "true"
+        except (KeyError, ValueError):
+            return jsonify(unconfigured)
+        if capacity_watts <= 0:
+            return jsonify(unconfigured)
+
+        # `hours` is the look-back window; the next few hours are always
+        # included as well (each point says whether it is a forecast) so a
+        # caller can show what is still to come without a second request.
+        hours = _bounded_int("hours", 24, 1, 48)
+        now_utc = datetime.now(timezone.utc)
+        window = (now_utc - timedelta(hours=hours), now_utc + FORECAST_PREVIEW)
+        points, weather_source = solar_estimate.estimate_series(
+            lat, lon, capacity_watts, performance_ratio, *window,
+            tilt_degrees=tilt_degrees, azimuth_degrees=azimuth_degrees,
+            dual_slope=dual_slope, split_strings=split_strings,
+        )
+
+        # What the same panels would collect after the two losses that cost
+        # nothing but labour to undo: re-landing each string on one face, and
+        # then moving the shaded half onto the sunny slope. Both are modelled
+        # over the identical window so the comparison is like for like.
+        def window_kwh(series):
+            if len(series) < 2:
+                return 0.0
+            step_hours = (
+                datetime.fromisoformat(series[1]["timestamp"])
+                - datetime.fromisoformat(series[0]["timestamp"])
+            ).total_seconds() / 3600
+            return sum(point["estimated_watts"] for point in series) * step_hours / 1000
+
+        scenarios = {"as_built_kwh": round(window_kwh(points), 2)}
+        if dual_slope and tilt_degrees is not None and azimuth_degrees is not None:
+            per_face, _ = solar_estimate.estimate_series(
+                lat, lon, capacity_watts, performance_ratio, *window,
+                tilt_degrees=tilt_degrees, azimuth_degrees=azimuth_degrees,
+                dual_slope=True, split_strings=False,
+            )
+            one_plane, _ = solar_estimate.estimate_series(
+                lat, lon, capacity_watts, performance_ratio, *window,
+                tilt_degrees=tilt_degrees, azimuth_degrees=azimuth_degrees,
+                dual_slope=False, split_strings=False,
+            )
+            scenarios.update({
+                "strings_per_face_kwh": round(window_kwh(per_face), 2),
+                "all_one_slope_kwh": round(window_kwh(one_plane), 2),
+            })
+        return jsonify({
+            "configured": True,
+            "location": {"latitude": lat, "longitude": lon},
+            "capacity_watts": capacity_watts,
+            "performance_ratio": performance_ratio,
+            "array": {
+                "module": "SunPower SPR-E20-330-COM",
+                "module_count": 8,
+                "module_watts": 330,
+                "wiring": "4S2P",
+                "vmp_volts": 218.8,
+                "voc_volts": 259.6,
+                "imp_amps": 12.08,
+                "isc_amps": 13.04,
+                "tilt_degrees": tilt_degrees,
+                "azimuth_degrees": azimuth_degrees,
+                "dual_slope": dual_slope,
+                "split_strings": split_strings,
+                "mounting": "flush on both roof slopes" if dual_slope else "single plane",
+                "stringing": (
+                    "each series string spans both faces" if split_strings and dual_slope
+                    else "one series string per face" if dual_slope else "single plane"
+                ),
+            },
+            "system": {
+                "inverter": "SUMRY HGX 4KW 24V/120V",
+                "battery_bank": "4 x Odyssey ODX-AGM31, 2S2P",
+                "battery_nominal_volts": 24,
+                "battery_capacity_ah": 196,
+                "configured_charge_limit_amps": 80,
+            },
+            "weather_source": weather_source,
+            "scenarios": scenarios,
+            "points": points,
+        })
 
     @app.get("/api/history/faults")
     def history_faults():
@@ -410,6 +585,10 @@ def create_app(
         allowed = {
             "serial_port", "baudrate", "timeout_seconds", "poll_seconds", "protocol",
             "raw_success_days", "raw_diagnostic_days", "history_max_points",
+            "estimator_latitude", "estimator_longitude",
+            "estimator_capacity_watts", "estimator_performance_ratio",
+            "estimator_tilt_degrees", "estimator_azimuth_degrees",
+            "estimator_dual_slope", "estimator_split_strings",
         }
         values = {key: str(value).strip() for key, value in payload.items() if key in allowed}
         try:
@@ -430,6 +609,24 @@ def create_app(
                 raise ValueError("Diagnostic retention cannot be shorter than routine retention")
             if "history_max_points" in values and not 250 <= int(values["history_max_points"]) <= 5000:
                 raise ValueError("Chart point limit must be between 250 and 5000")
+            if values.get("estimator_latitude") and not -90 <= float(values["estimator_latitude"]) <= 90:
+                raise ValueError("Latitude must be between -90 and 90")
+            if values.get("estimator_longitude") and not -180 <= float(values["estimator_longitude"]) <= 180:
+                raise ValueError("Longitude must be between -180 and 180")
+            # Zero is accepted and switches the estimator off for good; a
+            # blank field instead means "never set" and is re-seeded on start.
+            if values.get("estimator_capacity_watts") and not 0 <= float(values["estimator_capacity_watts"]) <= 100000:
+                raise ValueError("Array capacity must be between 0 and 100,000 watts")
+            if "estimator_performance_ratio" in values and not 0.1 <= float(values["estimator_performance_ratio"]) <= 1:
+                raise ValueError("Performance ratio must be between 0.1 and 1.0")
+            if values.get("estimator_tilt_degrees") and not 0 <= float(values["estimator_tilt_degrees"]) <= 90:
+                raise ValueError("Array tilt must be between 0 and 90 degrees")
+            if values.get("estimator_azimuth_degrees") and not 0 <= float(values["estimator_azimuth_degrees"]) <= 360:
+                raise ValueError("Array azimuth must be between 0 and 360 degrees")
+            if values.get("estimator_dual_slope") not in (None, "", "true", "false"):
+                raise ValueError("Dual slope must be true or false")
+            if values.get("estimator_split_strings") not in (None, "", "true", "false"):
+                raise ValueError("String layout must be true or false")
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         database.set_settings(values, now())

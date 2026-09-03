@@ -33,6 +33,17 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Writes disabled", response.data)
 
+    def test_solar_potential_page_is_separate_from_live_chart(self):
+        response = self.client.get("/estimate")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Solar potential", response.data)
+        self.assertIn(b'id="opportunity-chart"', response.data)
+        self.assertIn(b'id="available-solar"', response.data)
+        self.assertIn(b"/static/estimate.js", response.data)
+
+        alias = self.client.get("/solar-potential")
+        self.assertEqual(alias.status_code, 200)
+
     def test_lab_dashboard_uses_shared_graph_and_isolated_menu(self):
         response = self.client.get("/lab")
         self.assertEqual(response.status_code, 200)
@@ -167,6 +178,89 @@ class WebTests(unittest.TestCase):
             response = self.client.post("/api/admin/system/reboot")
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json["ok"])
+
+    def test_site_location_defaults_are_seeded(self):
+        settings = self.db.get_settings()
+        self.assertTrue(float(settings["estimator_latitude"]))
+        self.assertTrue(float(settings["estimator_longitude"]))
+        self.assertGreater(float(settings["estimator_capacity_watts"]), 0)
+
+    def test_blank_estimator_settings_are_backfilled_on_start(self):
+        # An earlier release seeded these as empty strings.
+        self.db.set_settings({"estimator_latitude": "", "estimator_capacity_watts": ""}, "now")
+        create_app(self.db)
+        settings = self.db.get_settings()
+        self.assertTrue(float(settings["estimator_latitude"]))
+        self.assertGreater(float(settings["estimator_capacity_watts"]), 0)
+
+    def test_a_cleared_capacity_switches_the_estimator_off(self):
+        token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
+        self.client.post(
+            f"/admin/setup?token={token}",
+            data={"token": token, "username": "admin", "password": "correct-horse-1",
+                  "confirmation": "correct-horse-1"},
+        )
+        self.client.post("/api/admin/settings", json={"estimator_capacity_watts": "0"})
+        payload = self.client.get("/api/estimate").json
+        self.assertFalse(payload["configured"])
+        self.assertEqual(payload["points"], [])
+
+    def test_estimate_returns_points_once_configured(self):
+        token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
+        self.client.post(
+            f"/admin/setup?token={token}",
+            data={"token": token, "username": "admin", "password": "correct-horse-1",
+                  "confirmation": "correct-horse-1"},
+        )
+        response = self.client.post("/api/admin/settings", json={
+            "estimator_latitude": "34.0522",
+            "estimator_longitude": "-118.2437",
+            "estimator_capacity_watts": "600",
+            "estimator_performance_ratio": "0.8",
+        })
+        self.assertEqual(response.status_code, 200)
+        with patch("solar_monitor.solar_estimate.fetch_cloud_cover", return_value=None):
+            payload = self.client.get("/api/estimate?hours=6").json
+        self.assertTrue(payload["configured"])
+        self.assertEqual(payload["weather_source"], "clear-sky-only")
+        self.assertTrue(payload["points"])
+        self.assertIn("estimated_watts", payload["points"][0])
+        self.assertEqual(payload["array"]["wiring"], "4S2P")
+        self.assertEqual(payload["array"]["module_count"], 8)
+        self.assertEqual(payload["system"]["configured_charge_limit_amps"], 80)
+
+    def test_estimate_previews_the_hours_ahead_for_any_lookback(self):
+        token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
+        self.client.post(
+            f"/admin/setup?token={token}",
+            data={"token": token, "username": "admin", "password": "correct-horse-1",
+                  "confirmation": "correct-horse-1"},
+        )
+        self.client.post("/api/admin/settings", json={
+            "estimator_latitude": "34.0522",
+            "estimator_longitude": "-118.2437",
+            "estimator_capacity_watts": "600",
+        })
+        for hours in (1, 24, 48):
+            with patch("solar_monitor.solar_estimate.fetch_cloud_cover", return_value=None):
+                points = self.client.get(f"/api/estimate?hours={hours}").json["points"]
+            self.assertTrue(
+                any(point["forecast"] for point in points),
+                f"hours={hours} returned no forecast points",
+            )
+            self.assertTrue(any(not point["forecast"] for point in points))
+
+    def test_estimate_settings_are_validated(self):
+        token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
+        self.client.post(
+            f"/admin/setup?token={token}",
+            data={"token": token, "username": "admin", "password": "correct-horse-1",
+                  "confirmation": "correct-horse-1"},
+        )
+        response = self.client.post(
+            "/api/admin/settings", json={"estimator_latitude": "200"}
+        )
+        self.assertEqual(response.status_code, 400)
 
     def test_pin_locks_after_three_failures_and_password_resets_it(self):
         token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
