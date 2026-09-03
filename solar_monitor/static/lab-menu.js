@@ -12,6 +12,9 @@ const availableMetrics = {
 };
 let labSample = {};
 let previousLabSample = {};
+const extraMetricStorageKey = document.body.dataset.dashboardMode === 'lab'
+  ? 'solar-lab-extra-metrics-v1'
+  : 'solar-dashboard-extra-metrics-v1';
 
 function finiteNumber(value) {
   const parsed = Number(value);
@@ -41,14 +44,14 @@ function animateChangedValues(sample) {
 
 function loadLabMetrics() {
   try {
-    const saved = JSON.parse(localStorage.getItem('solar-lab-extra-metrics-v1') || '[]');
+    const saved = JSON.parse(localStorage.getItem(extraMetricStorageKey) || '[]');
     return Array.isArray(saved) ? saved.filter(key => availableMetrics[key]) : [];
   } catch (_) { return []; }
 }
 let labMetrics = loadLabMetrics();
 
 function saveLabMetrics() {
-  localStorage.setItem('solar-lab-extra-metrics-v1', JSON.stringify(labMetrics));
+  localStorage.setItem(extraMetricStorageKey, JSON.stringify(labMetrics));
 }
 
 function metricValue(value) {
@@ -116,6 +119,11 @@ document.querySelector('#clear-data-cards').addEventListener('click', () => {
 });
 renderLabPicker();
 renderLabCards();
+
+const stickyHeader = document.querySelector('.app-bar');
+const updateHeaderElevation = () => stickyHeader?.classList.toggle('scrolled', window.scrollY > 4);
+window.addEventListener('scroll', updateHeaderElevation, {passive: true});
+updateHeaderElevation();
 
 const sectionLinks = [...document.querySelectorAll('.bottom-nav a')];
 const observedSections = sectionLinks

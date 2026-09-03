@@ -13,8 +13,9 @@
   <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/theme.css?v=1">
   <link rel="stylesheet" href="/static/style.css?v=7">
+  <link rel="stylesheet" href="/static/lab-overrides.css?v=4">
 </head>
-<body data-dashboard-mode="live">
+<body data-dashboard-mode="live" data-dashboard-design="v3">
   <header class="app-bar">
     <div class="header-metrics">
       <div class="header-reading pv-now" aria-label="Current solar input">
@@ -79,8 +80,8 @@
           <span id="battery-direction">Awaiting data</span>
         </div>
         <div class="battery-estimates">
-          <span><small>Estimated charge</small><strong id="battery-soc">—%</strong></span>
-          <span><small>Estimated runtime</small><strong id="battery-runtime">Set capacity</strong></span>
+          <span><small>Charge</small><strong id="battery-soc">—%</strong></span>
+          <span><small>Runtime</small><strong id="battery-runtime">Set capacity</strong></span>
         </div>
       </div>
     </section>
@@ -136,10 +137,11 @@
         <div class="card-readouts three"><span><small>Frequency</small><b><span data-metric="grid_frequency">—</span> Hz</b></span><span><small>Current</small><b><span data-metric="grid_current">—</span> A</b></span><span><small>Bus</small><b><span data-metric="bus_voltage">—</span> V</b></span></div>
       </article>
     </section>
+    <section class="extra-metrics-grid" id="extra-metrics-grid" aria-label="Added data cards"></section>
 
     <section class="trend-card card" id="trends">
       <div class="trend-heading">
-        <div><span class="kicker">PERFORMANCE</span><h2>Power history</h2></div>
+        <div><span class="kicker">PERFORMANCE</span><h2>Power history</h2><p class="trend-subtitle">Production, demand and battery voltage</p></div>
         <div class="range-control" role="group" aria-label="Chart range">
           <button type="button" data-hours="1">1H</button>
           <button type="button" data-hours="6">6H</button>
@@ -154,23 +156,23 @@
         <button type="button" class="legend-toggle" data-series="battery"><i class="battery-key"></i>Battery V</button>
         <button type="button" class="zoom-reset" id="zoom-reset" hidden>Reset zoom</button>
       </div>
+      <div class="chart-wrap">
+        <canvas id="power-chart" aria-label="Solar and load power history"></canvas>
+        <canvas id="power-chart-overlay" aria-hidden="true"></canvas>
+        <div class="chart-empty" id="chart-empty" hidden><strong>No samples in this range</strong><span>New readings will appear automatically.</span></div>
+      </div>
+      <div class="chart-hint" id="chart-hint">Drag to inspect values · pinch to zoom</div>
       <div class="chart-controls" aria-label="Chart tools">
         <div class="chart-mode" role="group" aria-label="Touch mode">
-          <button type="button" id="chart-inspect" class="active" aria-pressed="true">Inspect</button>
-          <button type="button" id="chart-pan" aria-pressed="false">Pan</button>
+          <button type="button" id="chart-inspect" class="active" aria-pressed="true">Read</button>
+          <button type="button" id="chart-pan" aria-pressed="false">Move</button>
         </div>
         <div class="chart-zoom" role="group" aria-label="Zoom controls">
           <button type="button" id="chart-zoom-out" aria-label="Zoom out">−</button>
           <button type="button" id="chart-zoom-in" aria-label="Zoom in">+</button>
           <button type="button" id="chart-reset" aria-label="Reset chart view">Reset</button>
         </div>
-        <label class="y-scale-control"><span>Y maximum</span><select id="chart-y-scale" aria-label="Chart Y-axis maximum"><option value="auto">Auto</option><option value="500">500 W</option><option value="1000">1 kW</option><option value="2000">2 kW</option><option value="4000">4 kW</option><option value="6000">6 kW</option></select></label>
-      </div>
-      <div class="chart-wrap">
-        <canvas id="power-chart" aria-label="Solar and load power history"></canvas>
-        <canvas id="power-chart-overlay" aria-hidden="true"></canvas>
-        <div class="chart-empty" id="chart-empty" hidden><strong>No samples in this range</strong><span>New readings will appear automatically.</span></div>
-        <div class="chart-hint" id="chart-hint">Drag to inspect · choose Pan to move through time · pinch to zoom</div>
+        <label class="y-scale-control"><span>Scale</span><select id="chart-y-scale" aria-label="Chart Y-axis maximum"><option value="auto">Auto range</option><option value="250">250 W max</option><option value="500">500 W max</option><option value="750">750 W max</option><option value="1000">1 kW max</option><option value="1500">1.5 kW max</option><option value="2000">2 kW max</option><option value="3000">3 kW max</option><option value="4000">4 kW max</option><option value="6000">6 kW max</option></select></label>
       </div>
       <div class="trend-stats">
         <div><span>Avg solar</span><strong id="solar-average">— W</strong></div>
@@ -248,6 +250,11 @@
       <p class="dialog-help">Choose which cards appear and arrange them for this device.</p>
       <div class="card-controls" id="card-controls"></div>
       <div class="preference-section">
+        <div class="preference-title"><strong>Add data cards</strong><button class="clear-data-cards" id="clear-data-cards" type="button">Clear</button></div>
+        <p>Select any decoded measurement to keep visible. These choices are saved on this phone.</p>
+        <div class="metric-picker" id="metric-picker"></div>
+      </div>
+      <div class="preference-section">
         <strong>Battery estimate</strong>
         <p>Set your battery bank details to estimate charge and runtime.</p>
         <div class="preference-fields">
@@ -277,5 +284,6 @@
     <a href="#system"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.52V21h-4v-.08A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.52V3h4v.08A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.52 1H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg><span>System</span></a>
   </nav>
   <script src="/static/app.js?v=7"></script>
+  <script src="/static/lab-menu.js?v=3"></script>
 </body>
 </html>
