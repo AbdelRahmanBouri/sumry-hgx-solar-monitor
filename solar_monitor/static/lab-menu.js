@@ -11,6 +11,33 @@ const availableMetrics = {
   ntc4_temperature: ['Temperature sensor 4', '°C'], fan1_percent: ['Fan 1', '%'], fan2_percent: ['Fan 2', '%'],
 };
 let labSample = {};
+let previousLabSample = {};
+
+function finiteNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function updateFlowState(sample) {
+  const solar = finiteNumber(sample.pv_watts);
+  const load = finiteNumber(sample.ac_load_watts);
+  const battery = finiteNumber(sample.battery_current);
+  const solarIdle = solar === null || Math.abs(solar) < 1;
+  const loadIdle = load === null || Math.abs(load) < 1;
+  const batteryIdle = battery === null || Math.abs(battery) < .05;
+  document.querySelector('.flow-connector.inbound')?.classList.toggle('is-idle', solarIdle);
+  document.querySelector('.flow-connector.outbound')?.classList.toggle('is-idle', loadIdle);
+  document.querySelector('.flow-card')?.classList.toggle('system-idle', solarIdle && loadIdle && batteryIdle);
+}
+
+function animateChangedValues(sample) {
+  document.querySelectorAll('[data-metric]').forEach(node => {
+    const key = node.dataset.metric;
+    if (!(key in previousLabSample) || sample[key] === previousLabSample[key]) return;
+    node.classList.remove('metric-updated');
+    requestAnimationFrame(() => node.classList.add('metric-updated'));
+  });
+}
 
 function loadLabMetrics() {
   try {
@@ -75,7 +102,11 @@ function renderLabPicker() {
 }
 
 document.addEventListener('solar:sample', event => {
-  labSample = event.detail || {};
+  const nextSample = event.detail || {};
+  previousLabSample = labSample;
+  updateFlowState(nextSample);
+  animateChangedValues(nextSample);
+  labSample = nextSample;
   renderLabCards();
 });
 document.querySelector('#customize-open').addEventListener('click', renderLabPicker);
@@ -85,3 +116,20 @@ document.querySelector('#clear-data-cards').addEventListener('click', () => {
 });
 renderLabPicker();
 renderLabCards();
+
+const sectionLinks = [...document.querySelectorAll('.bottom-nav a')];
+const observedSections = sectionLinks
+  .map(link => document.querySelector(link.getAttribute('href')))
+  .filter(Boolean);
+if ('IntersectionObserver' in window) {
+  const sectionObserver = new IntersectionObserver(entries => {
+    const visible = entries
+      .filter(entry => entry.isIntersecting)
+      .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (!visible) return;
+    sectionLinks.forEach(link => {
+      link.classList.toggle('active', link.getAttribute('href') === `#${visible.target.id}`);
+    });
+  }, {rootMargin: '-22% 0px -58% 0px', threshold: [0, .2, .5]});
+  observedSections.forEach(section => sectionObserver.observe(section));
+}

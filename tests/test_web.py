@@ -36,7 +36,7 @@ class WebTests(unittest.TestCase):
     def test_lab_dashboard_uses_shared_graph_and_isolated_menu(self):
         response = self.client.get("/lab")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Experimental dashboard", response.data)
+        self.assertIn(b"Design preview", response.data)
         self.assertIn(b"/static/style.css", response.data)
         self.assertIn(b"/static/app.js", response.data)
         self.assertIn(b"/static/lab-overrides.css", response.data)
@@ -50,7 +50,7 @@ class WebTests(unittest.TestCase):
             self.assertIn(b'id="chart-export"', response.data)
             self.assertIn(b'id="chart-table-body"', response.data)
             self.assertIn(b'id="chart-y-scale"', response.data)
-            self.assertIn(b'Estimated charge', response.data)
+            self.assertIn(b'id="battery-soc"', response.data)
             self.assertNotIn(b'Energy source', response.data)
             self.assertIn(b'user-scalable=no', response.data)
 

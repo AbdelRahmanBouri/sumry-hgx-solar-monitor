@@ -13,7 +13,7 @@
   <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/theme.css?v=1">
   <link rel="stylesheet" href="/static/style.css?v=7">
-  <link rel="stylesheet" href="/static/lab-overrides.css?v=1">
+  <link rel="stylesheet" href="/static/lab-overrides.css?v=2">
 </head>
 <body data-dashboard-mode="lab">
   <header class="app-bar">
@@ -39,7 +39,7 @@
   </header>
 
   <main>
-    <aside class="lab-banner"><span><b>LAB</b> Experimental dashboard</span><a href="/">Open live dashboard</a></aside>
+    <aside class="lab-banner"><span><b>LAB</b><span class="lab-banner-copy">Design preview</span></span><a href="/">View live</a></aside>
     <section class="alert" id="alert-banner" hidden>
       <span class="alert-icon"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.7 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/></svg></span>
       <div><strong id="alert-title">System alert</strong><span id="alert-copy">Check system status.</span></div>
@@ -81,8 +81,8 @@
           <span id="battery-direction">Awaiting data</span>
         </div>
         <div class="battery-estimates">
-          <span><small>Estimated charge</small><strong id="battery-soc">—%</strong></span>
-          <span><small>Estimated runtime</small><strong id="battery-runtime">Set capacity</strong></span>
+          <span><small>Charge estimate</small><strong id="battery-soc">—%</strong></span>
+          <span><small>Runtime estimate</small><strong id="battery-runtime">Set capacity</strong></span>
         </div>
       </div>
     </section>
@@ -142,7 +142,7 @@
 
     <section class="trend-card card" id="trends">
       <div class="trend-heading">
-        <div><span class="kicker">PERFORMANCE</span><h2>Power history</h2></div>
+        <div><span class="kicker">PERFORMANCE</span><h2>Power history</h2><p class="trend-subtitle">Production, demand and battery voltage</p></div>
         <div class="range-control" role="group" aria-label="Chart range">
           <button type="button" data-hours="1">1H</button>
           <button type="button" data-hours="6">6H</button>
@@ -157,6 +157,12 @@
         <button type="button" class="legend-toggle" data-series="battery"><i class="battery-key"></i>Battery V</button>
         <button type="button" class="zoom-reset" id="zoom-reset" hidden>Reset zoom</button>
       </div>
+      <div class="chart-wrap">
+        <canvas id="power-chart" aria-label="Solar and load power history"></canvas>
+        <canvas id="power-chart-overlay" aria-hidden="true"></canvas>
+        <div class="chart-empty" id="chart-empty" hidden><strong>No samples in this range</strong><span>New readings will appear automatically.</span></div>
+      </div>
+      <div class="chart-hint" id="chart-hint">Drag to inspect values · pinch to zoom</div>
       <div class="chart-controls" aria-label="Chart tools">
         <div class="chart-mode" role="group" aria-label="Touch mode">
           <button type="button" id="chart-inspect" class="active" aria-pressed="true">Inspect</button>
@@ -167,13 +173,7 @@
           <button type="button" id="chart-zoom-in" aria-label="Zoom in">+</button>
           <button type="button" id="chart-reset" aria-label="Reset chart view">Reset</button>
         </div>
-        <label class="y-scale-control"><span>Y maximum</span><select id="chart-y-scale" aria-label="Chart Y-axis maximum"><option value="auto">Auto</option><option value="500">500 W</option><option value="1000">1 kW</option><option value="2000">2 kW</option><option value="4000">4 kW</option><option value="6000">6 kW</option></select></label>
-      </div>
-      <div class="chart-wrap">
-        <canvas id="power-chart" aria-label="Solar and load power history"></canvas>
-        <canvas id="power-chart-overlay" aria-hidden="true"></canvas>
-        <div class="chart-empty" id="chart-empty" hidden><strong>No samples in this range</strong><span>New readings will appear automatically.</span></div>
-        <div class="chart-hint" id="chart-hint">Drag to inspect · choose Pan to move through time · pinch to zoom</div>
+        <label class="y-scale-control"><span>Power scale</span><select id="chart-y-scale" aria-label="Chart Y-axis maximum"><option value="auto">Auto range</option><option value="250">0–250 W</option><option value="500">0–500 W</option><option value="750">0–750 W</option><option value="1000">0–1 kW</option><option value="1500">0–1.5 kW</option><option value="2000">0–2 kW</option><option value="3000">0–3 kW</option><option value="4000">0–4 kW</option><option value="6000">0–6 kW</option></select></label>
       </div>
       <div class="trend-stats">
         <div><span>Avg solar</span><strong id="solar-average">— W</strong></div>
@@ -285,6 +285,6 @@
     <a href="#system"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.52V21h-4v-.08A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.52V3h4v.08A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.52 1H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg><span>System</span></a>
   </nav>
   <script src="/static/app.js?v=7"></script>
-  <script src="/static/lab-menu.js?v=1"></script>
+  <script src="/static/lab-menu.js?v=2"></script>
 </body>
 </html>
