@@ -2,53 +2,168 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f4f8ff">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f7f5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Solar Monitor</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <header>
-    <div>
-      <p class="eyebrow">SUMRY HGX · LOCAL MONITOR</p>
-      <h1>Energy at a glance</h1>
+  <header class="topbar">
+    <a class="brand" href="#overview" aria-label="Solar Monitor home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </span>
+      <span class="brand-name"><strong>Solar Monitor</strong><small>SUMRY HGX · 4 kW</small></span>
+    </a>
+    <div class="header-actions">
+      <div class="connection-pill" id="connection-pill">
+        <span class="status-dot"></span>
+        <span id="connection">Connecting</span>
+      </div>
+      <a class="admin-button" href="/admin" aria-label="Open administration">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.52V21h-4v-.08A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.52V3h4v.08A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.52 1H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+      </a>
     </div>
-    <div class="status"><span id="status-dot"></span><span id="connection">Waiting for inverter</span></div>
   </header>
 
-  <main>
-    <section class="hero">
-      <article class="primary-card pv">
-        <span>Solar production</span>
-        <strong><span data-metric="pv_watts">—</span><small> W</small></strong>
-        <p><span data-metric="pv_voltage">—</span> V · <span data-metric="pv_current">—</span> A</p>
+  <main id="overview">
+    <section class="page-heading">
+      <div>
+        <p class="eyebrow">SYSTEM OVERVIEW</p>
+        <h1>Energy at a glance</h1>
+      </div>
+      <p class="last-seen" id="updated">Waiting for first update</p>
+    </section>
+
+    <section class="status-banner panel" id="state-panel">
+      <span class="state-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>
+      </span>
+      <div class="state-copy">
+        <span>Operating state</span>
+        <strong data-metric="operating_state">Awaiting inverter</strong>
+      </div>
+      <div class="fault-copy">
+        <span>System faults</span>
+        <strong data-metric="faults">No active faults</strong>
+      </div>
+    </section>
+
+    <section class="energy-flow panel" aria-label="Live energy flow">
+      <div class="section-label">
+        <div><p class="eyebrow">LIVE POWER FLOW</p><h2>Right now</h2></div>
+        <span class="live-indicator"><i></i>Live</span>
+      </div>
+
+      <div class="flow-diagram">
+        <article class="flow-node solar-node">
+          <span class="node-icon solar-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.41M17.66 6.34l1.41-1.41"/></svg>
+          </span>
+          <span class="node-name">Solar array</span>
+          <strong><span data-metric="pv_watts">—</span><small> W</small></strong>
+          <p><span data-metric="pv_voltage">—</span> V · <span data-metric="pv_current">—</span> A</p>
+        </article>
+
+        <div class="flow-link"><span></span></div>
+
+        <article class="inverter-node">
+          <span aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"/></svg>
+          </span>
+          <small>Inverter</small>
+        </article>
+
+        <div class="flow-link"><span></span></div>
+
+        <article class="flow-node home-node">
+          <span class="node-icon home-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10M9 20v-6h6v6"/></svg>
+          </span>
+          <span class="node-name">Home load</span>
+          <strong><span data-metric="ac_load_watts">—</span><small> W</small></strong>
+          <p><span data-metric="ac_load_va">—</span> VA</p>
+        </article>
+
+        <div class="battery-link"></div>
+        <article class="battery-node">
+          <span class="battery-gauge" aria-hidden="true"><i id="battery-fill"></i></span>
+          <div>
+            <span class="node-name">Battery</span>
+            <strong><span data-metric="battery_voltage">—</span><small> V</small></strong>
+            <p><span data-metric="battery_current">—</span> A · <span id="battery-direction">Idle</span></p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="metric-grid" aria-label="Detailed readings">
+      <article class="metric-card panel">
+        <div class="metric-header">
+          <span>AC load</span>
+          <span class="metric-icon load-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg></span>
+        </div>
+        <strong><span data-metric="ac_load_watts">—</span><small> W</small></strong>
+        <div class="meter"><i id="load-meter"></i></div>
+        <p><span id="load-percent">—%</span> of 4 kW capacity · <span data-metric="ac_load_va">—</span> VA</p>
       </article>
-      <article class="primary-card battery">
-        <span>Battery</span>
-        <strong><span data-metric="battery_voltage">—</span><small> V</small></strong>
-        <p><span data-metric="battery_current">—</span> A <span id="battery-direction"></span></p>
+
+      <article class="metric-card panel">
+        <div class="metric-header">
+          <span>AC output</span>
+          <span class="metric-icon output-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12c2.5-7 5.5 7 9 0s6.5 7 9 0"/></svg></span>
+        </div>
+        <strong><span data-metric="output_voltage">—</span><small> V</small></strong>
+        <p><span data-metric="output_frequency">—</span> Hz output frequency</p>
+      </article>
+
+      <article class="metric-card panel temperature-card">
+        <div class="metric-header">
+          <span>Temperature</span>
+          <span class="metric-icon temperature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z"/></svg></span>
+        </div>
+        <strong><span data-metric="inverter_temperature">—</span><small> °C</small></strong>
+        <p>Battery <span data-metric="battery_temperature">—</span> °C</p>
       </article>
     </section>
 
-    <section class="metrics">
-      <article><span>AC load</span><strong><span data-metric="ac_load_watts">—</span> W</strong><small><span data-metric="ac_load_va">—</span> VA</small></article>
-      <article><span>Output</span><strong><span data-metric="output_voltage">—</span> V</strong><small><span data-metric="output_frequency">—</span> Hz</small></article>
-      <article><span>Inverter temp</span><strong><span data-metric="inverter_temperature">—</span> °C</strong><small>Battery <span data-metric="battery_temperature">—</span> °C</small></article>
-      <article><span>Operating state</span><strong data-metric="operating_state">—</strong><small data-metric="faults">No data</small></article>
+    <section class="chart-card panel" id="trends">
+      <div class="section-label chart-heading">
+        <div><p class="eyebrow">24-HOUR TREND</p><h2>Power history</h2></div>
+        <div class="chart-legend"><span><i class="solar-key"></i>Solar</span><span><i class="load-key"></i>Load</span></div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="history-chart" height="240" aria-label="Solar production and AC load over the last 24 hours"></canvas>
+        <div id="chart-empty">
+          <span class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg></span>
+          <strong>History is ready</strong>
+          <small>Readings will chart automatically once the inverter responds.</small>
+        </div>
+      </div>
+      <div class="chart-footer"><span>Last 24 hours</span><span id="history-count">0 samples</span></div>
     </section>
 
-    <section class="chart-card">
-      <div class="section-title"><div><span>Power history</span><h2>Last 24 hours</h2></div><div class="legend"><i></i>PV <i></i>Load</div></div>
-      <canvas id="history-chart" height="220" aria-label="24-hour power history"></canvas>
-      <p id="chart-empty">Charting begins after the protocol decoder is confirmed.</p>
-    </section>
-
-    <section class="diagnostic">
-      <div><span>Read-only safety</span><strong>Writes disabled</strong></div>
-      <div><span>Last raw response</span><code id="raw-response">No serial capture yet</code></div>
-    </section>
+    <details class="diagnostic panel">
+      <summary>
+        <span><strong>Connection details</strong><small>Raw response and command safety</small></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </summary>
+      <div class="diagnostic-body">
+        <div><span>Command access</span><strong class="safe-label"><i></i>Writes disabled</strong></div>
+        <div><span>Last raw response</span><code id="raw-response">No serial capture yet</code></div>
+      </div>
+    </details>
   </main>
-  <footer>Local data only · <span id="updated">Never updated</span></footer>
+
+  <footer>Local solar monitoring · Data stays on this Raspberry Pi</footer>
+
+  <nav class="mobile-nav" aria-label="Dashboard navigation">
+    <a href="#overview" class="active"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h7V3H3v9ZM14 21h7v-9h-7v9ZM3 21h7v-5H3v5ZM14 8h7V3h-7v5Z"/></svg><span>Overview</span></a>
+    <a href="#trends"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 5-5 4 4 8-9"/><path d="M15 7h5v5"/></svg><span>Trends</span></a>
+    <a href="/admin"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.52V21h-4v-.08A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.52V3h4v.08A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.52 1H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg><span>Admin</span></a>
+  </nav>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
