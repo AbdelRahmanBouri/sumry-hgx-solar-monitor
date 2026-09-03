@@ -123,33 +123,44 @@ body[data-dashboard-mode="lab"] .battery-path { height: 26px; margin: -14px auto
 body[data-dashboard-mode="lab"] .battery-path.idle { opacity: 0; }
 body[data-dashboard-mode="lab"] .battery-path::before { height: 22px; }
 body[data-dashboard-mode="lab"] .battery-row {
-  min-height: 104px;
-  grid-template-columns: 32px minmax(0, 1fr) auto;
-  gap: 11px;
-  padding: 12px 13px 11px;
+  min-height: 78px;
+  grid-template-columns: 30px minmax(58px, .75fr) minmax(112px, 1.25fr) auto;
+  gap: 7px;
+  padding: 11px 12px;
   border-color: rgba(8,127,91,.16);
   border-radius: 16px;
   background: linear-gradient(135deg, rgba(243,249,246,.98), rgba(249,251,250,.98));
   box-shadow: inset 0 1px 0 white;
 }
+body[data-dashboard-mode="lab"] .battery-icon { grid-column: 1; }
+body[data-dashboard-mode="lab"] .battery-copy { grid-column: 2; }
 body[data-dashboard-mode="lab"] .battery-copy > span { font-size: 11px; }
-body[data-dashboard-mode="lab"] .battery-copy strong { font-size: 27px; }
-body[data-dashboard-mode="lab"] .battery-current strong { font-size: 18px; }
+body[data-dashboard-mode="lab"] .battery-copy strong { font-size: 25px; }
+body[data-dashboard-mode="lab"] .battery-current { grid-column: 4; }
+body[data-dashboard-mode="lab"] .battery-current strong { font-size: 17px; }
 body[data-dashboard-mode="lab"] .battery-current > span { margin-top: 5px; padding: 3px 8px; font-size: 10px; }
-body[data-dashboard-mode="lab"] .battery-estimates { grid-column: 2 / -1; gap: 0; padding-top: 10px; }
+body[data-dashboard-mode="lab"] .battery-estimates {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: stretch;
+  gap: 0;
+  padding: 0;
+  border: 0;
+}
 body[data-dashboard-mode="lab"] .battery-estimates > span {
   min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-content: start;
+  display: flex;
+  flex-direction: column;
+  align-content: center;
+  justify-content: center;
   justify-items: start;
-  gap: 2px;
-  padding-right: 11px;
+  gap: 3px;
+  padding: 0 8px;
 }
-body[data-dashboard-mode="lab"] .battery-estimates > span + span { padding-left: 12px; padding-right: 0; }
+body[data-dashboard-mode="lab"] .battery-estimates > span + span { padding-left: 9px; padding-right: 0; }
 body[data-dashboard-mode="lab"] .battery-estimates small {
   overflow: visible;
-  font-size: 9px;
+  font-size: 8px;
   line-height: 1.25;
   letter-spacing: .035em;
   white-space: normal;
@@ -158,8 +169,8 @@ body[data-dashboard-mode="lab"] .battery-estimates strong {
   max-width: 100%;
   overflow: visible;
   color: var(--lab-ink);
-  font-size: 14px;
-  line-height: 1.3;
+  font-size: 12px;
+  line-height: 1.2;
   text-align: left;
   text-overflow: clip;
   white-space: normal;
@@ -368,13 +379,19 @@ body[data-dashboard-mode="lab"] .metric-updated { animation: value-settle .42s e
   body[data-dashboard-mode="lab"] .trend-heading { display: block; }
   body[data-dashboard-mode="lab"] .range-control { width: 100%; display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 15px; }
   body[data-dashboard-mode="lab"] .range-control button { min-width: 0; height: 42px; }
-  body[data-dashboard-mode="lab"] .chart-controls { grid-template-columns: auto 1fr; }
-  body[data-dashboard-mode="lab"] .chart-mode { grid-column: 1; grid-row: 1; }
-  body[data-dashboard-mode="lab"] .chart-zoom { grid-column: 2; grid-row: 1; justify-self: end; }
-  body[data-dashboard-mode="lab"] .y-scale-control { grid-column: 1 / -1; grid-row: 2; }
-  body[data-dashboard-mode="lab"] .chart-controls button { min-height: 40px; }
-  body[data-dashboard-mode="lab"] .y-scale-control span { font-size: 11px; }
-  body[data-dashboard-mode="lab"] .y-scale-control select { min-height: 38px; font-size: 16px; }
+  body[data-dashboard-mode="lab"] .chart-controls {
+    grid-template-columns: minmax(130px, .9fr) minmax(150px, 1.1fr);
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--lab-hairline);
+  }
+  body[data-dashboard-mode="lab"] .chart-mode { grid-column: 1; grid-row: 1; width: 100%; }
+  body[data-dashboard-mode="lab"] .chart-mode button { min-height: 40px; flex: 1; padding-inline: 8px; }
+  body[data-dashboard-mode="lab"] .chart-zoom { display: none; }
+  body[data-dashboard-mode="lab"] .y-scale-control { grid-column: 2; grid-row: 1; width: 100%; padding-left: 10px; }
+  body[data-dashboard-mode="lab"] .y-scale-control span { font-size: 10px; }
+  body[data-dashboard-mode="lab"] .y-scale-control select { min-width: 0; width: auto; min-height: 38px; flex: 1; padding-left: 6px; font-size: 14px; }
   body[data-dashboard-mode="lab"] .chart-wrap,
   body[data-dashboard-mode="lab"] #power-chart,
   body[data-dashboard-mode="lab"] #power-chart-overlay { height: 278px; }
@@ -398,7 +415,7 @@ body[data-dashboard-mode="lab"] .metric-updated { animation: value-settle .42s e
   body[data-dashboard-mode="lab"] .battery-estimates small { font-size: 8.5px; }
   body[data-dashboard-mode="lab"] .summary-card { padding-inline: 13px; }
   body[data-dashboard-mode="lab"] .trend-card { padding-inline: 14px; }
-  body[data-dashboard-mode="lab"] .chart-zoom button { min-width: 35px; padding-inline: 5px; }
+  body[data-dashboard-mode="lab"] .chart-controls { grid-template-columns: minmax(124px, .9fr) minmax(140px, 1.1fr); }
   .metric-picker, .preference-fields { grid-template-columns: 1fr; }
   body[data-dashboard-mode="lab"] .customize-dialog form { padding: 16px; }
 }
