@@ -568,7 +568,31 @@ function renderChartTable(rows) {
   chartWindowLabel.textContent = `${rows.length} samples · newest first`;
 }
 
+// Chart colours come from CSS custom properties when the stylesheet defines
+// them (the v2 design system does, including its dark theme) and otherwise fall
+// back to the original light-theme values, so the canvas matches whichever
+// dashboard is hosting it.
+function chartColor(name, fallback) {
+  const value = getComputedStyle(document.body).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+function chartPalette() {
+  return {
+    grid:    chartColor('--chart-grid', '#e6ede9'),
+    axis:    chartColor('--chart-axis', '#899790'),
+    solar:   chartColor('--chart-solar', '#c9780a'),
+    solarFill: chartColor('--chart-solar-fill', 'rgba(201,120,10,.16)'),
+    load:    chartColor('--chart-load', '#087d55'),
+    loadFill: chartColor('--chart-load-fill', 'rgba(8,125,85,.1)'),
+    battery: chartColor('--chart-battery', '#5a86ab'),
+    crosshair: chartColor('--chart-crosshair', 'rgba(19,33,28,.3)'),
+    dotEdge: chartColor('--chart-dot-edge', '#ffffff'),
+  };
+}
+
 function drawChart() {
+  const palette = chartPalette();
   const rows = downsample(filteredRows());
   const empty = document.querySelector('#chart-empty');
   renderChartTable(rows);
@@ -628,13 +652,13 @@ function drawChart() {
   ctx.textBaseline = 'middle';
   for (let index = 0; index <= 4; index += 1) {
     const y = padding.top + plotHeight * index / 4;
-    ctx.strokeStyle = '#e6ede9';
+    ctx.strokeStyle = palette.grid;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(padding.left, y);
     ctx.lineTo(width - padding.right, y);
     ctx.stroke();
-    ctx.fillStyle = '#899790';
+    ctx.fillStyle = palette.axis;
     ctx.textAlign = 'left';
     ctx.fillText(axisPower(yMax - (yMax - yMin) * index / 4), 1, y);
   }
@@ -648,27 +672,28 @@ function drawChart() {
     for (let index = 0; index <= 4; index += 1) {
       const y = padding.top + plotHeight * index / 4;
       const value = batteryMax - (batteryMax - batteryMin) * index / 4;
-      ctx.fillStyle = '#5a86ab';
+      ctx.fillStyle = palette.battery;
       ctx.fillText(value.toFixed(1), width - 2, y);
     }
   }
 
   [0, .5, 1].forEach(fraction => {
     const time = new Date(firstTime + duration * fraction);
-    ctx.fillStyle = '#899790';
+    ctx.fillStyle = palette.axis;
     ctx.textAlign = fraction === 0 ? 'left' : fraction === 1 ? 'right' : 'center';
     ctx.fillText(formatAxisDate(time), padding.left + plotWidth * fraction, height - 7);
   });
 
+  function project(time, value, min, max) {
+    const clamped = value === null ? min : Math.max(min, Math.min(max, value));
+    return {
+      x: padding.left + plotWidth * (time - firstTime) / duration,
+      y: padding.top + plotHeight * (1 - (clamped - min) / ((max - min) || 1)),
+    };
+  }
+
   function pointsFor(key, min, max) {
-    return rows.map(row => {
-      const raw = number(row[key]);
-      const clamped = raw === null ? min : Math.max(min, Math.min(max, raw));
-      return {
-        x: padding.left + plotWidth * (timestamp(row) - firstTime) / duration,
-        y: padding.top + plotHeight * (1 - (clamped - min) / ((max - min) || 1)),
-      };
-    });
+    return rows.map(row => project(timestamp(row), number(row[key]), min, max));
   }
 
   function areaSeries(key, stroke, fill) {
@@ -705,18 +730,17 @@ function drawChart() {
   }
 
   const solarPoints = seriesVisible.pv
-    ? areaSeries('pv_watts', '#c9780a', 'rgba(201,120,10,.16)')
+    ? areaSeries('pv_watts', palette.solar, palette.solarFill)
     : pointsFor('pv_watts', yMin, yMax);
   const loadPoints = seriesVisible.load
-    ? areaSeries('ac_load_watts', '#087d55', 'rgba(8,125,85,.1)')
+    ? areaSeries('ac_load_watts', palette.load, palette.loadFill)
     : pointsFor('ac_load_watts', yMin, yMax);
   const batteryPoints = showBattery
-    ? dashedLineSeries('battery_voltage', '#5a86ab', batteryMin, batteryMax)
+    ? dashedLineSeries('battery_voltage', palette.battery, batteryMin, batteryMax)
     : pointsFor('battery_voltage', batteryMin, batteryMax);
-
   renderedChart = {
-    rows, solarPoints, loadPoints, batteryPoints, padding, plotWidth, plotHeight, width, height,
-    yMin, yMax,
+    rows, solarPoints, loadPoints, batteryPoints,
+    padding, plotWidth, plotHeight, width, height, yMin, yMax,
   };
 }
 
@@ -749,6 +773,7 @@ function setupChartInteractions() {
   }
 
   function drawCrosshair(index) {
+    const palette = chartPalette();
     octx.setTransform(1, 0, 0, 1, 0, 0);
     octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
     if (index === null || !renderedChart) return;
@@ -759,7 +784,7 @@ function setupChartInteractions() {
     octx.beginPath();
     octx.moveTo(x, padding.top);
     octx.lineTo(x, padding.top + plotHeight);
-    octx.strokeStyle = 'rgba(19,33,28,.3)';
+    octx.strokeStyle = palette.crosshair;
     octx.lineWidth = 1;
     octx.setLineDash([3, 3]);
     octx.stroke();
@@ -771,12 +796,12 @@ function setupChartInteractions() {
       octx.fillStyle = color;
       octx.fill();
       octx.lineWidth = 1.4;
-      octx.strokeStyle = '#fff';
+      octx.strokeStyle = palette.dotEdge;
       octx.stroke();
     }
-    if (seriesVisible.pv) dot(solarPoints[index], '#c9780a');
-    if (seriesVisible.load) dot(loadPoints[index], '#087d55');
-    if (seriesVisible.battery) dot(batteryPoints[index], '#5a86ab');
+    if (seriesVisible.pv) dot(solarPoints[index], palette.solar);
+    if (seriesVisible.load) dot(loadPoints[index], palette.load);
+    if (seriesVisible.battery) dot(batteryPoints[index], palette.battery);
   }
   const octx = overlayCanvas.getContext('2d');
 

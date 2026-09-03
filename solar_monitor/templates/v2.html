@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- Page zoom is locked so pinch gestures reach the chart instead of scaling
+       the whole page — matches the live dashboard's behaviour. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f7fa" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d1218" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Solar">
+  <meta name="description" content="Live SUMRY solar inverter monitoring">
+  <title>Solar Monitor · Staging</title>
+  <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/v2.css?v=1">
+</head>
+<body data-dashboard-mode="v2">
+  <header class="appbar" id="appbar">
+    <div class="appbar-inner shell">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"/></svg>
+        </span>
+        <div class="brand-text">
+          <span>SUMRY HGX</span>
+          <h1>Solar Monitor</h1>
+        </div>
+      </div>
+      <div class="status" id="connection-pill"><i></i><span id="connection">Connecting</span><small id="updated">—</small></div>
+      <button class="icon-btn" id="pull-now" type="button" aria-label="Pull latest reading now" title="Pull a fresh reading now">
+        <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.5-6.2M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 4v6h6M21 20v-6h-6"/></svg>
+      </button>
+      <a class="icon-btn settings-link" href="/admin" aria-label="Open admin" title="Admin">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.52V21h-4v-.08A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.52V3h4v.08A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.52 1H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <main class="layout shell">
+    <section class="alert" id="alert-banner" hidden>
+      <span class="alert-icon"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.7 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/></svg></span>
+      <div><strong id="alert-title">System alert</strong><span id="alert-copy">Check system status.</span></div>
+    </section>
+
+    <!-- ============================ live flow ============================ -->
+    <section class="card hero" id="overview" aria-label="Live power flow">
+      <div class="hero-grid">
+        <div class="hero-value solar">
+          <span class="chip"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.4"/><path d="M12 2.5v2.2M12 19.3v2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M2.5 12h2.2M19.3 12h2.2M5.2 18.8l1.6-1.6M17.2 6.8l1.6-1.6"/></svg>Solar</span>
+          <strong><span data-metric="pv_watts">—</span><small>W</small></strong>
+          <span class="sub"><span data-metric="pv_voltage">—</span> V · <span data-metric="pv_current">—</span> A</span>
+        </div>
+
+        <div class="converter">
+          <div class="converter-row">
+            <div class="wire in"><i></i></div>
+            <div class="converter-ring"><svg viewBox="0 0 24 24"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"/></svg></div>
+            <div class="wire out"><i></i></div>
+          </div>
+          <small>INVERTER</small>
+        </div>
+
+        <div class="hero-value home">
+          <span class="chip"><svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Home</span>
+          <strong><span data-metric="ac_load_watts">—</span><small>W</small></strong>
+          <span class="sub"><span data-metric="ac_load_va">—</span> VA</span>
+        </div>
+      </div>
+
+      <div class="batt-link" id="battery-path" aria-hidden="true"><i></i><b></b></div>
+
+      <div class="batt">
+        <span class="batt-cell" aria-hidden="true"><i id="battery-fill"></i></span>
+        <div class="batt-main">
+          <span>Battery</span>
+          <strong><span data-metric="battery_voltage">—</span><small>V</small></strong>
+        </div>
+        <div class="batt-side">
+          <strong><span data-metric="battery_current">—</span><small>A</small></strong>
+          <span id="battery-direction">Awaiting data</span>
+        </div>
+      </div>
+
+      <div class="insights">
+        <div class="insight primary"><small>Estimated charge</small><strong id="battery-soc">—%</strong></div>
+        <div class="insight"><small>Estimated runtime</small><strong id="battery-runtime">Set capacity</strong></div>
+      </div>
+    </section>
+
+    <!-- ============================ today ================================ -->
+    <div class="side-stack">
+      <section class="card" aria-label="Today's energy">
+        <div class="card-head"><div><span class="eyebrow">Today</span><h2>Energy summary</h2></div></div>
+        <div class="totals" style="grid-template-columns: repeat(3, 1fr);">
+          <span><small>Solar generated</small><strong id="solar-energy">— kWh</strong></span>
+          <span><small>Load consumed</small><strong id="load-energy">— kWh</strong></span>
+          <span><small>Lowest battery</small><strong id="battery-minimum">— V</strong></span>
+        </div>
+      </section>
+
+      <section class="card" aria-label="Longer-term totals">
+        <div class="card-head"><div><span class="eyebrow">Trends</span><h2>7 &amp; 30-day totals</h2></div></div>
+        <p class="note">Estimated from average power per day — not a revenue-grade meter reading.</p>
+        <div class="totals">
+          <span><small>Solar 7d</small><strong id="solar-7d">— kWh</strong></span>
+          <span><small>Load 7d</small><strong id="load-7d">— kWh</strong></span>
+          <span><small>Solar 30d</small><strong id="solar-30d">— kWh</strong></span>
+          <span><small>Load 30d</small><strong id="load-30d">— kWh</strong></span>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============================ key readings ========================= -->
+    <div class="section-head">
+      <div><span class="eyebrow">Key readings</span><h2>System details</h2></div>
+      <button class="btn" id="customize-open" type="button">
+        <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+        Customize
+      </button>
+    </div>
+
+    <section class="metric-grid" id="summary-grid" aria-label="System summary">
+      <article class="card metric-card" data-card-id="load">
+        <div class="metric-top"><span>Load</span><span class="badge green"><svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg></span></div>
+        <strong class="metric-value"><span data-metric="ac_load_watts">—</span><small>W</small></strong>
+        <div class="meter"><i id="load-bar"></i></div>
+        <div class="readouts">
+          <span><small>Capacity</small><b id="load-percent">—%</b></span>
+          <span><small>Apparent</small><b><span data-metric="ac_load_va">—</span> VA</b></span>
+        </div>
+      </article>
+
+      <article class="card metric-card" data-card-id="output">
+        <div class="metric-top"><span>AC output</span><span class="badge blue"><svg viewBox="0 0 24 24"><path d="M3 12c2.5-7 5.5 7 9 0s6.5 7 9 0"/></svg></span></div>
+        <strong class="metric-value"><span data-metric="output_voltage">—</span><small>V</small></strong>
+        <div class="readouts">
+          <span><small>Frequency</small><b><span data-metric="output_frequency">—</span> Hz</b></span>
+          <span><small>Current</small><b><span data-metric="output_current">—</span> A</b></span>
+        </div>
+      </article>
+
+      <article class="card metric-card" data-card-id="temperature">
+        <div class="metric-top"><span>Power stage</span><span class="badge amber"><svg viewBox="0 0 24 24"><path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0Z"/></svg></span></div>
+        <strong class="metric-value"><span id="power-temperature">—</span><small>°C</small></strong>
+        <canvas class="sparkline" id="temperature-sparkline" height="30" aria-hidden="true"></canvas>
+        <div class="readouts three">
+          <span><small>NTC 2</small><b><span data-metric="ntc2_temperature">—</span>°</b></span>
+          <span><small>NTC 3</small><b><span data-metric="ntc3_temperature">—</span>°</b></span>
+          <span><small>NTC 4</small><b><span data-metric="ntc4_temperature">—</span>°</b></span>
+        </div>
+      </article>
+
+      <article class="card metric-card" data-card-id="cooling">
+        <div class="metric-top"><span>Cooling</span><span class="badge"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M12 10c-1-5 2-7 4-6 2 2 0 6-2.5 7M14 12c5-1 7 2 6 4-2 2-6 0-7-2.5M12 14c1 5-2 7-4 6-2-2 0-6 2.5-7M10 12c-5 1-7-2-6-4 2-2 6 0 7 2.5"/></svg></span></div>
+        <strong class="metric-value"><span id="fan-percent">—</span><small>%</small></strong>
+        <canvas class="sparkline" id="fan-sparkline" height="30" aria-hidden="true"></canvas>
+        <div class="readouts">
+          <span><small>Fan 1</small><b><span data-metric="fan1_percent">—</span>%</b></span>
+          <span><small>Fan 2</small><b><span data-metric="fan2_percent">—</span>%</b></span>
+        </div>
+      </article>
+
+      <article class="card metric-card" data-card-id="grid">
+        <div class="metric-top"><span>Grid &amp; bus</span><span class="badge"><svg viewBox="0 0 24 24"><path d="M4 21V9l8-6 8 6v12M9 21v-6h6v6"/></svg></span></div>
+        <strong class="metric-value"><span data-metric="grid_voltage">—</span><small>V</small></strong>
+        <div class="readouts three">
+          <span><small>Freq</small><b><span data-metric="grid_frequency">—</span> Hz</b></span>
+          <span><small>Current</small><b><span data-metric="grid_current">—</span> A</b></span>
+          <span><small>Bus</small><b><span data-metric="bus_voltage">—</span> V</b></span>
+        </div>
+      </article>
+    </section>
+
+    <!-- ============================ chart workspace ====================== -->
+    <section class="card chart-card" id="trends">
+      <div class="chart-head">
+        <div><span class="eyebrow">Performance</span><h2>Power history</h2></div>
+        <div class="segmented range-control" role="group" aria-label="Chart range">
+          <button type="button" data-hours="1">1H</button>
+          <button type="button" data-hours="6">6H</button>
+          <button type="button" data-hours="24" class="active">24H</button>
+          <button type="button" data-hours="168">7D</button>
+          <button type="button" data-hours="720">30D</button>
+        </div>
+      </div>
+
+      <div class="chart-toolbar">
+        <div class="series" id="chart-legend">
+          <button type="button" class="legend-toggle active" data-series="pv"><i></i>Solar</button>
+          <button type="button" class="legend-toggle active" data-series="load"><i></i>Load</button>
+          <button type="button" class="legend-toggle" data-series="battery"><i></i>Battery V</button>
+          <button type="button" class="zoom-reset" id="zoom-reset" hidden>Reset zoom</button>
+        </div>
+        <div class="segmented chart-mode" role="group" aria-label="Touch mode">
+          <button type="button" id="chart-inspect" class="active" aria-pressed="true">Inspect</button>
+          <button type="button" id="chart-pan" aria-pressed="false">Pan</button>
+        </div>
+        <div class="segmented chart-zoom" role="group" aria-label="Zoom">
+          <button type="button" id="chart-zoom-out" aria-label="Zoom out">−</button>
+          <button type="button" id="chart-zoom-in" aria-label="Zoom in">+</button>
+          <button type="button" id="chart-reset" aria-label="Reset chart view">Reset</button>
+        </div>
+        <label class="y-scale"><span>Y max</span>
+          <select id="chart-y-scale" aria-label="Chart Y-axis maximum">
+            <option value="auto">Auto</option>
+            <option value="500">500 W</option>
+            <option value="1000">1 kW</option>
+            <option value="2000">2 kW</option>
+            <option value="4000">4 kW</option>
+            <option value="6000">6 kW</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="chart-wrap">
+        <canvas id="power-chart" aria-label="Solar and load power history"></canvas>
+        <canvas id="power-chart-overlay" aria-hidden="true"></canvas>
+        <div class="chart-empty" id="chart-empty" hidden><strong>No samples in this range</strong><span>New readings appear automatically.</span></div>
+        <div class="chart-hint" id="chart-hint">Drag to inspect · Pan mode to move through time · pinch to zoom</div>
+      </div>
+
+      <div class="chart-stats">
+        <div><span>Avg solar</span><strong id="solar-average">— W</strong></div>
+        <div><span>Solar peak</span><strong id="solar-peak">— W</strong></div>
+        <div><span>Load peak</span><strong id="load-peak">— W</strong></div>
+        <div><span>Battery low</span><strong id="trend-battery-min">— V</strong></div>
+      </div>
+
+      <details class="panel" id="chart-data">
+        <summary>
+          <span><strong>Reading table</strong><small id="chart-window-label">Visible chart data</small></span>
+          <span class="summary-actions"><button type="button" class="btn ghost" id="chart-export">Export CSV</button><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>
+        </summary>
+        <div class="chart-table-wrap">
+          <table><thead><tr><th>Time</th><th>Solar</th><th>Load</th><th>Battery</th></tr></thead><tbody id="chart-table-body"></tbody></table>
+        </div>
+      </details>
+    </section>
+
+    <!-- ============================ system =============================== -->
+    <section class="card full" id="system">
+      <div class="card-head"><div><span class="eyebrow">System</span><h2>Status &amp; diagnostics</h2></div><span class="tag ok">Writes disabled</span></div>
+      <div style="padding: 0 var(--s-4) var(--s-2)">
+        <div class="rows">
+          <div><span>Operating state</span><strong data-metric="operating_state">Not decoded</strong></div>
+          <div><span>Faults</span><strong data-metric="faults" id="fault-value">No active faults</strong></div>
+          <div><span>Last response</span><code id="raw-response">No serial capture yet</code></div>
+        </div>
+        <details class="panel" id="all-data">
+          <summary>
+            <span><strong>All inverter data</strong><small>Every decoded and connection value</small></span>
+            <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+          </summary>
+          <div class="data-body" id="all-data-body"><p>Open to load the latest values.</p></div>
+        </details>
+      </div>
+    </section>
+
+    <section class="card full" id="config" aria-label="Inverter configuration">
+      <div class="card-head"><div><span class="eyebrow">Inverter</span><h2>Configuration</h2></div><span class="tag">Read-only</span></div>
+      <p class="config-note" id="config-note">Waiting for the inverter's configuration snapshot (captured every few minutes).</p>
+      <div class="config-grid" id="config-grid" hidden></div>
+    </section>
+
+    <section class="card standalone full">
+      <details class="panel" id="fault-history">
+        <summary>
+          <span><strong>Fault history</strong><small id="fault-history-summary">Last 30 days</small></span>
+          <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+        </summary>
+        <div class="data-body" id="fault-history-body"><p>Open to load recent faults.</p></div>
+      </details>
+    </section>
+
+    <section class="card full" id="pi-health" aria-label="Raspberry Pi health">
+      <div class="card-head"><div><span class="eyebrow">Host</span><h2>Raspberry Pi</h2></div></div>
+      <div class="host-grid">
+        <div><span>Uptime</span><strong id="pi-uptime">—</strong></div>
+        <div><span>Hostname</span><strong id="pi-hostname">—</strong></div>
+        <div><span>IP address</span><strong id="pi-ip">—</strong></div>
+        <div><span>Wi-Fi</span><strong id="pi-wifi">—</strong></div>
+        <div><span>CPU temp</span><strong id="pi-cpu-temp">—</strong></div>
+        <div><span>Power mode</span><strong id="pi-eco">—</strong></div>
+      </div>
+      <p class="host-note" id="pi-throttle-note" hidden></p>
+    </section>
+  </main>
+
+  <!-- ============================ customize sheet ======================== -->
+  <dialog class="sheet" id="customize-dialog">
+    <form method="dialog">
+      <div class="sheet-head">
+        <div><span class="eyebrow">Your dashboard</span><h2>Customize</h2></div>
+        <button class="icon-btn" value="cancel" aria-label="Close"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </div>
+      <p class="sheet-help">Choose which cards appear and how they're ordered on this device.</p>
+      <div class="control-list" id="card-controls"></div>
+
+      <div class="field-group">
+        <strong>Battery estimate</strong>
+        <p>Set your bank details to estimate state of charge and runtime.</p>
+        <div class="fields">
+          <label><span>Capacity</span><div><input id="battery-capacity" type="number" min="1" max="2000" step="1" inputmode="decimal" placeholder="400"><small>Ah</small></div></label>
+          <label><span>Empty</span><div><input id="battery-empty-voltage" type="number" min="18" max="28" step=".1" inputmode="decimal" value="21"><small>V</small></div></label>
+          <label><span>Full</span><div><input id="battery-full-voltage" type="number" min="24" max="32" step=".1" inputmode="decimal" value="28.8"><small>V</small></div></label>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <span><strong>Presentation mode</strong><small>Hide technical panels for a clean showcase.</small></span>
+        <label class="switch"><input id="presentation-mode" type="checkbox" aria-label="Presentation mode"><i></i></label>
+      </div>
+
+      <div class="field-row">
+        <span><strong>Fault notifications</strong><small id="notification-status">Ask this device to show critical alerts.</small></span>
+        <button type="button" class="btn" id="notification-button">Enable</button>
+      </div>
+
+      <div class="sheet-actions">
+        <button type="button" id="reset-cards">Reset</button>
+        <button value="done" class="done">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <nav class="tabbar bottom-nav" aria-label="Dashboard sections">
+    <a href="#overview" class="active"><svg viewBox="0 0 24 24"><path d="M3 12h7V3H3v9ZM14 21h7v-9h-7v9ZM3 21h7v-5H3v5ZM14 8h7V3h-7v5Z"/></svg><span>Overview</span></a>
+    <a href="#trends"><svg viewBox="0 0 24 24"><path d="m3 17 5-5 4 4 8-9"/><path d="M15 7h5v5"/></svg><span>Trends</span></a>
+    <a href="#system"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.52V21h-4v-.08A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.52V3h4v.08A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.52 1H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg><span>System</span></a>
+  </nav>
+
+  <script>
+    // Subtle app-bar separator once the page scrolls.
+    const appbar = document.getElementById('appbar');
+    const onScroll = () => appbar.classList.toggle('scrolled', window.scrollY > 4);
+    addEventListener('scroll', onScroll, {passive: true});
+    onScroll();
+  </script>
+  <script src="/static/app.js?v=10"></script>
+</body>
+</html>

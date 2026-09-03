@@ -395,7 +395,7 @@ code { display: block; overflow: hidden; color: var(--quiet); font: 9px ui-monos
   right: 12px;
   bottom: calc(9px + env(safe-area-inset-bottom));
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   align-items: center;
   padding: 4px;
   border: 1px solid var(--border-strong);
@@ -431,7 +431,7 @@ code { display: block; overflow: hidden; color: var(--quiet); font: 9px ui-monos
 .presentation-mode .pi-card,
 .presentation-mode .settings-link,
 .presentation-mode .bottom-nav a[href="#system"] { display: none; }
-.presentation-mode .bottom-nav { grid-template-columns: repeat(2, 1fr); }
+.presentation-mode .bottom-nav { grid-template-columns: repeat(3, 1fr); }
 
 @media (min-width: 1000px) {
   main { grid-template-columns: minmax(0, 1.4fr) minmax(360px, .6fr); }
