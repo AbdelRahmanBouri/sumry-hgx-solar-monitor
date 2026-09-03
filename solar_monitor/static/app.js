@@ -701,26 +701,76 @@ function drawChart() {
   };
 }
 
+function resetZoom() {
+  viewWindow = null;
+  yViewWindow = null;
+  updateZoomResetVisibility();
+  drawChart();
+}
+
 function setupChartInteractions() {
   const tooltip = document.createElement('div');
   tooltip.className = 'chart-tooltip';
   chartWrap.appendChild(tooltip);
 
-  function hideTooltip() { tooltip.hidden = true; }
-
-  function showTooltip(clientX) {
-    if (!renderedChart) return hideTooltip();
+  function nearestIndex(clientX) {
+    if (!renderedChart) return null;
     const rect = chartCanvas.getBoundingClientRect();
     const x = clientX - rect.left;
-    const {rows, solarPoints} = renderedChart;
+    const {solarPoints} = renderedChart;
     let closest = 0;
     let distance = Infinity;
     solarPoints.forEach((point, index) => {
       const nextDistance = Math.abs(point.x - x);
       if (nextDistance < distance) { distance = nextDistance; closest = index; }
     });
-    const row = rows[closest];
-    const left = Math.max(54, Math.min(rect.width - 54, solarPoints[closest].x));
+    return closest;
+  }
+
+  function drawCrosshair(index) {
+    octx.setTransform(1, 0, 0, 1, 0, 0);
+    octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    if (index === null || !renderedChart) return;
+    const ratio = window.devicePixelRatio || 1;
+    octx.scale(ratio, ratio);
+    const {solarPoints, loadPoints, batteryPoints, padding, plotHeight} = renderedChart;
+    const x = solarPoints[index].x;
+    octx.beginPath();
+    octx.moveTo(x, padding.top);
+    octx.lineTo(x, padding.top + plotHeight);
+    octx.strokeStyle = 'rgba(19,33,28,.3)';
+    octx.lineWidth = 1;
+    octx.setLineDash([3, 3]);
+    octx.stroke();
+    octx.setLineDash([]);
+
+    function dot(point, color) {
+      octx.beginPath();
+      octx.arc(point.x, point.y, 3.2, 0, Math.PI * 2);
+      octx.fillStyle = color;
+      octx.fill();
+      octx.lineWidth = 1.4;
+      octx.strokeStyle = '#fff';
+      octx.stroke();
+    }
+    if (seriesVisible.pv) dot(solarPoints[index], '#c9780a');
+    if (seriesVisible.load) dot(loadPoints[index], '#087d55');
+    if (seriesVisible.battery) dot(batteryPoints[index], '#5a86ab');
+  }
+  const octx = overlayCanvas.getContext('2d');
+
+  function hideOverlay() {
+    tooltip.hidden = true;
+    drawCrosshair(null);
+  }
+
+  function showOverlay(clientX) {
+    const index = nearestIndex(clientX);
+    if (index === null) return hideOverlay();
+    const rect = chartCanvas.getBoundingClientRect();
+    const {rows, solarPoints} = renderedChart;
+    const row = rows[index];
+    const left = Math.max(54, Math.min(rect.width - 54, solarPoints[index].x));
     tooltip.style.left = `${left}px`;
     const when = selectedHours > 24
       ? new Date(timestamp(row)).toLocaleDateString([], {month: 'short', day: 'numeric'})
@@ -731,15 +781,26 @@ function setupChartInteractions() {
     if (seriesVisible.battery) lines.push(`<span><i class="battery-key"></i>${format(number(row.battery_voltage), 1)} V</span>`);
     tooltip.innerHTML = lines.join('');
     tooltip.hidden = false;
+    drawCrosshair(index);
   }
 
   const pointers = new Map();
   let panState = null;
+  let yPanState = null;
   let pinchState = null;
   let gestureMoved = false;
   let lastTap = {time: 0, x: 0, y: 0};
 
   function dismissHint() { chartHint.classList.add('dismissed'); }
+
+  function inYAxisZone(clientX) {
+    const rect = chartCanvas.getBoundingClientRect();
+    return (clientX - rect.left) <= Y_AXIS_ZONE_WIDTH;
+  }
+
+  function currentYWindow() {
+    return yViewWindow || {min: renderedChart?.yMin ?? 0, max: renderedChart?.yMax ?? 100};
+  }
 
   function armPan(startX) {
     panState = {startX, startWindow: viewWindow || fullRangeWindow()};
@@ -751,18 +812,36 @@ function setupChartInteractions() {
     pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
     if (pointers.size === 1) {
       gestureMoved = false;
-      armPan(event.clientX);
-      showTooltip(event.clientX);
+      if (inYAxisZone(event.clientX)) {
+        yPanState = {startY: event.clientY, startWindow: currentYWindow()};
+        panState = null;
+        hideOverlay();
+      } else {
+        yPanState = null;
+        armPan(event.clientX);
+        showOverlay(event.clientX);
+      }
     } else if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
-      pinchState = {startDistance: Math.abs(a.x - b.x) || 1, startWindow: viewWindow || fullRangeWindow()};
-      hideTooltip();
+      pinchState = {
+        startDistance: Math.abs(a.x - b.x) || 1,
+        startDistanceY: Math.abs(a.y - b.y) || 1,
+        startWindow: viewWindow || fullRangeWindow(),
+        startYWindow: currentYWindow(),
+      };
+      yPanState = null;
+      hideOverlay();
     }
   });
 
   chartCanvas.addEventListener('pointermove', event => {
     if (!pointers.has(event.pointerId)) {
-      if (event.pointerType === 'mouse') showTooltip(event.clientX);
+      if (event.pointerType === 'mouse') {
+        const zone = inYAxisZone(event.clientX);
+        chartCanvas.classList.toggle('y-zone-active', zone);
+        if (zone) hideOverlay();
+        else showOverlay(event.clientX);
+      }
       return;
     }
     pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
@@ -770,14 +849,43 @@ function setupChartInteractions() {
     if (pointers.size === 2 && pinchState?.startWindow) {
       gestureMoved = true;
       const [a, b] = [...pointers.values()];
+      const rect = chartCanvas.getBoundingClientRect();
+
       const distance = Math.abs(a.x - b.x) || 1;
       const ratio = pinchState.startDistance / distance;
       const win = pinchState.startWindow;
-      const rect = chartCanvas.getBoundingClientRect();
       const anchorFraction = Math.min(1, Math.max(0, ((a.x + b.x) / 2 - rect.left) / rect.width));
       const anchorTime = win.start + (win.end - win.start) * anchorFraction;
       const span = (win.end - win.start) * ratio;
       viewWindow = clampWindow({start: anchorTime - anchorFraction * span, end: anchorTime + (1 - anchorFraction) * span});
+
+      const distanceY = Math.abs(a.y - b.y) || 1;
+      const ratioY = pinchState.startDistanceY / distanceY;
+      const winY = pinchState.startYWindow;
+      const anchorFractionY = Math.min(1, Math.max(0, 1 - ((a.y + b.y) / 2 - rect.top) / rect.height));
+      const anchorValue = winY.min + (winY.max - winY.min) * anchorFractionY;
+      const spanY = (winY.max - winY.min) * ratioY;
+      yViewWindow = clampYWindow({
+        min: anchorValue - anchorFractionY * spanY,
+        max: anchorValue + (1 - anchorFractionY) * spanY,
+      });
+
+      updateZoomResetVisibility();
+      drawChart();
+      return;
+    }
+
+    if (pointers.size === 1 && yPanState) {
+      const dy = event.clientY - yPanState.startY;
+      if (Math.abs(dy) < 4) return;
+      gestureMoved = true;
+      const rect = chartCanvas.getBoundingClientRect();
+      if (!rect.height) return;
+      const span = yPanState.startWindow.max - yPanState.startWindow.min;
+      const shift = -(dy / rect.height) * span;
+      yViewWindow = clampYWindow({
+        min: yPanState.startWindow.min + shift, max: yPanState.startWindow.max + shift,
+      });
       updateZoomResetVisibility();
       drawChart();
       return;
@@ -785,9 +893,9 @@ function setupChartInteractions() {
 
     if (pointers.size === 1 && panState?.startWindow) {
       const dx = event.clientX - panState.startX;
-      if (Math.abs(dx) < 4) { showTooltip(event.clientX); return; }
+      if (Math.abs(dx) < 4) { showOverlay(event.clientX); return; }
       gestureMoved = true;
-      hideTooltip();
+      hideOverlay();
       const rect = chartCanvas.getBoundingClientRect();
       if (!rect.width) return;
       const win = panState.startWindow;
@@ -800,7 +908,7 @@ function setupChartInteractions() {
   });
 
   function endPointer(event) {
-    const wasTap = pointers.size === 1 && !gestureMoved && event.pointerType !== 'mouse';
+    const wasTap = pointers.size === 1 && !gestureMoved && event.pointerType !== 'mouse' && !yPanState;
     pointers.delete(event.pointerId);
     pinchState = null;
     if (pointers.size === 1) {
@@ -808,19 +916,19 @@ function setupChartInteractions() {
       // re-arm panning from the remaining finger's current position so the
       // next move doesn't jump using a stale start point.
       const [remaining] = [...pointers.values()];
-      armPan(remaining.x);
+      if (yPanState) yPanState = {startY: remaining.y, startWindow: currentYWindow()};
+      else armPan(remaining.x);
       gestureMoved = false;
     } else if (pointers.size === 0) {
       panState = null;
-      hideTooltip();
+      yPanState = null;
+      hideOverlay();
     }
     if (wasTap) {
       const now = Date.now();
       const sameSpot = Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) < 24;
       if (now - lastTap.time < 350 && sameSpot) {
-        viewWindow = null;
-        updateZoomResetVisibility();
-        drawChart();
+        resetZoom();
         lastTap.time = 0;
         return;
       }
@@ -829,35 +937,42 @@ function setupChartInteractions() {
   }
   chartCanvas.addEventListener('pointerup', endPointer);
   chartCanvas.addEventListener('pointercancel', endPointer);
-  chartCanvas.addEventListener('pointerleave', () => { if (!pointers.size) hideTooltip(); });
+  chartCanvas.addEventListener('pointerleave', () => { if (!pointers.size) hideOverlay(); });
 
   chartCanvas.addEventListener('wheel', event => {
     event.preventDefault();
     dismissHint();
+    if (!renderedChart) return;
+    const rect = chartCanvas.getBoundingClientRect();
+    const factor = event.deltaY > 0 ? 1.25 : 0.8;
+
+    if (inYAxisZone(event.clientX)) {
+      const winY = currentYWindow();
+      const anchorFractionY = Math.min(1, Math.max(0, 1 - (event.clientY - rect.top) / rect.height));
+      const anchorValue = winY.min + (winY.max - winY.min) * anchorFractionY;
+      const spanY = (winY.max - winY.min) * factor;
+      yViewWindow = clampYWindow({
+        min: anchorValue - anchorFractionY * spanY, max: anchorValue + (1 - anchorFractionY) * spanY,
+      });
+      updateZoomResetVisibility();
+      drawChart();
+      return;
+    }
+
     const win = viewWindow || fullRangeWindow();
     if (!win) return;
-    const rect = chartCanvas.getBoundingClientRect();
     const anchorFraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
     const anchorTime = win.start + (win.end - win.start) * anchorFraction;
-    const factor = event.deltaY > 0 ? 1.25 : 0.8;
     const span = (win.end - win.start) * factor;
     viewWindow = clampWindow({start: anchorTime - anchorFraction * span, end: anchorTime + (1 - anchorFraction) * span});
     updateZoomResetVisibility();
     drawChart();
   }, {passive: false});
 
-  chartCanvas.addEventListener('dblclick', () => {
-    viewWindow = null;
-    updateZoomResetVisibility();
-    drawChart();
-  });
+  chartCanvas.addEventListener('dblclick', resetZoom);
 }
 
-zoomResetButton.addEventListener('click', () => {
-  viewWindow = null;
-  updateZoomResetVisibility();
-  drawChart();
-});
+zoomResetButton.addEventListener('click', resetZoom);
 
 document.querySelectorAll('.legend-toggle').forEach(button => {
   const key = button.dataset.series;
