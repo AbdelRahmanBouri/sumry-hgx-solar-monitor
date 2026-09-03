@@ -1,0 +1,18 @@
+{
+  "name": "Solar Monitor",
+  "short_name": "Solar",
+  "description": "Live SUMRY solar inverter monitoring",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f7f5",
+  "theme_color": "#f7f9f8",
+  "icons": [
+    {
+      "src": "/static/solar-app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

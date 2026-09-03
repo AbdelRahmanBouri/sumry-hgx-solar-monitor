@@ -1,12 +1,75 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin · Solar Monitor</title><link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}"></head>
-<body><header class="admin-header"><div><p class="eyebrow">SOLAR MONITOR</p><h1>Control center</h1></div><form method="post" action="/admin/logout"><button class="secondary">Sign out</button></form></header>
-<main class="admin-main">
-  <nav><button data-view="overview" class="active">Overview</button><button data-view="serial">Serial</button><button data-view="data">Data</button><button data-view="settings">Settings</button><button data-view="security">Security</button><button data-view="audit">Audit</button><a href="/">Dashboard ↗</a></nav>
-  <section id="overview" class="view active"><div class="grid"><article><span>Serial adapter</span><strong id="port-state">Checking…</strong></article><article><span>Database</span><strong id="db-size">—</strong></article><article><span>Free storage</span><strong id="disk-free">—</strong></article><article><span>System uptime</span><strong id="uptime">—</strong></article></div><article class="panel"><h2>Access model</h2><p>Development stays available through SSH. This web backend contains no terminal.</p><p><span class="badge">Inverter writes: staged</span> Write controls will appear after the HGX command set is confirmed.</p></article></section>
-  <section id="serial" class="view"><article class="panel"><h2>Serial diagnostics</h2><p>Passive listening transmits nothing. Candidate probe sends only the protocol driver's allow-listed status query.</p><div class="actions"><button id="listen">Listen only</button><button id="probe" class="warning">Send status probe</button></div><pre id="serial-output">No diagnostic run in this session.</pre></article></section>
-  <section id="data" class="view"><article class="panel"><div class="panel-head"><h2>Raw frames</h2><div><a class="button secondary" href="/api/admin/export/frames.jsonl">Export JSONL</a><a class="button secondary" href="/api/admin/export/samples.csv">Export samples CSV</a></div></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Port</th><th>Query</th><th>Response</th><th>Error</th></tr></thead><tbody id="frames"></tbody></table></div></article></section>
-  <section id="settings" class="view"><article class="panel"><h2>Connection settings</h2><form id="settings-form" class="settings"><label>Serial port<input name="serial_port" value="auto"></label><label>Baud rate<select name="baudrate"><option>1200</option><option>2400</option><option>4800</option><option selected>9600</option><option>19200</option></select></label><label>Timeout seconds<input name="timeout_seconds" type="number" min="0.1" max="10" step="0.1"></label><label>Polling seconds<input name="poll_seconds" type="number" min="30" max="3600"></label><label>Protocol<input name="protocol" readonly></label><button type="submit">Save settings</button><span id="settings-result"></span></form></article></section>
-  <section id="security" class="view"><article class="panel"><h2>Quick PIN access</h2><p>A 4–8 digit PIN makes repeat access faster. After three incorrect attempts, PIN access stays locked until you sign in with the full password.</p><p id="pin-status" class="muted">Checking…</p><form id="pin-form" class="settings"><label>New PIN<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" required></label><label>Confirm PIN<input name="confirmation" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" required></label><button type="submit">Set or replace PIN</button></form><button id="disable-pin" type="button" class="secondary">Disable PIN</button><p id="pin-result"></p></article></section>
-  <section id="audit" class="view"><article class="panel"><h2>Recent activity</h2><div class="table-wrap"><table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead><tbody id="audit-events"></tbody></table></div></article></section>
-</main><script src="{{ url_for('static', filename='admin.js') }}"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f7f9f8">
+  <title>Admin · Solar Monitor</title>
+  <link rel="manifest" href="/static/solar-dashboard.webmanifest">
+  <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css', v=2) }}">
+</head>
+<body>
+  <header class="admin-header">
+    <div class="admin-brand">
+      <span class="admin-mark"><svg viewBox="0 0 24 24"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"/></svg></span>
+      <div><p class="eyebrow">SOLAR MONITOR</p><h1>Control center</h1></div>
+    </div>
+    <div class="header-actions">
+      <a class="dashboard-link" href="/">Dashboard</a>
+      <form method="post" action="/admin/logout"><button class="secondary">Sign out</button></form>
+    </div>
+  </header>
+  <main class="admin-main">
+    <nav aria-label="Admin sections">
+      <button data-view="overview" class="active">Overview</button>
+      <button data-view="serial">Serial</button>
+      <button data-view="data">Data</button>
+      <button data-view="settings">Settings</button>
+      <button data-view="security">Security</button>
+      <button data-view="audit">Audit</button>
+    </nav>
+    <div class="view-stack">
+      <section id="overview" class="view active">
+        <div class="view-heading"><span class="eyebrow">SYSTEM</span><h2>Overview</h2></div>
+        <div class="grid">
+          <article><span>Serial adapter</span><strong id="port-state">Checking…</strong></article>
+          <article><span>Database</span><strong id="db-size">—</strong></article>
+          <article><span>Free storage</span><strong id="disk-free">—</strong></article>
+          <article><span>System uptime</span><strong id="uptime">—</strong></article>
+        </div>
+        <article class="panel">
+          <h2>Inverter writes</h2>
+          <p><span class="badge">Inverter writes: staged</span> Write controls remain separate while the HGX command set is being confirmed.</p>
+        </article>
+      </section>
+
+      <section id="serial" class="view">
+        <div class="view-heading"><span class="eyebrow">HARDWARE</span><h2>Serial diagnostics</h2></div>
+        <article class="panel"><p>Passive listening transmits nothing. Candidate probe sends only the protocol driver's allow-listed status query.</p><div class="actions"><button id="listen">Listen only</button><button id="probe" class="warning">Send status probe</button></div><pre id="serial-output">No diagnostic run in this session.</pre></article>
+      </section>
+
+      <section id="data" class="view">
+        <div class="view-heading"><span class="eyebrow">INVERTER</span><h2>Captured data</h2></div>
+        <article class="panel"><div class="panel-head"><h2>Raw frames</h2><div><a class="button secondary" href="/api/admin/export/frames.jsonl">Export JSONL</a><a class="button secondary" href="/api/admin/export/samples.csv">Export samples CSV</a></div></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Port</th><th>Query</th><th>Response</th><th>Error</th></tr></thead><tbody id="frames"></tbody></table></div></article>
+      </section>
+
+      <section id="settings" class="view">
+        <div class="view-heading"><span class="eyebrow">CONFIGURATION</span><h2>Connection settings</h2></div>
+        <article class="panel"><form id="settings-form" class="settings"><label>Serial port<input name="serial_port" value="auto"></label><label>Baud rate<select name="baudrate"><option>1200</option><option>2400</option><option>4800</option><option selected>9600</option><option>19200</option></select></label><label>Timeout seconds<input name="timeout_seconds" type="number" min="0.1" max="10" step="0.1"></label><label>Polling seconds<input name="poll_seconds" type="number" min="30" max="3600"></label><label>Protocol<input name="protocol" readonly></label><button type="submit">Save settings</button><span id="settings-result"></span></form></article>
+      </section>
+
+      <section id="security" class="view">
+        <div class="view-heading"><span class="eyebrow">ACCESS</span><h2>Quick PIN</h2></div>
+        <article class="panel"><p>A 4–8 digit PIN makes repeat access faster. After three incorrect attempts, PIN access stays locked until you sign in with the full password.</p><p id="pin-status" class="muted">Checking…</p><form id="pin-form" class="settings"><label>New PIN<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" required></label><label>Confirm PIN<input name="confirmation" type="password" inputmode="numeric" pattern="[0-9]{4,8}" minlength="4" maxlength="8" required></label><button type="submit">Set or replace PIN</button></form><button id="disable-pin" type="button" class="secondary">Disable PIN</button><p id="pin-result"></p></article>
+      </section>
+
+      <section id="audit" class="view">
+        <div class="view-heading"><span class="eyebrow">SECURITY</span><h2>Recent activity</h2></div>
+        <article class="panel"><div class="table-wrap"><table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead><tbody id="audit-events"></tbody></table></div></article>
+      </section>
+    </div>
+  </main>
+  <script src="{{ url_for('static', filename='admin.js') }}"></script>
+</body>
+</html>
