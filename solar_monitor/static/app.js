@@ -18,11 +18,17 @@ const overlayCanvas = document.querySelector('#power-chart-overlay');
 const chartWrap = chartCanvas.parentElement;
 const chartHint = document.querySelector('#chart-hint');
 const zoomResetButton = document.querySelector('#zoom-reset');
+const chartInspectButton = document.querySelector('#chart-inspect');
+const chartPanButton = document.querySelector('#chart-pan');
+const chartTableBody = document.querySelector('#chart-table-body');
+const chartWindowLabel = document.querySelector('#chart-window-label');
 const allData = document.querySelector('#all-data');
 const allDataBody = document.querySelector('#all-data-body');
 const faultHistoryDetails = document.querySelector('#fault-history');
 const customizeDialog = document.querySelector('#customize-dialog');
 const cardControls = document.querySelector('#card-controls');
+const dashboardMode = document.body.dataset.dashboardMode === 'lab' ? 'lab' : 'dashboard';
+const storageKey = name => `solar-${dashboardMode}-${name}`;
 
 let historyRows = [];
 let todayRows = [];
@@ -33,6 +39,7 @@ const Y_AXIS_ZONE_WIDTH = 44; // px from the left edge treated as the "drag the 
 let renderedChart = null;
 let latestPayload = null;
 let latestStatusSample = {};
+let chartMode = 'inspect';
 
 const cardNames = {
   load: 'Load',
@@ -48,7 +55,7 @@ const defaultCardPreferences = {
 
 function loadCardPreferences() {
   try {
-    const saved = JSON.parse(localStorage.getItem('solar-dashboard-cards-v2'));
+    const saved = JSON.parse(localStorage.getItem(storageKey('cards-v2')));
     const known = defaultCardPreferences.order;
     const order = Array.isArray(saved?.order)
       ? [...saved.order.filter(id => known.includes(id)), ...known.filter(id => !saved.order.includes(id))]
@@ -65,7 +72,7 @@ let cardPreferences = loadCardPreferences();
 function loadDashboardSettings() {
   const defaults = {capacityAh: '', emptyVoltage: 21, fullVoltage: 28.8, presentation: false};
   try {
-    return {...defaults, ...JSON.parse(localStorage.getItem('solar-dashboard-settings-v2') || '{}')};
+    return {...defaults, ...JSON.parse(localStorage.getItem(storageKey('settings-v2')) || '{}')};
   } catch (_) {
     return defaults;
   }
@@ -76,7 +83,7 @@ let dashboardSettings = loadDashboardSettings();
 function loadSeriesVisibility() {
   const defaults = {pv: true, load: true, battery: false};
   try {
-    const saved = JSON.parse(localStorage.getItem('solar-dashboard-series-v1'));
+    const saved = JSON.parse(localStorage.getItem(storageKey('series-v1')));
     return {
       pv: saved?.pv !== false, load: saved?.load !== false, battery: Boolean(saved?.battery),
     };
@@ -88,15 +95,15 @@ function loadSeriesVisibility() {
 let seriesVisible = loadSeriesVisibility();
 
 function saveDashboardSettings() {
-  localStorage.setItem('solar-dashboard-settings-v2', JSON.stringify(dashboardSettings));
+  localStorage.setItem(storageKey('settings-v2'), JSON.stringify(dashboardSettings));
 }
 
 function saveCardPreferences() {
-  localStorage.setItem('solar-dashboard-cards-v2', JSON.stringify(cardPreferences));
+  localStorage.setItem(storageKey('cards-v2'), JSON.stringify(cardPreferences));
 }
 
 function saveSeriesVisibility() {
-  localStorage.setItem('solar-dashboard-series-v1', JSON.stringify(seriesVisible));
+  localStorage.setItem(storageKey('series-v1'), JSON.stringify(seriesVisible));
 }
 
 function applyCardPreferences() {
@@ -375,6 +382,7 @@ function updateStatusData(sample, diagnostic) {
 
   updateEnergyInsights(sample);
   renderConfig();
+  document.dispatchEvent(new CustomEvent('solar:sample', {detail: sample}));
   rawResponse.textContent = diagnostic?.response_hex || diagnostic?.error || 'No serial response captured';
   updateAlert(sample, diagnostic);
 }
@@ -551,14 +559,32 @@ function roundedPath(ctx, points) {
   ctx.lineTo(points.at(-1).x, points.at(-1).y);
 }
 
+function renderChartTable(rows) {
+  const displayRows = rows.slice(-120).reverse();
+  chartTableBody.replaceChildren();
+  displayRows.forEach(row => {
+    const tr = document.createElement('tr');
+    const values = [
+      new Date(timestamp(row)).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}),
+      `${format(number(row.pv_watts), 0)} W`,
+      `${format(number(row.ac_load_watts), 0)} W`,
+      `${format(number(row.battery_voltage), 1)} V`,
+    ];
+    values.forEach(value => { const td = document.createElement('td'); td.textContent = value; tr.appendChild(td); });
+    chartTableBody.appendChild(tr);
+  });
+  chartWindowLabel.textContent = `${rows.length} samples · newest first`;
+}
+
 function drawChart() {
   const rows = downsample(filteredRows());
   const empty = document.querySelector('#chart-empty');
-  document.querySelector('#sample-count').textContent = String(rows.length);
+  renderChartTable(rows);
 
   const solarValues = rows.map(row => number(row.pv_watts)).filter(value => value !== null);
   const loadValues = rows.map(row => number(row.ac_load_watts)).filter(value => value !== null);
   const batteryValues = rows.map(row => number(row.battery_voltage)).filter(value => value !== null);
+  document.querySelector('#solar-average').textContent = solarValues.length ? `${Math.round(solarValues.reduce((sum, value) => sum + value, 0) / solarValues.length)} W` : '— W';
   document.querySelector('#solar-peak').textContent = solarValues.length ? `${Math.round(Math.max(...solarValues))} W` : '— W';
   document.querySelector('#load-peak').textContent = loadValues.length ? `${Math.round(Math.max(...loadValues))} W` : '— W';
   document.querySelector('#trend-battery-min').textContent = batteryValues.length ? `${Math.min(...batteryValues).toFixed(1)} V` : '— V';
@@ -812,7 +838,11 @@ function setupChartInteractions() {
     pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
     if (pointers.size === 1) {
       gestureMoved = false;
-      if (inYAxisZone(event.clientX)) {
+      if (chartMode === 'inspect') {
+        yPanState = null;
+        panState = null;
+        showOverlay(event.clientX);
+      } else if (inYAxisZone(event.clientX)) {
         yPanState = {startY: event.clientY, startWindow: currentYWindow()};
         panState = null;
         hideOverlay();
@@ -875,6 +905,11 @@ function setupChartInteractions() {
       return;
     }
 
+    if (pointers.size === 1 && chartMode === 'inspect') {
+      showOverlay(event.clientX);
+      return;
+    }
+
     if (pointers.size === 1 && yPanState) {
       const dy = event.clientY - yPanState.startY;
       if (Math.abs(dy) < 4) return;
@@ -922,7 +957,7 @@ function setupChartInteractions() {
     } else if (pointers.size === 0) {
       panState = null;
       yPanState = null;
-      hideOverlay();
+      if (chartMode === 'pan' || event.pointerType === 'mouse') hideOverlay();
     }
     if (wasTap) {
       const now = Date.now();
@@ -937,7 +972,7 @@ function setupChartInteractions() {
   }
   chartCanvas.addEventListener('pointerup', endPointer);
   chartCanvas.addEventListener('pointercancel', endPointer);
-  chartCanvas.addEventListener('pointerleave', () => { if (!pointers.size) hideOverlay(); });
+  chartCanvas.addEventListener('pointerleave', event => { if (!pointers.size && event.pointerType === 'mouse') hideOverlay(); });
 
   chartCanvas.addEventListener('wheel', event => {
     event.preventDefault();
@@ -973,6 +1008,48 @@ function setupChartInteractions() {
 }
 
 zoomResetButton.addEventListener('click', resetZoom);
+
+function setChartMode(mode) {
+  chartMode = mode === 'pan' ? 'pan' : 'inspect';
+  chartInspectButton.classList.toggle('active', chartMode === 'inspect');
+  chartPanButton.classList.toggle('active', chartMode === 'pan');
+  chartInspectButton.setAttribute('aria-pressed', String(chartMode === 'inspect'));
+  chartPanButton.setAttribute('aria-pressed', String(chartMode === 'pan'));
+  chartCanvas.classList.toggle('pan-mode', chartMode === 'pan');
+  chartHint.textContent = chartMode === 'pan'
+    ? 'Drag left or right to move through time · pinch to zoom'
+    : 'Drag to inspect exact values · pinch to zoom';
+  chartHint.classList.remove('dismissed');
+}
+
+function zoomChart(factor) {
+  const full = fullRangeWindow();
+  const win = viewWindow || full;
+  if (!win || !full) return;
+  const center = (win.start + win.end) / 2;
+  const span = (win.end - win.start) * factor;
+  viewWindow = clampWindow({start: center - span / 2, end: center + span / 2});
+  updateZoomResetVisibility();
+  drawChart();
+}
+
+chartInspectButton.addEventListener('click', () => setChartMode('inspect'));
+chartPanButton.addEventListener('click', () => setChartMode('pan'));
+document.querySelector('#chart-zoom-in').addEventListener('click', () => zoomChart(.6));
+document.querySelector('#chart-zoom-out').addEventListener('click', () => zoomChart(1.6));
+document.querySelector('#chart-reset').addEventListener('click', resetZoom);
+document.querySelector('#chart-export').addEventListener('click', event => {
+  event.preventDefault();
+  event.stopPropagation();
+  const rows = filteredRows();
+  const columns = ['captured_at', 'pv_watts', 'ac_load_watts', 'battery_voltage'];
+  const csv = [columns.join(','), ...rows.map(row => columns.map(key => JSON.stringify(row[key] ?? '')).join(','))].join('\n');
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([csv], {type: 'text/csv'}));
+  link.download = `solar-readings-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+});
 
 document.querySelectorAll('.legend-toggle').forEach(button => {
   const key = button.dataset.series;

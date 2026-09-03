@@ -33,12 +33,22 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Writes disabled", response.data)
 
-    def test_lab_dashboard_uses_isolated_assets(self):
+    def test_lab_dashboard_uses_shared_graph_and_isolated_menu(self):
         response = self.client.get("/lab")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Experimental dashboard", response.data)
-        self.assertIn(b"/static/lab.css", response.data)
-        self.assertIn(b"/static/lab.js", response.data)
+        self.assertIn(b"/static/style.css", response.data)
+        self.assertIn(b"/static/app.js", response.data)
+        self.assertIn(b"/static/lab-overrides.css", response.data)
+        self.assertIn(b"/static/lab-menu.js", response.data)
+
+    def test_live_and_lab_render_chart_tooling(self):
+        for path in ("/", "/lab"):
+            response = self.client.get(path)
+            self.assertIn(b'id="chart-inspect"', response.data)
+            self.assertIn(b'id="chart-pan"', response.data)
+            self.assertIn(b'id="chart-export"', response.data)
+            self.assertIn(b'id="chart-table-body"', response.data)
 
     def test_unconnected_battery_temperature_channels_are_not_public(self):
         self.db.save_sample(

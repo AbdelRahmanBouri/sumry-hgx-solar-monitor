@@ -12,9 +12,10 @@
   <link rel="manifest" href="/static/solar-dashboard.webmanifest?v=1">
   <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/theme.css?v=1">
-  <link rel="stylesheet" href="/static/lab.css?v=1">
+  <link rel="stylesheet" href="/static/style.css?v=6">
+  <link rel="stylesheet" href="/static/lab-overrides.css?v=1">
 </head>
-<body>
+<body data-dashboard-mode="lab">
   <header class="app-bar">
     <div class="header-metrics">
       <div class="header-reading pv-now" aria-label="Current solar input">
@@ -157,18 +158,33 @@
         <button type="button" class="legend-toggle" data-series="battery"><i class="battery-key"></i>Battery V</button>
         <button type="button" class="zoom-reset" id="zoom-reset" hidden>Reset zoom</button>
       </div>
+      <div class="chart-controls" aria-label="Chart tools">
+        <div class="chart-mode" role="group" aria-label="Touch mode">
+          <button type="button" id="chart-inspect" class="active" aria-pressed="true">Inspect</button>
+          <button type="button" id="chart-pan" aria-pressed="false">Pan</button>
+        </div>
+        <div class="chart-zoom" role="group" aria-label="Zoom controls">
+          <button type="button" id="chart-zoom-out" aria-label="Zoom out">−</button>
+          <button type="button" id="chart-zoom-in" aria-label="Zoom in">+</button>
+          <button type="button" id="chart-reset" aria-label="Reset chart view">Reset</button>
+        </div>
+      </div>
       <div class="chart-wrap">
         <canvas id="power-chart" aria-label="Solar and load power history"></canvas>
         <canvas id="power-chart-overlay" aria-hidden="true"></canvas>
         <div class="chart-empty" id="chart-empty" hidden><strong>No samples in this range</strong><span>New readings will appear automatically.</span></div>
-        <div class="chart-hint" id="chart-hint">Drag to pan · pinch to zoom · drag the left scale to adjust power range</div>
+        <div class="chart-hint" id="chart-hint">Drag to inspect · choose Pan to move through time · pinch to zoom</div>
       </div>
       <div class="trend-stats">
+        <div><span>Avg solar</span><strong id="solar-average">— W</strong></div>
         <div><span>Solar peak</span><strong id="solar-peak">— W</strong></div>
         <div><span>Load peak</span><strong id="load-peak">— W</strong></div>
         <div><span>Battery low</span><strong id="trend-battery-min">— V</strong></div>
-        <div><span>Samples</span><strong id="sample-count">—</strong></div>
       </div>
+      <details class="chart-data" id="chart-data">
+        <summary><span><strong>Reading table</strong><small id="chart-window-label">Visible chart data</small></span><span class="chart-data-actions"><button type="button" id="chart-export">Export CSV</button><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span></summary>
+        <div class="chart-table-wrap"><table><thead><tr><th>Time</th><th>Solar</th><th>Load</th><th>Battery</th></tr></thead><tbody id="chart-table-body"></tbody></table></div>
+      </details>
     </section>
 
     <section class="period-card card" aria-label="Longer-term energy totals">
@@ -268,6 +284,7 @@
     <a href="#trends"><svg viewBox="0 0 24 24"><path d="m3 17 5-5 4 4 8-9"/><path d="M15 7h5v5"/></svg><span>Trends</span></a>
     <a href="#system"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.52V21h-4v-.08A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.52V3h4v.08A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.52 1H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg><span>System</span></a>
   </nav>
-  <script src="/static/lab.js?v=1"></script>
+  <script src="/static/app.js?v=6"></script>
+  <script src="/static/lab-menu.js?v=1"></script>
 </body>
 </html>

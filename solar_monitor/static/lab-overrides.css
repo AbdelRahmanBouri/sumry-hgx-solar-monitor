@@ -1,0 +1,33 @@
+.lab-banner { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid #cce5da; border-radius: 12px; background: var(--green-soft); color: var(--green); font-size: 12px; font-weight: 650; }
+.lab-banner b { margin-right: 6px; padding: 3px 6px; border-radius: 5px; background: var(--green); color: white; font-size: 9px; letter-spacing: .08em; }
+.lab-banner a { min-height: 36px; display: flex; align-items: center; padding: 0 9px; border-radius: 8px; background: white; font-size: 11px; font-weight: 750; white-space: nowrap; }
+.extra-metrics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.extra-metrics-grid:empty { display: none; }
+.extra-metric { min-height: 112px; padding: 14px; position: relative; }
+.extra-metric > span { display: block; padding-right: 28px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.extra-metric > strong { display: block; margin-top: 18px; font-size: 27px; line-height: 1; letter-spacing: -.04em; }
+.extra-metric > strong small { color: var(--quiet); font-size: 13px; font-weight: 600; letter-spacing: 0; }
+.extra-metric > button { width: 44px; height: 44px; position: absolute; top: 2px; right: 2px; padding: 0; border: 0; background: transparent; color: var(--quiet); font-size: 22px; cursor: pointer; }
+.preference-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.preference-title > strong { font-size: 13px; }
+.clear-data-cards { min-height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: white; color: var(--muted); font-size: 11px; font-weight: 700; }
+.metric-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; max-height: 310px; overflow: auto; }
+.metric-choice { min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 8px 9px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-subtle); color: var(--muted); font-size: 12px; font-weight: 650; }
+.metric-choice input { width: 20px; height: 20px; flex: 0 0 auto; accent-color: var(--green); }
+@media (max-width: 699px) {
+  body { font-size: 16px; }
+  .app-bar { min-height: calc(74px + env(safe-area-inset-top)); }
+  .app-bar, main { width: calc(100% - 20px); }
+  .connection, .pull-now, .settings-link, .customize-open { min-height: 44px; }
+  .pull-now, .settings-link { width: 44px; height: 44px; }
+  .summary-card { min-height: 148px; padding: 15px; }
+  .summary-card > strong { font-size: 30px; }
+  .card-control { min-height: 60px; }
+  .card-control button, .dialog-close { width: 44px; height: 44px; }
+  .dialog-help, .preference-section > p, .preference-section.compact > span small { font-size: 12px; }
+}
+@media (max-width: 430px) {
+  .connection small { display: none; }
+  .metric-picker, .preference-fields { grid-template-columns: 1fr; }
+  .customize-dialog form { padding: 16px; }
+}
