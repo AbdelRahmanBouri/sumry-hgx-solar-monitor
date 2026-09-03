@@ -452,6 +452,91 @@ body[data-dashboard-design="v3"] .metric-updated { animation: value-settle .42s 
   body[data-dashboard-design="v3"] #power-chart-overlay { height: 320px; }
 }
 
+/* Wide-screen workspace. Mobile remains the primary interaction model, but
+   desktop should use the available canvas instead of enlarging phone gaps. */
+@media (min-width: 1100px) {
+  body[data-dashboard-design="v3"] .app-bar,
+  body[data-dashboard-design="v3"] main { width: min(calc(100% - 56px), 1380px); }
+  body[data-dashboard-design="v3"] .app-bar { min-height: 82px; }
+  body[data-dashboard-design="v3"] .header-reading { min-width: 108px; }
+  body[data-dashboard-design="v3"] .header-reading > span { font-size: 10px; }
+  body[data-dashboard-design="v3"] .header-reading strong { font-size: 27px; }
+  body[data-dashboard-design="v3"] .connection { min-height: 42px; padding-inline: 14px; font-size: 12px; }
+  body[data-dashboard-design="v3"] .pull-now,
+  body[data-dashboard-design="v3"] .settings-link { width: 42px; height: 42px; border-radius: 12px; }
+
+  body[data-dashboard-design="v3"] main {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 16px;
+    padding-top: 26px;
+  }
+  body[data-dashboard-design="v3"] .alert,
+  body[data-dashboard-design="v3"] .lab-banner,
+  body[data-dashboard-design="v3"] .readings-heading,
+  body[data-dashboard-design="v3"] .summary-grid,
+  body[data-dashboard-design="v3"] .extra-metrics-grid,
+  body[data-dashboard-design="v3"] .trend-card { grid-column: 1 / -1; grid-row: auto; }
+  body[data-dashboard-design="v3"] .flow-card { grid-column: 1 / 9; grid-row: auto; padding: 24px 34px 26px; }
+  body[data-dashboard-design="v3"] .today-card {
+    grid-column: 9 / 13;
+    grid-row: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 25px 26px;
+  }
+  body[data-dashboard-design="v3"] .flow-top { min-height: 206px; grid-template-columns: minmax(130px, 1fr) minmax(50px, .5fr) 86px minmax(50px, .5fr) minmax(130px, 1fr); }
+  body[data-dashboard-design="v3"] .flow-icon { width: 50px; height: 50px; border-radius: 15px; }
+  body[data-dashboard-design="v3"] .flow-icon svg { width: 24px; height: 24px; }
+  body[data-dashboard-design="v3"] .flow-name { font-size: 13px; }
+  body[data-dashboard-design="v3"] .flow-end strong { font-size: 48px; }
+  body[data-dashboard-design="v3"] .flow-end strong small { font-size: 15px; }
+  body[data-dashboard-design="v3"] .flow-meta { font-size: 12px; }
+  body[data-dashboard-design="v3"] .inverter > span { width: 72px; height: 72px; box-shadow: inset 0 0 0 1px rgba(8,127,91,.22), 0 0 0 9px rgba(231,246,239,.7); }
+  body[data-dashboard-design="v3"] .inverter svg { width: 29px; height: 29px; }
+  body[data-dashboard-design="v3"] .battery-row { max-width: none; min-height: 92px; grid-template-columns: 42px minmax(110px, .75fr) minmax(260px, 1.4fr) auto; padding: 15px 18px; }
+  body[data-dashboard-design="v3"] .battery-icon { width: 31px; height: 48px; }
+  body[data-dashboard-design="v3"] .battery-copy > span { font-size: 12px; }
+  body[data-dashboard-design="v3"] .battery-copy strong { font-size: 34px; }
+  body[data-dashboard-design="v3"] .battery-current strong { font-size: 23px; }
+  body[data-dashboard-design="v3"] .battery-estimates small { font-size: 9px; }
+  body[data-dashboard-design="v3"] .battery-estimates strong { font-size: 15px; }
+
+  body[data-dashboard-design="v3"] .today-stats { flex: 1; grid-template-columns: 1fr; margin-top: 18px; }
+  body[data-dashboard-design="v3"] .today-stats > span { justify-content: center; padding: 14px 0; border-right: 0; border-bottom: 1px solid var(--lab-hairline); }
+  body[data-dashboard-design="v3"] .today-stats > span:last-child { border-bottom: 0; }
+  body[data-dashboard-design="v3"] .today-stats small { font-size: 10px; }
+  body[data-dashboard-design="v3"] .today-stats strong { font-size: 23px; }
+
+  body[data-dashboard-design="v3"] .readings-heading { min-height: 68px; }
+  body[data-dashboard-design="v3"] .readings-heading h2 { font-size: 26px; }
+  body[data-dashboard-design="v3"] .summary-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); align-self: stretch; padding-top: 0; }
+  body[data-dashboard-design="v3"] .summary-card { min-height: 180px; padding: 20px; }
+  body[data-dashboard-design="v3"] .summary-title { font-size: 12px; }
+  body[data-dashboard-design="v3"] .tile-icon { width: 40px; height: 40px; }
+  body[data-dashboard-design="v3"] .summary-card > strong { margin-top: 19px; font-size: 40px; }
+  body[data-dashboard-design="v3"] .extra-metrics-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+  body[data-dashboard-design="v3"] .trend-card { padding: 28px 30px 22px; }
+  body[data-dashboard-design="v3"] .trend-heading h2 { font-size: 28px; }
+  body[data-dashboard-design="v3"] .range-control button { min-width: 58px; height: 40px; font-size: 11px; }
+  body[data-dashboard-design="v3"] .legend-toggle,
+  body[data-dashboard-design="v3"] .zoom-reset { min-height: 42px; font-size: 12px; }
+  body[data-dashboard-design="v3"] .chart-wrap,
+  body[data-dashboard-design="v3"] #power-chart,
+  body[data-dashboard-design="v3"] #power-chart-overlay { height: 430px; }
+  body[data-dashboard-design="v3"] .trend-stats strong { font-size: 17px; }
+
+  body[data-dashboard-design="v3"] .period-card { grid-column: 1 / 5; grid-row: auto; }
+  body[data-dashboard-design="v3"] #system { grid-column: 5 / 9; grid-row: auto; }
+  body[data-dashboard-design="v3"] #config { grid-column: 9 / 13; grid-row: auto; }
+  body[data-dashboard-design="v3"] .fault-history.card { grid-column: 1 / 7; grid-row: auto; }
+  body[data-dashboard-design="v3"] .pi-card { grid-column: 7 / 13; grid-row: auto; }
+  body[data-dashboard-design="v3"] .period-card,
+  body[data-dashboard-design="v3"] .system-card,
+  body[data-dashboard-design="v3"] .pi-card,
+  body[data-dashboard-design="v3"] .fault-history.card { padding: 23px 25px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   body[data-dashboard-design="v3"] .flow-connector i,
   body[data-dashboard-design="v3"] .battery-path i { animation: none; }

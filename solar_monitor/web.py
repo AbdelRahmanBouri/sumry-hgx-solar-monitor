@@ -51,6 +51,9 @@ def create_app(
         "poll_seconds": str(max(10, serial_config.poll_seconds)),
         "protocol": serial_config.protocol,
         "writes_enabled": "false",
+        "raw_success_days": "7",
+        "raw_diagnostic_days": "90",
+        "history_max_points": "1500",
     }
     existing = database.get_settings()
     missing = {key: value for key, value in defaults.items() if key not in existing}
@@ -139,7 +142,14 @@ def create_app(
     def history():
         hours = _bounded_int("hours", 24, 1, 24 * 30)
         since = datetime.now(timezone.utc) - timedelta(hours=hours)
-        return jsonify([public_sample(sample) for sample in database.history(since.isoformat())])
+        settings = database.get_settings()
+        max_points = _bounded_int(
+            "points", int(settings.get("history_max_points", "1500")), 250, 5000
+        )
+        rows = database.history(since.isoformat(), max_points=max_points)
+        response = jsonify([public_sample(sample) for sample in rows])
+        response.headers["X-History-Points"] = str(len(rows))
+        return response
 
     @app.get("/api/history/daily")
     def history_daily():
@@ -274,6 +284,7 @@ def create_app(
             "settings": database.get_settings(),
             "latest_diagnostic": database.latest_diagnostic(),
             "database_bytes": database.path.stat().st_size if database.path.exists() else 0,
+            "storage_counts": database.storage_counts(),
             "disk_free_bytes": disk.free,
             "uptime_seconds": system_info.uptime_seconds(),
             "writes_enabled": database.get_settings().get("writes_enabled") == "true",
@@ -341,6 +352,17 @@ def create_app(
         limit = min(max(int(request.args.get("limit", 100)), 1), 500)
         return jsonify(database.raw_frames(limit))
 
+    @app.post("/api/admin/data/cleanup")
+    @login_required
+    def admin_data_cleanup():
+        settings = database.get_settings()
+        result = database.cleanup_retention(
+            int(settings.get("raw_success_days", "7")),
+            int(settings.get("raw_diagnostic_days", "90")),
+        )
+        audit("data.cleanup", json.dumps(result, sort_keys=True))
+        return jsonify({"ok": True, **result, "counts": database.storage_counts()})
+
     @app.get("/api/admin/audit")
     @login_required
     def admin_audit():
@@ -385,7 +407,10 @@ def create_app(
         if request.method == "GET":
             return jsonify(database.get_settings())
         payload = request.get_json(silent=True) or {}
-        allowed = {"serial_port", "baudrate", "timeout_seconds", "poll_seconds", "protocol"}
+        allowed = {
+            "serial_port", "baudrate", "timeout_seconds", "poll_seconds", "protocol",
+            "raw_success_days", "raw_diagnostic_days", "history_max_points",
+        }
         values = {key: str(value).strip() for key, value in payload.items() if key in allowed}
         try:
             if "baudrate" in values and int(values["baudrate"]) not in {1200, 2400, 4800, 9600, 19200}:
@@ -396,6 +421,15 @@ def create_app(
                 raise ValueError("Polling must be between 10 and 3600 seconds")
             if "protocol" in values:
                 create_protocol(values["protocol"])
+            if "raw_success_days" in values and not 1 <= int(values["raw_success_days"]) <= 30:
+                raise ValueError("Routine frame retention must be between 1 and 30 days")
+            if "raw_diagnostic_days" in values and not 7 <= int(values["raw_diagnostic_days"]) <= 365:
+                raise ValueError("Diagnostic retention must be between 7 and 365 days")
+            merged = {**database.get_settings(), **values}
+            if int(merged.get("raw_diagnostic_days", "90")) < int(merged.get("raw_success_days", "7")):
+                raise ValueError("Diagnostic retention cannot be shorter than routine retention")
+            if "history_max_points" in values and not 250 <= int(values["history_max_points"]) <= 5000:
+                raise ValueError("Chart point limit must be between 250 and 5000")
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         database.set_settings(values, now())

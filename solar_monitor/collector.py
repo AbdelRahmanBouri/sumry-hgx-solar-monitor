@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import logging
 import threading
+import time
 
 from .config import SerialConfig
 from .db import Database
@@ -36,6 +37,9 @@ class Collector:
         self.last_port: str | None = None
         self.polls = 0
         self.failures = 0
+        self.last_maintenance_at: str | None = None
+        self.last_maintenance_result: dict | None = None
+        self._maintenance_monotonic = 0.0
 
     @property
     def interval_seconds(self) -> int:
@@ -57,6 +61,8 @@ class Collector:
             "last_port": self.last_port,
             "polls": self.polls,
             "failures": self.failures,
+            "last_maintenance_at": self.last_maintenance_at,
+            "last_maintenance_result": self.last_maintenance_result,
             "interval_seconds": self.interval_seconds,
             "protocol": self.protocol.name,
             "configured_port": self.config.port,
@@ -86,7 +92,25 @@ class Collector:
             success = self._collect_query(port, query)
             if self.polls == 1 or self.polls % 10 == 0:
                 self._collect_query(port, self.protocol.query("current_settings_0200"))
+            self._run_maintenance_if_due()
             return success
+
+    def _run_maintenance_if_due(self, force: bool = False) -> dict | None:
+        if not hasattr(self.database, "cleanup_retention"):
+            return None
+        current = time.monotonic()
+        if not force and self._maintenance_monotonic and current - self._maintenance_monotonic < 86400:
+            return None
+        settings = self.database.get_settings() if hasattr(self.database, "get_settings") else {}
+        result = self.database.cleanup_retention(
+            int(settings.get("raw_success_days", "7")),
+            int(settings.get("raw_diagnostic_days", "90")),
+        )
+        self._maintenance_monotonic = current
+        self.last_maintenance_at = _now()
+        self.last_maintenance_result = result
+        LOG.info("Storage maintenance complete: %s", result)
+        return result
 
     def _collect_query(self, port, query) -> bool:
         result = exchange(

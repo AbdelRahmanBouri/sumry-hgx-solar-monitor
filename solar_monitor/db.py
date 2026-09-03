@@ -38,11 +38,13 @@ CREATE TABLE IF NOT EXISTS raw_frames (
     decode_note TEXT,
     error TEXT
 );
+CREATE INDEX IF NOT EXISTS raw_frames_captured_at ON raw_frames(captured_at);
 CREATE TABLE IF NOT EXISTS inverter_config_snapshots (
     id INTEGER PRIMARY KEY,
     captured_at TEXT NOT NULL,
     config_json TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS inverter_config_captured_at ON inverter_config_snapshots(captured_at);
 CREATE TABLE IF NOT EXISTS admin_users (
     id INTEGER PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
@@ -181,12 +183,104 @@ class Database:
             ).fetchone()
         return dict(row) if row else None
 
-    def history(self, since_iso: str) -> list[dict[str, Any]]:
+    def history(self, since_iso: str, max_points: int | None = None) -> list[dict[str, Any]]:
         with self.connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM samples WHERE captured_at >= ? ORDER BY captured_at", (since_iso,)
-            ).fetchall()
-        return [dict(row) for row in rows]
+            if not max_points:
+                rows = connection.execute(
+                    "SELECT * FROM samples WHERE captured_at >= ? ORDER BY captured_at", (since_iso,)
+                ).fetchall()
+            else:
+                total = int(connection.execute(
+                    "SELECT COUNT(*) FROM samples WHERE captured_at >= ?", (since_iso,)
+                ).fetchone()[0])
+                if total <= max_points:
+                    rows = connection.execute(
+                        "SELECT * FROM samples WHERE captured_at >= ? ORDER BY captured_at",
+                        (since_iso,),
+                    ).fetchall()
+                else:
+                    # Evenly sample the requested window and always retain its
+                    # first and newest readings. This keeps large 7/30-day
+                    # responses phone-sized while the complete decoded series
+                    # remains available in SQLite and in the CSV export.
+                    stride = max(2, (total - 1 + max_points - 2) // (max_points - 1))
+                    rows = connection.execute(
+                        "WITH ordered AS ("
+                        " SELECT samples.*, ROW_NUMBER() OVER (ORDER BY captured_at) AS row_num,"
+                        " COUNT(*) OVER () AS total_rows"
+                        " FROM samples WHERE captured_at >= ?"
+                        ") SELECT * FROM ordered WHERE row_num = 1 OR row_num = total_rows"
+                        " OR ((row_num - 1) % ?) = 0 ORDER BY captured_at",
+                        (since_iso, stride),
+                    ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item.pop("row_num", None)
+            item.pop("total_rows", None)
+            result.append(item)
+        return result
+
+    @staticmethod
+    def _diagnostic_frame_sql() -> str:
+        return "(" + " OR ".join((
+            "COALESCE(TRIM(error), '') <> ''",
+            "LOWER(COALESCE(decode_note, '')) LIKE '%crc%'",
+            "LOWER(COALESCE(decode_note, '')) LIKE '%unknown%'",
+            "LOWER(COALESCE(decode_note, '')) LIKE '%not decoded%'",
+            "LOWER(COALESCE(decode_note, '')) LIKE '%invalid%'",
+            "LOWER(COALESCE(decode_note, '')) LIKE '%fault%'",
+        )) + ")"
+
+    def cleanup_retention(
+        self,
+        success_days: int = 7,
+        diagnostic_days: int = 90,
+        reference_time=None,
+    ) -> dict[str, int]:
+        """Prune bulky protocol captures without deleting decoded samples."""
+        from datetime import datetime, timedelta, timezone
+
+        success_days = max(1, int(success_days))
+        diagnostic_days = max(success_days, int(diagnostic_days))
+        reference_time = reference_time or datetime.now(timezone.utc)
+        normal_cutoff = (reference_time - timedelta(days=success_days)).isoformat()
+        diagnostic_cutoff = (reference_time - timedelta(days=diagnostic_days)).isoformat()
+        diagnostic_sql = self._diagnostic_frame_sql()
+        with self.connect() as connection:
+            before_raw = int(connection.execute("SELECT COUNT(*) FROM raw_frames").fetchone()[0])
+            before_config = int(connection.execute(
+                "SELECT COUNT(*) FROM inverter_config_snapshots"
+            ).fetchone()[0])
+            connection.execute(
+                f"DELETE FROM raw_frames WHERE captured_at < ? "
+                f"AND (captured_at < ? OR NOT {diagnostic_sql})",
+                (normal_cutoff, diagnostic_cutoff),
+            )
+            # Configuration snapshots are also bulky and mostly repetitive;
+            # keeping the same long diagnostic window is ample for comparison.
+            connection.execute(
+                "DELETE FROM inverter_config_snapshots WHERE captured_at < ?",
+                (diagnostic_cutoff,),
+            )
+            after_raw = int(connection.execute("SELECT COUNT(*) FROM raw_frames").fetchone()[0])
+            after_config = int(connection.execute(
+                "SELECT COUNT(*) FROM inverter_config_snapshots"
+            ).fetchone()[0])
+        return {
+            "raw_frames_deleted": before_raw - after_raw,
+            "config_snapshots_deleted": before_config - after_config,
+        }
+
+    def storage_counts(self) -> dict[str, int]:
+        with self.connect() as connection:
+            return {
+                "samples": int(connection.execute("SELECT COUNT(*) FROM samples").fetchone()[0]),
+                "raw_frames": int(connection.execute("SELECT COUNT(*) FROM raw_frames").fetchone()[0]),
+                "config_snapshots": int(connection.execute(
+                    "SELECT COUNT(*) FROM inverter_config_snapshots"
+                ).fetchone()[0]),
+            }
 
     def daily_summary(self, since_iso: str) -> list[dict[str, Any]]:
         # captured_at is ISO8601 UTC ("2026-09-02T19:52:30+00:00"); the first
