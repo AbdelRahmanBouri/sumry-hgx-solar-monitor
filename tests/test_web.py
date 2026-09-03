@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from solar_monitor.db import Database
 from solar_monitor.web import create_app
@@ -31,6 +32,13 @@ class WebTests(unittest.TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Writes disabled", response.data)
+
+    def test_lab_dashboard_uses_isolated_assets(self):
+        response = self.client.get("/lab")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Experimental dashboard", response.data)
+        self.assertIn(b"/static/lab.css", response.data)
+        self.assertIn(b"/static/lab.js", response.data)
 
     def test_unconnected_battery_temperature_channels_are_not_public(self):
         self.db.save_sample(
@@ -112,7 +120,8 @@ class WebTests(unittest.TestCase):
             data={"token": token, "username": "admin", "password": "correct-horse-1",
                   "confirmation": "correct-horse-1"},
         )
-        response = self.client.post("/api/admin/system/reboot")
+        with patch("solar_monitor.web.privileged.reboot", return_value=(False, "not configured")):
+            response = self.client.post("/api/admin/system/reboot")
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json["ok"])
 

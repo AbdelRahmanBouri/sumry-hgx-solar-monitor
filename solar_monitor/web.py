@@ -83,6 +83,10 @@ def create_app(
     def dashboard():
         return render_template("index.html")
 
+    @app.get("/lab")
+    def dashboard_lab():
+        return render_template("lab.html")
+
     @app.get("/api/status")
     def status():
         collector_state = (
