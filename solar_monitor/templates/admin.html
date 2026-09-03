@@ -7,7 +7,8 @@
   <title>Admin · Solar Monitor</title>
   <link rel="manifest" href="/static/solar-dashboard.webmanifest">
   <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css', v=2) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='theme.css', v=1) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css', v=3) }}">
 </head>
 <body>
   <header class="admin-header">
@@ -23,6 +24,7 @@
   <main class="admin-main">
     <nav aria-label="Admin sections">
       <button data-view="overview" class="active">Overview</button>
+      <button data-view="pi">Raspberry Pi</button>
       <button data-view="serial">Serial</button>
       <button data-view="data">Data</button>
       <button data-view="settings">Settings</button>
@@ -37,10 +39,60 @@
           <article><span>Database</span><strong id="db-size">—</strong></article>
           <article><span>Free storage</span><strong id="disk-free">—</strong></article>
           <article><span>System uptime</span><strong id="uptime">—</strong></article>
+          <article><span>CPU temperature</span><strong id="cpu-temp">—</strong></article>
+          <article><span>CPU load</span><strong id="cpu-load">—</strong></article>
+          <article><span>Memory used</span><strong id="mem-used">—</strong></article>
+          <article><span>Collector service</span><strong id="service-state">—</strong></article>
         </div>
         <article class="panel">
           <h2>Inverter writes</h2>
           <p><span class="badge">Inverter writes: staged</span> Write controls remain separate while the HGX command set is being confirmed.</p>
+        </article>
+      </section>
+
+      <section id="pi" class="view">
+        <div class="view-heading"><span class="eyebrow">HOST</span><h2>Raspberry Pi</h2></div>
+
+        <article class="panel">
+          <div class="panel-head"><h2>Power &amp; performance</h2></div>
+          <p>Eco mode switches the CPU governor to <code class="inline">powersave</code>. It only affects the Pi itself &mdash; nothing on the inverter changes.</p>
+          <div class="actions">
+            <label class="switch-row"><span>Eco mode (CPU power saving)</span><label class="visibility-toggle"><input type="checkbox" id="eco-toggle"><i></i></label></label>
+          </div>
+          <p id="eco-result" class="muted"></p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>Network</h2></div>
+          <div class="grid">
+            <article><span>Hostname</span><strong id="pi-net-hostname">—</strong></article>
+            <article><span>IP address</span><strong id="pi-net-ip">—</strong></article>
+            <article><span>Wi-Fi network</span><strong id="pi-net-wifi">—</strong></article>
+            <article><span>Signal</span><strong id="pi-net-signal">—</strong></article>
+          </div>
+          <div class="panel-head" style="margin-top:16px"><h2>Switch Wi-Fi network</h2><button id="wifi-scan" class="secondary" type="button">Scan</button></div>
+          <div class="table-wrap"><table><thead><tr><th>Network</th><th>Signal</th><th>Security</th><th></th></tr></thead><tbody id="wifi-networks"><tr><td colspan="4">Press Scan to list nearby networks.</td></tr></tbody></table></div>
+          <form id="wifi-form" class="settings" hidden>
+            <label>Network name<input name="ssid" id="wifi-ssid" readonly></label>
+            <label>Password<input name="password" type="password" autocomplete="off"></label>
+            <div class="actions"><button type="submit">Connect</button><button type="button" class="secondary" id="wifi-cancel">Cancel</button></div>
+          </form>
+          <p id="wifi-result" class="muted"></p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>Updates</h2><button id="update-check" class="secondary" type="button">Check for updates</button></div>
+          <p id="update-result" class="muted">Not checked this session.</p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>Power controls</h2></div>
+          <p>These act on the Pi itself, not the inverter. Restarting the service briefly interrupts data collection; rebooting takes the dashboard offline for about a minute.</p>
+          <div class="actions">
+            <button id="restart-service" class="secondary" type="button">Restart collector service</button>
+            <button id="reboot-pi" class="warning" type="button">Reboot Pi</button>
+          </div>
+          <p id="power-result" class="muted"></p>
         </article>
       </section>
 
@@ -70,6 +122,6 @@
       </section>
     </div>
   </main>
-  <script src="{{ url_for('static', filename='admin.js') }}"></script>
+  <script src="{{ url_for('static', filename='admin.js', v=2) }}"></script>
 </body>
 </html>

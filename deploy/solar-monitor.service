@@ -11,7 +11,12 @@ WorkingDirectory=/opt/solar-monitor
 ExecStart=/opt/solar-monitor/.venv/bin/python /opt/solar-monitor/run.py --config /etc/solar-monitor.toml
 Restart=on-failure
 RestartSec=5
-NoNewPrivileges=true
+# NoNewPrivileges=true would block sudo unconditionally (it's a kernel-level
+# no-privilege-gain bit, independent of sudoers), so it's left off here to
+# allow the admin portal's scoped Pi controls (reboot/restart/eco mode/Wi-Fi)
+# to work via deploy/pi-control.sh. Leave it uncommented below if you don't
+# plan to use those controls -- everything else in this unit still applies.
+# NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true

@@ -1,6 +1,6 @@
 # SUMRY HGX Solar Monitor
 
-A lightweight, local-first Raspberry Pi monitor for a SUMRY HGX 4 kW 24 V/120 V inverter. This first milestone is intentionally **read-only**. It captures raw serial replies and provides the dashboard/storage structure without guessing at unconfirmed HGX field offsets.
+A lightweight, local-first Raspberry Pi monitor for a SUMRY HGX 4 kW 24 V/120 V inverter. It is intentionally **read-only**. It captures raw serial replies and decodes the validated status frame into dashboard metrics.
 
 ## Safety and connection notes
 
@@ -70,9 +70,44 @@ Open `http://solar-monitor.local:5000` during direct development, or `http://sol
 
 Endpoints:
 
-- `/api/status` — latest decoded sample and latest raw diagnostic
-- `/api/history` — decoded samples from the last 24 hours
-- `/health` — process/read-only health marker
+- `/api/status` — latest decoded sample, raw diagnostic, and collector state
+- `/api/refresh` — POST to trigger an immediate poll (rate-limited to once per 5 seconds)
+- `/api/history?hours=N` — decoded samples for the last N hours (default 24, capped at 30 days)
+- `/api/history/daily?days=N` — per-day averages, for the dashboard's 7/30-day totals
+- `/api/history/faults` — recent fault transitions
+- `/api/system` — Raspberry Pi uptime, network, CPU temperature, and eco-mode status
+- `/health` — process, read-only, and collector health
+
+## Raspberry Pi controls in the admin portal
+
+The admin portal's "Raspberry Pi" tab can toggle CPU eco mode, restart the
+collector service, reboot the Pi, and scan/connect to Wi-Fi networks. These
+all run as root through a single scoped helper script, `deploy/pi-control.sh`,
+which never evaluates its arguments as shell and only accepts a small,
+validated set of actions.
+
+To enable it:
+
+1. Install the sudoers rule (adjust the username and path for your
+   installation — see the comments in the file):
+   ```sh
+   sudo cp deploy/solar-monitor-sudoers.example /etc/sudoers.d/solar-monitor
+   sudo chmod 440 /etc/sudoers.d/solar-monitor
+   sudo visudo -c
+   ```
+2. Make sure the systemd unit does **not** set `NoNewPrivileges=true` — that
+   setting blocks `sudo` unconditionally, independent of any sudoers rule.
+   `deploy/solar-monitor.service` already reflects this; if you deployed
+   before this change, edit your installed unit file, then:
+   ```sh
+   sudo systemctl daemon-reload
+   sudo systemctl restart solar-monitor
+   ```
+3. Wi-Fi scanning/connecting requires NetworkManager (`nmcli`); on Raspberry
+   Pi OS Bookworm and later this is the default.
+
+Without this setup, the buttons still work but return a clear error instead
+of hanging or silently failing.
 
 ## Project layout
 

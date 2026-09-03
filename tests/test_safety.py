@@ -13,6 +13,11 @@ class SafetyTests(unittest.TestCase):
         self.assertEqual(query.frame.hex(" ").upper(), "88 51 00 03 00 00 00 00 4D 08")
         self.protocol.assert_read_only_frame(query.frame)
 
+    def test_config_query_is_exact_and_read_only(self):
+        query = self.protocol.query("current_settings_0200")
+        self.assertEqual(query.frame.hex(" ").upper(), "88 51 00 03 02 00 00 00 4C B0")
+        self.protocol.assert_read_only_frame(query.frame)
+
     def test_unknown_frame_is_rejected(self):
         with self.assertRaises(PermissionError):
             self.protocol.assert_read_only_frame(bytes.fromhex("88 51 00 04 00 00 00 00"))
@@ -23,4 +28,3 @@ class SafetyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

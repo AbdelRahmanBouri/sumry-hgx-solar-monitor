@@ -16,7 +16,11 @@ class WebTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_health_is_read_only(self):
-        self.assertEqual(self.client.get("/health").json, {"ok": True, "read_only": True})
+        payload = self.client.get("/health").json
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["read_only"])
+        self.assertFalse(payload["collector_enabled"])
+        self.assertFalse(payload["collector_running"])
 
     def test_empty_status(self):
         payload = self.client.get("/api/status").json
@@ -27,6 +31,16 @@ class WebTests(unittest.TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Writes disabled", response.data)
+
+    def test_unconnected_battery_temperature_channels_are_not_public(self):
+        self.db.save_sample(
+            "2026-09-03T00:00:00+00:00",
+            {"battery_voltage": 24.8, "battery_temperature": 25, "bts_temperature": 25},
+        )
+        sample = self.client.get("/api/status").json["sample"]
+        self.assertEqual(sample["battery_voltage"], 24.8)
+        self.assertNotIn("battery_temperature", sample)
+        self.assertNotIn("bts_temperature", sample)
 
     def test_admin_requires_setup_and_login(self):
         self.assertEqual(self.client.get("/admin").status_code, 302)
@@ -42,6 +56,65 @@ class WebTests(unittest.TestCase):
 
     def test_setup_rejects_bad_token(self):
         self.assertEqual(self.client.get("/admin/setup?token=wrong").status_code, 404)
+
+    def test_history_accepts_hours_param_and_bounds_it(self):
+        self.db.save_sample("2026-09-01T00:00:00+00:00", {"pv_watts": 100})
+        self.db.save_sample("2026-09-03T00:00:00+00:00", {"pv_watts": 200})
+        recent = self.client.get("/api/history?hours=1").json
+        self.assertEqual(len(recent), 0)
+        longer = self.client.get("/api/history?hours=9999").json
+        self.assertEqual(len(longer), 2)
+
+    def test_history_daily_and_faults_endpoints(self):
+        self.db.save_sample("2026-09-02T12:00:00+00:00", {"pv_watts": 100, "faults": "Overload"})
+        self.db.save_sample("2026-09-02T13:00:00+00:00", {"pv_watts": 300, "faults": "None"})
+        daily = self.client.get("/api/history/daily?days=7").json
+        self.assertEqual(len(daily), 1)
+        self.assertEqual(daily[0]["avg_pv_watts"], 200)
+        faults = self.client.get("/api/history/faults?days=7").json
+        self.assertEqual(len(faults), 1)
+        self.assertEqual(faults[0]["faults"], "Overload")
+
+    def test_refresh_requires_a_collector_and_is_rate_limited(self):
+        self.assertEqual(self.client.post("/api/refresh").status_code, 503)
+
+        class FakeCollector:
+            def collect_once(self):
+                return True
+
+            def state(self):
+                return {"running": True}
+
+        client = create_app(self.db, collector=FakeCollector()).test_client()
+        first = client.post("/api/refresh")
+        self.assertEqual(first.status_code, 200)
+        second = client.post("/api/refresh")
+        self.assertEqual(second.status_code, 429)
+        self.assertIn("retry_after_seconds", second.json)
+
+    def test_public_system_endpoint_is_available_without_login(self):
+        payload = self.client.get("/api/system").json
+        self.assertIn("uptime_seconds", payload)
+        self.assertIn("network", payload)
+
+    def test_admin_system_actions_require_login(self):
+        for path in (
+            "/api/admin/system/reboot", "/api/admin/system/restart-service",
+            "/api/admin/system/eco", "/api/admin/system/wifi", "/api/admin/system/update-check",
+        ):
+            self.assertEqual(self.client.post(path).status_code, 401)
+        self.assertEqual(self.client.get("/api/admin/system/wifi").status_code, 401)
+
+    def test_admin_privileged_actions_fail_gracefully_without_sudoers_setup(self):
+        token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
+        self.client.post(
+            f"/admin/setup?token={token}",
+            data={"token": token, "username": "admin", "password": "correct-horse-1",
+                  "confirmation": "correct-horse-1"},
+        )
+        response = self.client.post("/api/admin/system/reboot")
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json["ok"])
 
     def test_pin_locks_after_three_failures_and_password_resets_it(self):
         token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")

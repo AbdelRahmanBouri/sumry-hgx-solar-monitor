@@ -11,7 +11,8 @@
   <title>Solar Monitor</title>
   <link rel="manifest" href="/static/solar-dashboard.webmanifest?v=1">
   <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/style.css?v=4">
+  <link rel="stylesheet" href="/static/theme.css?v=1">
+  <link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
   <header class="app-bar">
@@ -27,6 +28,9 @@
     </div>
     <div class="app-actions">
       <div class="connection" id="connection-pill"><i></i><span id="connection">Connecting</span><small id="updated">—</small></div>
+      <button class="pull-now" id="pull-now" type="button" aria-label="Pull latest reading now">
+        <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.5-6.2M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 4v6h6M21 20v-6h-6"/></svg>
+      </button>
       <a class="settings-link" href="/admin" aria-label="Open admin">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.52V21h-4v-.08A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.52V3h4v.08A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.52 1H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg>
       </a>
@@ -116,13 +120,21 @@
       <article class="summary-card card" data-card-id="temperature">
         <div class="summary-title"><span>Power stage</span><span class="tile-icon amber"><svg viewBox="0 0 24 24"><path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0Z"/></svg></span></div>
         <strong><span id="power-temperature">—</span><small> °C</small></strong>
+        <canvas class="sparkline" id="temperature-sparkline" height="28" aria-hidden="true"></canvas>
         <div class="card-readouts three"><span><small>Sensor 2</small><b><span data-metric="ntc2_temperature">—</span>°</b></span><span><small>Sensor 3</small><b><span data-metric="ntc3_temperature">—</span>°</b></span><span><small>Sensor 4</small><b><span data-metric="ntc4_temperature">—</span>°</b></span></div>
       </article>
 
       <article class="summary-card card" data-card-id="cooling">
         <div class="summary-title"><span>Cooling</span><span class="tile-icon slate"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M12 10c-1-5 2-7 4-6 2 2 0 6-2.5 7M14 12c5-1 7 2 6 4-2 2-6 0-7-2.5M12 14c1 5-2 7-4 6-2-2 0-6 2.5-7M10 12c-5 1-7-2-6-4 2-2 6 0 7 2.5"/></svg></span></div>
         <strong><span id="fan-percent">—</span><small>%</small></strong>
+        <canvas class="sparkline" id="fan-sparkline" height="28" aria-hidden="true"></canvas>
         <div class="card-readouts"><span><small>Fan 1</small><b><span data-metric="fan1_percent">—</span>%</b></span><span><small>Fan 2</small><b><span data-metric="fan2_percent">—</span>%</b></span></div>
+      </article>
+
+      <article class="summary-card card" data-card-id="grid">
+        <div class="summary-title"><span>Grid &amp; bus</span><span class="tile-icon slate"><svg viewBox="0 0 24 24"><path d="M4 21V9l8-6 8 6v12M9 21v-6h6v6"/></svg></span></div>
+        <strong><span data-metric="grid_voltage">—</span><small> V</small></strong>
+        <div class="card-readouts three"><span><small>Frequency</small><b><span data-metric="grid_frequency">—</span> Hz</b></span><span><small>Current</small><b><span data-metric="grid_current">—</span> A</b></span><span><small>Bus</small><b><span data-metric="bus_voltage">—</span> V</b></span></div>
       </article>
     </section>
 
@@ -133,18 +145,38 @@
           <button type="button" data-hours="1">1H</button>
           <button type="button" data-hours="6">6H</button>
           <button type="button" data-hours="24" class="active">24H</button>
+          <button type="button" data-hours="168">7D</button>
+          <button type="button" data-hours="720">30D</button>
         </div>
       </div>
-      <div class="legend"><span><i class="solar-key"></i>Solar</span><span><i class="load-key"></i>Load</span></div>
+      <div class="legend" id="chart-legend">
+        <button type="button" class="legend-toggle active" data-series="pv"><i class="solar-key"></i>Solar</button>
+        <button type="button" class="legend-toggle active" data-series="load"><i class="load-key"></i>Load</button>
+        <button type="button" class="legend-toggle" data-series="battery"><i class="battery-key"></i>Battery V</button>
+        <button type="button" class="zoom-reset" id="zoom-reset" hidden>Reset zoom</button>
+      </div>
       <div class="chart-wrap">
         <canvas id="power-chart" aria-label="Solar and load power history"></canvas>
+        <canvas id="power-chart-overlay" aria-hidden="true"></canvas>
         <div class="chart-empty" id="chart-empty" hidden><strong>No samples in this range</strong><span>New readings will appear automatically.</span></div>
+        <div class="chart-hint" id="chart-hint">Drag to pan · pinch to zoom · drag the left scale to adjust power range</div>
       </div>
       <div class="trend-stats">
         <div><span>Solar peak</span><strong id="solar-peak">— W</strong></div>
         <div><span>Load peak</span><strong id="load-peak">— W</strong></div>
         <div><span>Battery low</span><strong id="trend-battery-min">— V</strong></div>
         <div><span>Samples</span><strong id="sample-count">—</strong></div>
+      </div>
+    </section>
+
+    <section class="period-card card" aria-label="Longer-term energy totals">
+      <div><span class="kicker">TRENDS</span><h2>7 &amp; 30-day totals</h2></div>
+      <p class="period-note">Estimated from average power per day, not a precise meter reading.</p>
+      <div class="period-stats">
+        <span><small>Solar · 7 days</small><strong id="solar-7d">— kWh</strong></span>
+        <span><small>Load · 7 days</small><strong id="load-7d">— kWh</strong></span>
+        <span><small>Solar · 30 days</small><strong id="solar-30d">— kWh</strong></span>
+        <span><small>Load · 30 days</small><strong id="load-30d">— kWh</strong></span>
       </div>
     </section>
 
@@ -162,6 +194,33 @@
         </summary>
         <div class="all-data-body" id="all-data-body"><p>Open to load the latest values.</p></div>
       </details>
+    </section>
+
+    <section class="system-card card" id="config" aria-label="Inverter configuration">
+      <div class="card-heading"><div><span class="kicker">INVERTER</span><h2>Configuration</h2></div><span class="read-only">Read-only</span></div>
+      <p class="config-note" id="config-note">Waiting for the inverter's configuration snapshot (captured every few minutes).</p>
+      <div class="config-grid" id="config-grid" hidden></div>
+    </section>
+
+    <details class="all-data fault-history card" id="fault-history">
+      <summary>
+        <span><strong>Fault history</strong><small id="fault-history-summary">Last 30 days</small></span>
+        <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+      </summary>
+      <div class="all-data-body" id="fault-history-body"><p>Open to load recent faults.</p></div>
+    </details>
+
+    <section class="pi-card card" id="pi-health" aria-label="Raspberry Pi health">
+      <div class="card-heading"><div><span class="kicker">HOST</span><h2>Raspberry Pi</h2></div></div>
+      <div class="pi-grid" id="pi-grid">
+        <div><span>Uptime</span><strong id="pi-uptime">—</strong></div>
+        <div><span>Hostname</span><strong id="pi-hostname">—</strong></div>
+        <div><span>IP address</span><strong id="pi-ip">—</strong></div>
+        <div><span>Wi-Fi</span><strong id="pi-wifi">—</strong></div>
+        <div><span>CPU temp</span><strong id="pi-cpu-temp">—</strong></div>
+        <div><span>Power mode</span><strong id="pi-eco">—</strong></div>
+      </div>
+      <p class="pi-note" id="pi-throttle-note" hidden></p>
     </section>
   </main>
 
@@ -202,6 +261,6 @@
     <a href="#trends"><svg viewBox="0 0 24 24"><path d="m3 17 5-5 4 4 8-9"/><path d="M15 7h5v5"/></svg><span>Trends</span></a>
     <a href="#system"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.52V21h-4v-.08A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88L4.2 7l2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.52V3h4v.08A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 7l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.52 1H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg><span>System</span></a>
   </nav>
-  <script src="/static/app.js?v=4"></script>
+  <script src="/static/app.js?v=5"></script>
 </body>
 </html>

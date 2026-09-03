@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import logging
 import threading
 
@@ -11,6 +12,9 @@ from .serial_io import discover_usb_serial_ports, escaped_ascii, exchange
 
 LOG = logging.getLogger(__name__)
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
 
 class Collector:
     def __init__(self, config: SerialConfig, database: Database):
@@ -18,6 +22,37 @@ class Collector:
         self.database = database
         self.stop_event = threading.Event()
         self.protocol = create_protocol(config.protocol)
+        # Guards collect_once() so a manually triggered "pull now" refresh
+        # from the web UI can never overlap the background poll on the same
+        # serial port.
+        self.lock = threading.Lock()
+        self.thread: threading.Thread | None = None
+        self.started_at: str | None = None
+        self.last_poll_at: str | None = None
+        self.last_success_at: str | None = None
+        self.last_error: str | None = None
+        self.last_port: str | None = None
+        self.polls = 0
+        self.failures = 0
+
+    @property
+    def interval_seconds(self) -> int:
+        return max(30, self.config.poll_seconds)
+
+    def state(self) -> dict:
+        return {
+            "running": bool(self.thread and self.thread.is_alive()),
+            "started_at": self.started_at,
+            "last_poll_at": self.last_poll_at,
+            "last_success_at": self.last_success_at,
+            "last_error": self.last_error,
+            "last_port": self.last_port,
+            "polls": self.polls,
+            "failures": self.failures,
+            "interval_seconds": self.interval_seconds,
+            "protocol": self.protocol.name,
+            "configured_port": self.config.port,
+        }
 
     def _port(self) -> str | None:
         if self.config.port != "auto":
@@ -26,11 +61,26 @@ class Collector:
         return ports[0] if ports else None
 
     def collect_once(self) -> bool:
-        port = self._port()
-        if port is None:
-            LOG.warning("No /dev/ttyUSB* or /dev/serial/by-id device found")
-            return False
-        query = self.protocol.queries[0]
+        with self.lock:
+            self.polls += 1
+            self.last_poll_at = _now()
+            port = self._port()
+            if port is None:
+                self.last_error = "No /dev/ttyUSB* or /dev/serial/by-id device found"
+                LOG.warning("%s", self.last_error)
+                return False
+            if port != self.last_port:
+                LOG.info("Collector polling %s at %d baud", port, self.config.baudrate)
+                self.last_port = port
+            # Status is sampled every cycle. Configuration is read at startup
+            # and every ten cycles (~5 minutes at the default interval).
+            query = self.protocol.queries[0]
+            success = self._collect_query(port, query)
+            if self.polls == 1 or self.polls % 10 == 0:
+                self._collect_query(port, self.protocol.query("current_settings_0200"))
+            return success
+
+    def _collect_query(self, port, query) -> bool:
         result = exchange(
             port, self.config.baudrate, self.config.timeout_seconds, self.protocol, query
         )
@@ -48,18 +98,38 @@ class Collector:
             "decode_note": decoded.note,
             "error": result.error,
         })
-        if decoded.metrics:
+        if decoded.metrics and query.name == "current_settings_0200":
+            self.database.save_inverter_config(result.timestamp, decoded.metrics)
+        elif decoded.metrics:
             self.database.save_sample(result.timestamp, decoded.metrics)
         if result.error:
+            self.last_error = result.error
             LOG.warning("Serial exchange failed on %s: %s", port, result.error)
         else:
-            LOG.info("Captured %d bytes from %s", len(result.response), port)
+            self.last_error = None
+            self.last_success_at = result.timestamp
+            LOG.info(
+                "Captured %d bytes from %s (%s)",
+                len(result.response), port,
+                "decoded" if decoded.metrics else f"not decoded: {decoded.note}",
+            )
         return bool(result.response)
 
     def run_forever(self) -> None:
+        self.started_at = _now()
+        LOG.info(
+            "Collector starting: protocol=%s port=%s baud=%d interval=%ds",
+            self.protocol.name, self.config.port, self.config.baudrate, self.interval_seconds,
+        )
         while not self.stop_event.is_set():
-            self.collect_once()
-            self.stop_event.wait(max(30, self.config.poll_seconds))
+            try:
+                self.collect_once()
+            except Exception as exc:  # never let one bad cycle kill the poller
+                self.failures += 1
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                LOG.exception("Collector cycle failed; continuing")
+            self.stop_event.wait(self.interval_seconds)
+        LOG.info("Collector stopped after %d polls (%d failures)", self.polls, self.failures)
 
     def stop(self) -> None:
         self.stop_event.set()
@@ -68,5 +138,6 @@ class Collector:
 def start_collector(config: SerialConfig, database: Database) -> tuple[Collector, threading.Thread]:
     collector = Collector(config, database)
     thread = threading.Thread(target=collector.run_forever, name="serial-collector", daemon=True)
+    collector.thread = thread
     thread.start()
     return collector, thread

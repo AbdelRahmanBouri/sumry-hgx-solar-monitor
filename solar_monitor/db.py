@@ -12,9 +12,15 @@ CREATE TABLE IF NOT EXISTS samples (
     captured_at TEXT NOT NULL,
     pv_watts REAL, pv_voltage REAL, pv_current REAL,
     battery_voltage REAL, battery_current REAL,
-    ac_load_watts REAL, ac_load_va REAL,
-    output_voltage REAL, output_frequency REAL,
+    ac_load_watts REAL, ac_load_va REAL, ac_load_current REAL,
+    output_voltage REAL, output_frequency REAL, output_current REAL,
+    grid_voltage REAL, grid_frequency REAL, grid_current REAL,
+    inverter_va REAL, bus_voltage REAL,
+    fan1_percent REAL, fan2_percent REAL,
+    temperature_1 REAL, temperature_2 REAL, temperature_3 REAL,
     inverter_temperature REAL, battery_temperature REAL,
+    ntc2_temperature REAL, ntc3_temperature REAL, ntc4_temperature REAL,
+    bts_temperature REAL,
     operating_state TEXT, faults TEXT
 );
 CREATE INDEX IF NOT EXISTS samples_captured_at ON samples(captured_at);
@@ -31,6 +37,11 @@ CREATE TABLE IF NOT EXISTS raw_frames (
     elapsed_ms INTEGER NOT NULL,
     decode_note TEXT,
     error TEXT
+);
+CREATE TABLE IF NOT EXISTS inverter_config_snapshots (
+    id INTEGER PRIMARY KEY,
+    captured_at TEXT NOT NULL,
+    config_json TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS admin_users (
     id INTEGER PRIMARY KEY,
@@ -56,6 +67,24 @@ CREATE TABLE IF NOT EXISTS audit_events (
 );
 """
 
+# Metric columns accepted from a decoder's DecodeResult.metrics. Kept as an
+# explicit allow-list (rather than trusting whatever a protocol module
+# returns) so a future decoder can't accidentally write to arbitrary columns.
+SAMPLE_METRIC_COLUMNS = {
+    "pv_watts", "pv_voltage", "pv_current",
+    "battery_voltage", "battery_current",
+    "ac_load_watts", "ac_load_va", "ac_load_current",
+    "output_voltage", "output_frequency", "output_current",
+    "grid_voltage", "grid_frequency", "grid_current",
+    "inverter_va", "bus_voltage",
+    "fan1_percent", "fan2_percent",
+    "temperature_1", "temperature_2", "temperature_3",
+    "inverter_temperature", "battery_temperature",
+    "ntc2_temperature", "ntc3_temperature", "ntc4_temperature",
+    "bts_temperature",
+    "operating_state", "faults",
+}
+
 
 class Database:
     def __init__(self, path: str):
@@ -67,15 +96,38 @@ class Database:
 
     @staticmethod
     def _migrate(connection: sqlite3.Connection) -> None:
-        columns = {row[1] for row in connection.execute("PRAGMA table_info(admin_users)")}
-        additions = {
+        admin_columns = {row[1] for row in connection.execute("PRAGMA table_info(admin_users)")}
+        admin_additions = {
             "pin_hash": "TEXT",
             "pin_failures": "INTEGER NOT NULL DEFAULT 0",
             "pin_locked": "INTEGER NOT NULL DEFAULT 0",
         }
-        for name, declaration in additions.items():
-            if name not in columns:
+        for name, declaration in admin_additions.items():
+            if name not in admin_columns:
                 connection.execute(f"ALTER TABLE admin_users ADD COLUMN {name} {declaration}")
+
+        sample_columns = {row[1] for row in connection.execute("PRAGMA table_info(samples)")}
+        sample_additions = {
+            "ac_load_current": "REAL",
+            "output_current": "REAL",
+            "grid_voltage": "REAL",
+            "grid_frequency": "REAL",
+            "grid_current": "REAL",
+            "inverter_va": "REAL",
+            "bus_voltage": "REAL",
+            "fan1_percent": "REAL",
+            "fan2_percent": "REAL",
+            "temperature_1": "REAL",
+            "temperature_2": "REAL",
+            "temperature_3": "REAL",
+            "ntc2_temperature": "REAL",
+            "ntc3_temperature": "REAL",
+            "ntc4_temperature": "REAL",
+            "bts_temperature": "REAL",
+        }
+        for name, declaration in sample_additions.items():
+            if name not in sample_columns:
+                connection.execute(f"ALTER TABLE samples ADD COLUMN {name} {declaration}")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -96,18 +148,31 @@ class Database:
             )
 
     def save_sample(self, captured_at: str, metrics: dict[str, Any]) -> None:
-        allowed = {
-            "pv_watts", "pv_voltage", "pv_current", "battery_voltage",
-            "battery_current", "ac_load_watts", "ac_load_va", "output_voltage",
-            "output_frequency", "inverter_temperature", "battery_temperature",
-            "operating_state", "faults",
-        }
-        values = {key: value for key, value in metrics.items() if key in allowed}
+        values = {key: value for key, value in metrics.items() if key in SAMPLE_METRIC_COLUMNS}
         values["captured_at"] = captured_at
         columns = ", ".join(values)
         placeholders = ", ".join(f":{key}" for key in values)
         with self.connect() as connection:
             connection.execute(f"INSERT INTO samples ({columns}) VALUES ({placeholders})", values)
+
+    def save_inverter_config(self, captured_at: str, settings: dict[str, Any]) -> None:
+        import json
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO inverter_config_snapshots (captured_at, config_json) VALUES (?, ?)",
+                (captured_at, json.dumps(settings, sort_keys=True)),
+            )
+
+    def latest_inverter_config(self) -> dict[str, Any] | None:
+        import json
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT captured_at, config_json FROM inverter_config_snapshots "
+                "ORDER BY captured_at DESC LIMIT 1"
+            ).fetchone()
+        if not row:
+            return None
+        return {"captured_at": row["captured_at"], "settings": json.loads(row["config_json"])}
 
     def latest_sample(self) -> dict[str, Any] | None:
         with self.connect() as connection:
@@ -120,6 +185,34 @@ class Database:
         with self.connect() as connection:
             rows = connection.execute(
                 "SELECT * FROM samples WHERE captured_at >= ? ORDER BY captured_at", (since_iso,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def daily_summary(self, since_iso: str) -> list[dict[str, Any]]:
+        # captured_at is ISO8601 UTC ("2026-09-02T19:52:30+00:00"); the first
+        # 10 characters group samples by UTC calendar day without a separate
+        # date column. avg_watts * 24h is a rough kWh estimate, not a
+        # trapezoidal integral -- good enough for a dashboard summary, not
+        # for billing.
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT substr(captured_at, 1, 10) AS day, "
+                "AVG(pv_watts) AS avg_pv_watts, MAX(pv_watts) AS peak_pv_watts, "
+                "AVG(ac_load_watts) AS avg_load_watts, MAX(ac_load_watts) AS peak_load_watts, "
+                "MIN(battery_voltage) AS min_battery_voltage, COUNT(*) AS samples "
+                "FROM samples WHERE captured_at >= ? GROUP BY day ORDER BY day",
+                (since_iso,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def fault_history(self, since_iso: str, limit: int = 200) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT captured_at, faults, operating_state FROM samples "
+                "WHERE captured_at >= ? AND faults IS NOT NULL "
+                "AND lower(trim(faults)) NOT IN ('', 'none', 'no fault', 'no faults', 'normal', '0') "
+                "ORDER BY captured_at DESC LIMIT ?",
+                (since_iso, limit),
             ).fetchall()
         return [dict(row) for row in rows]
 

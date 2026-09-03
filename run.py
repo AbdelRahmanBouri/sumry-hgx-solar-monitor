@@ -19,9 +19,10 @@ def main() -> None:
     args = parser.parse_args()
     config = load_config(args.config)
     database = Database(config.storage.database)
+    collector = None
     if not args.no_collector:
-        start_collector(config.serial, database)
-    app = create_app(database, config.serial)
+        collector, _ = start_collector(config.serial, database)
+    app = create_app(database, config.serial, collector)
     app.run(host=args.host or config.web.host, port=args.port or config.web.port, debug=False)
 
 

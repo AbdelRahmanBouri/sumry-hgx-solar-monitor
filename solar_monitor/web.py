@@ -8,20 +8,29 @@ import json
 from pathlib import Path
 import secrets
 import shutil
+import time
 
 from flask import (
     Flask, Response, abort, jsonify, redirect, render_template, request, session, url_for
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from . import privileged, system_info
+from .collector import Collector
 from .config import SerialConfig
 from .db import Database
 from .protocols import create_protocol
 from .security import load_or_create_secret
 from .serial_io import discover_usb_serial_ports, escaped_ascii, exchange
 
+MANUAL_REFRESH_COOLDOWN_SECONDS = 5.0
 
-def create_app(database: Database, serial_config: SerialConfig | None = None) -> Flask:
+
+def create_app(
+    database: Database,
+    serial_config: SerialConfig | None = None,
+    collector: Collector | None = None,
+) -> Flask:
     app = Flask(__name__)
     app.config["DATABASE"] = database
     serial_config = serial_config or SerialConfig()
@@ -61,26 +70,98 @@ def create_app(database: Database, serial_config: SerialConfig | None = None) ->
     def audit(action: str, detail: str = "") -> None:
         database.audit(now(), session.get("admin_user"), action, detail[:1000])
 
+    def public_sample(sample):
+        if sample is None:
+            return None
+        # This installation has neither a BMS nor a battery-temperature probe.
+        # Keep legacy/raw channels in SQLite for diagnostics, but never imply
+        # that an unconnected BTS input is a measured battery temperature.
+        hidden = {"battery_temperature", "bts_temperature"}
+        return {key: value for key, value in sample.items() if key not in hidden}
+
     @app.get("/")
     def dashboard():
         return render_template("index.html")
 
     @app.get("/api/status")
     def status():
+        collector_state = (
+            collector.state()
+            if collector is not None
+            else {"running": False, "reason": "collector is disabled"}
+        )
         return jsonify({
-            "sample": database.latest_sample(),
+            "sample": public_sample(database.latest_sample()),
+            "inverter_config": database.latest_inverter_config(),
             "diagnostic": database.latest_diagnostic(),
+            "collector": collector_state,
             "read_only": True,
         })
 
+    last_manual_refresh = {"at": 0.0}
+
+    @app.post("/api/refresh")
+    def refresh():
+        if collector is None:
+            return jsonify({"error": "The collector is disabled on this instance"}), 503
+        remaining = MANUAL_REFRESH_COOLDOWN_SECONDS - (time.monotonic() - last_manual_refresh["at"])
+        if remaining > 0:
+            return jsonify({
+                "error": "Refresh is on cooldown",
+                "retry_after_seconds": round(remaining, 1),
+            }), 429
+        last_manual_refresh["at"] = time.monotonic()
+        collector.collect_once()
+        return jsonify({
+            "sample": public_sample(database.latest_sample()),
+            "inverter_config": database.latest_inverter_config(),
+            "diagnostic": database.latest_diagnostic(),
+            "collector": collector.state(),
+            "read_only": True,
+        })
+
+    def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
+        try:
+            return max(minimum, min(maximum, int(request.args.get(name, default))))
+        except (TypeError, ValueError):
+            return default
+
     @app.get("/api/history")
     def history():
-        since = datetime.now(timezone.utc) - timedelta(hours=24)
-        return jsonify(database.history(since.isoformat()))
+        hours = _bounded_int("hours", 24, 1, 24 * 30)
+        since = datetime.now(timezone.utc) - timedelta(hours=hours)
+        return jsonify([public_sample(sample) for sample in database.history(since.isoformat())])
+
+    @app.get("/api/history/daily")
+    def history_daily():
+        days = _bounded_int("days", 30, 1, 90)
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        return jsonify(database.daily_summary(since.isoformat()))
+
+    @app.get("/api/history/faults")
+    def history_faults():
+        days = _bounded_int("days", 30, 1, 90)
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        return jsonify(database.fault_history(since.isoformat()))
+
+    @app.get("/api/system")
+    def system_public():
+        return jsonify(system_info.public_snapshot())
 
     @app.get("/health")
     def health():
-        return jsonify({"ok": True, "read_only": True})
+        collector_state = (
+            collector.state()
+            if collector is not None
+            else {"running": False, "reason": "collector is disabled"}
+        )
+        return jsonify({
+            "ok": collector is None or collector_state["running"],
+            "read_only": True,
+            "collector_enabled": collector is not None,
+            "collector_running": collector_state["running"],
+            "collector": collector_state,
+        })
 
     @app.route("/admin/setup", methods=["GET", "POST"])
     def admin_setup():
@@ -179,20 +260,71 @@ def create_app(database: Database, serial_config: SerialConfig | None = None) ->
     @login_required
     def admin_overview():
         disk = shutil.disk_usage(database.path.parent)
-        uptime = None
-        try:
-            uptime = int(float(Path("/proc/uptime").read_text().split()[0]))
-        except (OSError, ValueError, IndexError):
-            pass
         return jsonify({
             "ports": discover_usb_serial_ports(),
             "settings": database.get_settings(),
             "latest_diagnostic": database.latest_diagnostic(),
             "database_bytes": database.path.stat().st_size if database.path.exists() else 0,
             "disk_free_bytes": disk.free,
-            "uptime_seconds": uptime,
+            "uptime_seconds": system_info.uptime_seconds(),
             "writes_enabled": database.get_settings().get("writes_enabled") == "true",
+            "system": system_info.admin_snapshot(),
         })
+
+    @app.post("/api/admin/system/reboot")
+    @login_required
+    def system_reboot():
+        ok, message = privileged.reboot()
+        audit("system.reboot", "requested" if ok else message)
+        return jsonify({"ok": ok, "message": message}), (200 if ok else 400)
+
+    @app.post("/api/admin/system/restart-service")
+    @login_required
+    def system_restart_service():
+        ok, message = privileged.restart_service()
+        audit("system.restart_service", "requested" if ok else message)
+        return jsonify({"ok": ok, "message": message}), (200 if ok else 400)
+
+    @app.route("/api/admin/system/eco", methods=["GET", "POST"])
+    @login_required
+    def system_eco():
+        if request.method == "GET":
+            return jsonify({"governor": system_info.governor()})
+        payload = request.get_json(silent=True) or {}
+        mode = "powersave" if payload.get("enabled") else "ondemand"
+        ok, message = privileged.set_governor(mode)
+        audit("system.eco_mode", f"{mode}: {'applied' if ok else message}")
+        return jsonify({
+            "ok": ok, "message": message,
+            "governor": system_info.governor() if ok else None,
+        }), (200 if ok else 400)
+
+    @app.get("/api/admin/system/wifi")
+    @login_required
+    def system_wifi_scan():
+        ok, message = privileged.wifi_scan()
+        if not ok:
+            return jsonify({"error": message}), 400
+        return jsonify({"networks": privileged.parse_wifi_scan(message)})
+
+    @app.post("/api/admin/system/wifi")
+    @login_required
+    def system_wifi_connect():
+        payload = request.get_json(silent=True) or {}
+        ssid = str(payload.get("ssid", "")).strip()
+        password = str(payload.get("password", ""))
+        if not ssid or len(ssid) > 32:
+            return jsonify({"error": "Enter a valid network name"}), 400
+        ok, message = privileged.wifi_connect(ssid, password)
+        audit("system.wifi_connect", f"{ssid}: {'ok' if ok else message}")
+        return jsonify({"ok": ok, "message": message}), (200 if ok else 400)
+
+    @app.post("/api/admin/system/update-check")
+    @login_required
+    def system_update_check():
+        result = system_info.check_updates(Path(__file__).resolve().parent.parent)
+        audit("system.update_check")
+        return jsonify(result)
 
     @app.get("/api/admin/frames")
     @login_required
