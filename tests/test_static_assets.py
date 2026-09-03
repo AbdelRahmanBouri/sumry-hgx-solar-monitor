@@ -6,12 +6,27 @@ These tests stand in for the runtime that does not exist here, in the same
 spirit as the DOM-hook checks in test_templates.py.
 """
 
+import os
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "solar_monitor" / "static"
 TEMPLATES = ROOT / "solar_monitor" / "templates"
+
+
+def find_node() -> str | None:
+    """Node is an optional development tool, never a runtime dependency: the
+    Pi serves plain script tags. When it is present the front-end gets real
+    parsing and real unit tests; when it is not, the static checks below still
+    hold the line."""
+    found = shutil.which("node")
+    if found:
+        return found
+    local = Path(os.path.expanduser("~/.local/node/bin/node"))
+    return str(local) if local.exists() else None
 
 SCRIPTS = ("chart-core.js", "app.js", "estimate.js", "metric-picker.js", "admin.js")
 
@@ -123,6 +138,34 @@ class StaticAssetTests(unittest.TestCase):
             markup = template.read_text(encoding="utf-8")
             for retired in ("lab-overrides.css", "lab-menu.js", "v2.css", "lab.html", "v2.html"):
                 self.assertNotIn(retired, markup, f"{template.name} still references {retired}")
+
+
+class NodeBackedTests(unittest.TestCase):
+    """Stronger checks that need a JS engine. Skipped rather than failed when
+    one is unavailable, so the Pi's own test run never depends on it."""
+
+    def setUp(self):
+        self.node = find_node()
+        if not self.node:
+            self.skipTest("no Node.js available; static checks still apply")
+
+    def test_every_script_parses(self):
+        for name in SCRIPTS:
+            result = subprocess.run(
+                [self.node, "--check", str(STATIC / name)],
+                capture_output=True, text=True, timeout=60,
+            )
+            self.assertEqual(result.returncode, 0, f"{name} failed to parse:\n{result.stderr}")
+
+    def test_chart_core_unit_tests_pass(self):
+        result = subprocess.run(
+            [self.node, "--test", "tests/js/*.test.js"],
+            cwd=ROOT, capture_output=True, text=True, timeout=300,
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"chart-core JS tests failed:\n{result.stdout[-4000:]}\n{result.stderr[-2000:]}",
+        )
 
 
 if __name__ == "__main__":

@@ -118,10 +118,13 @@ solar_monitor/protocols/       isolated query definitions and decoder
 solar_monitor/serial_io.py     guarded 9600 8N1 transport
 solar_monitor/db.py            SQLite raw frames and metric history
 solar_monitor/web.py           Flask routes
+solar_monitor/solar_estimate.py  sun position, irradiance and array model
 solar_monitor/templates/       mobile dashboard markup
-solar_monitor/static/          vanilla CSS/JavaScript and chart
+solar_monitor/static/          vanilla CSS/JavaScript
+solar_monitor/static/chart-core.js  shared canvas charting primitives
 deploy/                        deployment examples
-tests/                         safety and API tests
+tests/                         safety, API and front-end tests
+tests/js/                      Node unit tests for the charting maths
 ```
 
 ## Tests
@@ -129,3 +132,29 @@ tests/                         safety and API tests
 ```sh
 .venv/bin/python -m unittest discover -v
 ```
+
+That single command covers everything, including the front end.
+
+There is no browser or JavaScript engine on the Pi, so mistakes in the
+dashboard's scripts cannot surface at runtime the way a Python exception does.
+The suite compensates with static checks: every template must supply the DOM
+ids its script resolves at load time, scripts must have balanced brackets, and
+shared modules must load before the code that uses them.
+
+Node.js makes those checks stronger, and is **optional and development-only** —
+the Pi serves plain `<script>` tags and needs no build step, bundler or
+`node_modules`. When Node is present the suite additionally parses every script
+with V8 and runs the charting unit tests; when it is absent those two tests
+skip and the static checks still apply.
+
+```sh
+# optional, no root required
+curl -sSLO https://nodejs.org/dist/v24.20.0/node-v24.20.0-linux-arm64.tar.xz
+tar -xJf node-v24.20.0-linux-arm64.tar.xz -C ~/.local && mv ~/.local/node-v24.20.0-linux-arm64 ~/.local/node
+
+# the suite finds ~/.local/node automatically; to run the JS tests alone:
+~/.local/node/bin/node --test 'tests/js/*.test.js'
+```
+
+The charting tests use Node's built-in runner and assertions, so they add no
+dependencies of any kind.

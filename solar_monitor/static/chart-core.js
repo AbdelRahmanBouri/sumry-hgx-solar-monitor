@@ -145,3 +145,7 @@ const ChartCore = (() => {
     niceStep, valueTicks, timeTicks, compactNumber, crisp, linePath,
   };
 })();
+
+// Browser pages use the ChartCore global above. This footer lets the Node
+// test runner require the same file unchanged: no build step, no bundler.
+if (typeof module !== 'undefined' && module.exports) module.exports = ChartCore;
