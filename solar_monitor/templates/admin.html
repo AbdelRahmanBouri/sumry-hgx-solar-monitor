@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
   <meta name="theme-color" content="#f7f9f8">
   <title>Admin · Solar Monitor</title>
   <link rel="manifest" href="/static/solar-dashboard.webmanifest">
@@ -108,7 +108,7 @@
 
       <section id="settings" class="view">
         <div class="view-heading"><span class="eyebrow">CONFIGURATION</span><h2>Connection settings</h2></div>
-        <article class="panel"><form id="settings-form" class="settings"><label>Serial port<input name="serial_port" value="auto"></label><label>Baud rate<select name="baudrate"><option>1200</option><option>2400</option><option>4800</option><option selected>9600</option><option>19200</option></select></label><label>Timeout seconds<input name="timeout_seconds" type="number" min="0.1" max="10" step="0.1"></label><label>Polling seconds<input name="poll_seconds" type="number" min="30" max="3600"></label><label>Protocol<input name="protocol" readonly></label><button type="submit">Save settings</button><span id="settings-result"></span></form></article>
+        <article class="panel"><form id="settings-form" class="settings"><label>Serial port<input name="serial_port" value="auto"></label><label>Baud rate<select name="baudrate"><option>1200</option><option>2400</option><option>4800</option><option selected>9600</option><option>19200</option></select></label><label>Polling rate<select name="poll_seconds"><option value="10">Fast · every 10 seconds</option><option value="30">Recommended · every 30 seconds</option><option value="60">Balanced · every minute</option><option value="120">Light · every 2 minutes</option><option value="300">Low activity · every 5 minutes</option><option value="900">Archive · every 15 minutes</option></select></label><label>Serial timeout<input name="timeout_seconds" type="number" min="0.1" max="10" step="0.1"></label><label>Protocol<input name="protocol" readonly></label><button type="submit">Save settings</button><span id="settings-result"></span></form><p class="muted">Polling changes apply immediately. The top refresh button always requests one additional reading on demand.</p></article>
       </section>
 
       <section id="security" class="view">

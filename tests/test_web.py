@@ -49,6 +49,10 @@ class WebTests(unittest.TestCase):
             self.assertIn(b'id="chart-pan"', response.data)
             self.assertIn(b'id="chart-export"', response.data)
             self.assertIn(b'id="chart-table-body"', response.data)
+            self.assertIn(b'id="chart-y-scale"', response.data)
+            self.assertIn(b'Estimated charge', response.data)
+            self.assertNotIn(b'Energy source', response.data)
+            self.assertIn(b'user-scalable=no', response.data)
 
     def test_unconnected_battery_temperature_channels_are_not_public(self):
         self.db.save_sample(
@@ -97,11 +101,17 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/refresh").status_code, 503)
 
         class FakeCollector:
+            def __init__(self):
+                self.poll_seconds = None
+
             def collect_once(self):
                 return True
 
             def state(self):
                 return {"running": True}
+
+            def set_poll_seconds(self, seconds):
+                self.poll_seconds = seconds
 
         client = create_app(self.db, collector=FakeCollector()).test_client()
         first = client.post("/api/refresh")
@@ -109,6 +119,29 @@ class WebTests(unittest.TestCase):
         second = client.post("/api/refresh")
         self.assertEqual(second.status_code, 429)
         self.assertIn("retry_after_seconds", second.json)
+
+    def test_polling_setting_is_applied_to_running_collector(self):
+        class FakeCollector:
+            def __init__(self):
+                self.poll_seconds = None
+
+            def state(self):
+                return {"running": True}
+
+            def set_poll_seconds(self, seconds):
+                self.poll_seconds = seconds
+
+        collector = FakeCollector()
+        client = create_app(self.db, collector=collector).test_client()
+        token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
+        client.post(
+            f"/admin/setup?token={token}",
+            data={"token": token, "username": "admin", "password": "correct-horse-1",
+                  "confirmation": "correct-horse-1"},
+        )
+        response = client.post("/api/admin/settings", json={"poll_seconds": "10"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(collector.poll_seconds, 10)
 
     def test_public_system_endpoint_is_available_without_login(self):
         payload = self.client.get("/api/system").json

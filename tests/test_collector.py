@@ -22,7 +22,7 @@ class FakeDatabase:
 
 def _no_sleep(collector):
     """Make the poll interval instant so tests don't wait 30 real seconds."""
-    collector.stop_event.wait = lambda timeout=None: collector.stop_event.is_set()
+    collector.settings_event.wait = lambda timeout=None: collector.stop_event.is_set()
 
 
 class CollectorResilienceTests(unittest.TestCase):
@@ -81,6 +81,14 @@ class CollectorResilienceTests(unittest.TestCase):
         state = Collector(self.config, self.database).state()
         self.assertFalse(state["running"])
         self.assertIsNone(state["started_at"])
+
+    def test_poll_interval_can_change_at_runtime(self):
+        collector = Collector(self.config, self.database)
+        collector.set_poll_seconds(10)
+        self.assertEqual(collector.state()["interval_seconds"], 10)
+        self.assertTrue(collector.settings_event.is_set())
+        with self.assertRaises(ValueError):
+            collector.set_poll_seconds(5)
 
 
 if __name__ == "__main__":

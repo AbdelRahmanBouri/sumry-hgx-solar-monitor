@@ -158,6 +158,11 @@ h1, h2 { margin: 0; color: var(--ink); font-size: 18px; line-height: 1.15; lette
   border-radius: 13px;
   background: var(--surface-subtle);
 }
+.battery-estimates { grid-column: 2 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 9px; border-top: 1px solid var(--border); }
+.battery-estimates > span { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.battery-estimates > span + span { padding-left: 8px; border-left: 1px solid var(--border); }
+.battery-estimates small { color: var(--quiet); font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.battery-estimates strong { overflow: hidden; font-size: 12px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .battery-icon { width: 25px; height: 38px; display: flex; align-items: end; padding: 3px; border: 1.5px solid var(--green); border-radius: 5px; position: relative; }
 .battery-icon::before { content: ""; position: absolute; top: -4px; left: 7px; width: 8px; height: 2px; border-radius: 2px 2px 0 0; background: var(--green); }
 .battery-icon i { width: 100%; height: 45%; border-radius: 2px; background: linear-gradient(#39b786, var(--green)); transition: height .35s ease; }
@@ -237,6 +242,9 @@ h1, h2 { margin: 0; color: var(--ink); font-size: 18px; line-height: 1.15; lette
 .chart-mode button.active { background: white; color: var(--green); box-shadow: 0 1px 5px rgba(25,56,44,.1); }
 .chart-zoom button { min-width: 38px; padding-inline: 9px; font-size: 15px; }
 .chart-zoom #chart-reset { font-size: 11px; }
+.y-scale-control { min-height: 44px; display: flex; align-items: center; gap: 7px; padding: 0 9px 0 11px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-subtle); color: var(--muted); }
+.y-scale-control span { font-size: 10px; font-weight: 700; white-space: nowrap; }
+.y-scale-control select { min-height: 36px; padding: 0 24px 0 7px; border: 0; border-radius: 8px; outline: 0; background: white; color: var(--ink); font: 12px inherit; font-weight: 700; }
 .chart-wrap { height: 205px; position: relative; margin-top: 2px; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 #power-chart, #power-chart-overlay { width: 100%; height: 205px; display: block; touch-action: pan-y; -webkit-touch-callout: none; user-select: none; }
 #power-chart-overlay { position: absolute; inset: 0; pointer-events: none; }
@@ -449,9 +457,13 @@ code { display: block; overflow: hidden; color: var(--quiet); font: 9px ui-monos
   .range-control button { min-width: 0; height: 44px; padding: 0; font-size: 11px; }
   .legend { justify-content: flex-start; gap: 6px; }
   .legend-toggle, .zoom-reset { min-height: 44px; padding: 0 12px; font-size: 11px; }
+  .chart-controls { flex-wrap: wrap; }
   .chart-controls button { min-height: 44px; }
+  .y-scale-control { flex: 1 1 100%; justify-content: space-between; }
+  .y-scale-control span { font-size: 11px; }
+  .y-scale-control select { min-height: 42px; font-size: 16px; }
   .chart-wrap, #power-chart, #power-chart-overlay { height: 310px; }
-  .chart-tooltip { min-width: 138px; padding: 10px 11px; font-size: 12px; }
+  .chart-tooltip { min-width: 190px; left: 50% !important; padding: 10px 11px; font-size: 12px; }
   .chart-tooltip strong { font-size: 12px; }
   .chart-hint { bottom: 8px; width: max-content; max-width: calc(100% - 20px); padding: 5px 10px; font-size: 10px; text-align: center; }
   .trend-stats span { font-size: 10px; }

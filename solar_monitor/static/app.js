@@ -22,6 +22,7 @@ const chartInspectButton = document.querySelector('#chart-inspect');
 const chartPanButton = document.querySelector('#chart-pan');
 const chartTableBody = document.querySelector('#chart-table-body');
 const chartWindowLabel = document.querySelector('#chart-window-label');
+const chartYScale = document.querySelector('#chart-y-scale');
 const allData = document.querySelector('#all-data');
 const allDataBody = document.querySelector('#all-data-body');
 const faultHistoryDetails = document.querySelector('#fault-history');
@@ -253,8 +254,6 @@ function formatRuntime(hours) {
 }
 
 function updateEnergyInsights(sample) {
-  const pv = number(sample.pv_watts);
-  const load = number(sample.ac_load_watts);
   const current = number(sample.battery_current);
   const voltage = number(sample.battery_voltage);
   const soc = batteryStateOfCharge(voltage);
@@ -269,13 +268,6 @@ function updateEnergyInsights(sample) {
   }
   document.querySelector('#battery-runtime').textContent = runtime;
 
-  let balance = 'Calculating flow';
-  if (current !== null && current > .05) balance = 'Solar charging battery';
-  else if (current !== null && current < -.05 && pv !== null && pv > 50) balance = 'Solar + battery supplying home';
-  else if (current !== null && current < -.05) balance = 'Battery supplying home';
-  else if (pv !== null && load !== null && pv >= load) balance = 'Solar supplying home';
-  else if (pv !== null && load !== null) balance = 'Inverter balancing demand';
-  document.querySelector('#energy-balance').textContent = balance;
 }
 
 const CONFIG_LABELS = {
@@ -613,7 +605,8 @@ function drawChart() {
   octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
   const showBattery = seriesVisible.battery && batteryValues.length > 1;
-  const padding = {left: 34, right: showBattery ? 32 : 7, top: 9, bottom: 23};
+  const compact = width < 500;
+  const padding = {left: compact ? 42 : 38, right: showBattery ? (compact ? 40 : 36) : 9, top: 12, bottom: compact ? 28 : 24};
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
   const visibleValues = [
@@ -631,7 +624,7 @@ function drawChart() {
     ? time.toLocaleDateString([], {month: 'short', day: 'numeric'})
     : time.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
 
-  ctx.font = '9px Inter, system-ui';
+  ctx.font = `${compact ? 11 : 10}px Inter, system-ui`;
   ctx.textBaseline = 'middle';
   for (let index = 0; index <= 4; index += 1) {
     const y = padding.top + plotHeight * index / 4;
@@ -730,6 +723,7 @@ function drawChart() {
 function resetZoom() {
   viewWindow = null;
   yViewWindow = null;
+  chartYScale.value = 'auto';
   updateZoomResetVisibility();
   drawChart();
 }
@@ -737,6 +731,7 @@ function resetZoom() {
 function setupChartInteractions() {
   const tooltip = document.createElement('div');
   tooltip.className = 'chart-tooltip';
+  tooltip.hidden = true;
   chartWrap.appendChild(tooltip);
 
   function nearestIndex(clientX) {
@@ -1038,6 +1033,13 @@ chartPanButton.addEventListener('click', () => setChartMode('pan'));
 document.querySelector('#chart-zoom-in').addEventListener('click', () => zoomChart(.6));
 document.querySelector('#chart-zoom-out').addEventListener('click', () => zoomChart(1.6));
 document.querySelector('#chart-reset').addEventListener('click', resetZoom);
+chartYScale.addEventListener('change', () => {
+  yViewWindow = chartYScale.value === 'auto'
+    ? null
+    : {min: 0, max: Number(chartYScale.value)};
+  updateZoomResetVisibility();
+  drawChart();
+});
 document.querySelector('#chart-export').addEventListener('click', event => {
   event.preventDefault();
   event.stopPropagation();

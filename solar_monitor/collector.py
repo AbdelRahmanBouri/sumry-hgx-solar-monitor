@@ -21,6 +21,8 @@ class Collector:
         self.config = config
         self.database = database
         self.stop_event = threading.Event()
+        self.settings_event = threading.Event()
+        self._interval_seconds = max(10, config.poll_seconds)
         self.protocol = create_protocol(config.protocol)
         # Guards collect_once() so a manually triggered "pull now" refresh
         # from the web UI can never overlap the background poll on the same
@@ -37,7 +39,13 @@ class Collector:
 
     @property
     def interval_seconds(self) -> int:
-        return max(30, self.config.poll_seconds)
+        return self._interval_seconds
+
+    def set_poll_seconds(self, seconds: int) -> None:
+        if not 10 <= seconds <= 3600:
+            raise ValueError("Polling must be between 10 and 3600 seconds")
+        self._interval_seconds = seconds
+        self.settings_event.set()
 
     def state(self) -> dict:
         return {
@@ -128,11 +136,13 @@ class Collector:
                 self.failures += 1
                 self.last_error = f"{type(exc).__name__}: {exc}"
                 LOG.exception("Collector cycle failed; continuing")
-            self.stop_event.wait(self.interval_seconds)
+            self.settings_event.wait(self.interval_seconds)
+            self.settings_event.clear()
         LOG.info("Collector stopped after %d polls (%d failures)", self.polls, self.failures)
 
     def stop(self) -> None:
         self.stop_event.set()
+        self.settings_event.set()
 
 
 def start_collector(config: SerialConfig, database: Database) -> tuple[Collector, threading.Thread]:

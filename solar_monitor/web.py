@@ -48,7 +48,7 @@ def create_app(
         "serial_port": serial_config.port,
         "baudrate": str(serial_config.baudrate),
         "timeout_seconds": str(serial_config.timeout_seconds),
-        "poll_seconds": str(max(30, serial_config.poll_seconds)),
+        "poll_seconds": str(max(10, serial_config.poll_seconds)),
         "protocol": serial_config.protocol,
         "writes_enabled": "false",
     }
@@ -56,6 +56,11 @@ def create_app(
     missing = {key: value for key, value in defaults.items() if key not in existing}
     if missing:
         database.set_settings(missing, now())
+    if collector is not None:
+        try:
+            collector.set_poll_seconds(int(database.get_settings().get("poll_seconds", "30")))
+        except ValueError:
+            collector.set_poll_seconds(30)
 
     def login_required(function):
         @wraps(function)
@@ -387,13 +392,15 @@ def create_app(
                 raise ValueError("Unsupported baud rate")
             if "timeout_seconds" in values and not 0.1 <= float(values["timeout_seconds"]) <= 10:
                 raise ValueError("Timeout must be between 0.1 and 10 seconds")
-            if "poll_seconds" in values and not 30 <= int(values["poll_seconds"]) <= 3600:
-                raise ValueError("Polling must be between 30 and 3600 seconds")
+            if "poll_seconds" in values and not 10 <= int(values["poll_seconds"]) <= 3600:
+                raise ValueError("Polling must be between 10 and 3600 seconds")
             if "protocol" in values:
                 create_protocol(values["protocol"])
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         database.set_settings(values, now())
+        if collector is not None and "poll_seconds" in values:
+            collector.set_poll_seconds(int(values["poll_seconds"]))
         audit("settings.updated", json.dumps(values, sort_keys=True))
         return jsonify(database.get_settings())
 
