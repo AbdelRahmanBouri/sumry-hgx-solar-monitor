@@ -247,28 +247,18 @@ function updateNow(rows) {
 }
 
 function canvasSetup(canvas) {
-  const rect = canvas.getBoundingClientRect();
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.max(1, Math.round(rect.width * dpr));
-  canvas.height = Math.max(1, Math.round(rect.height * dpr));
-  const context = canvas.getContext('2d');
-  context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return {context, width: rect.width, height: rect.height};
+  const {ctx, width, height} = ChartCore.setupCanvas(canvas, {
+    ratio: Math.min(window.devicePixelRatio || 1, 2),
+  });
+  return {context: ctx, width, height};
 }
 
 function nicePowerMax(value) {
-  if (value <= 500) return 500;
-  if (value <= 1000) return 1000;
-  if (value <= 1500) return 1500;
-  if (value <= 2000) return 2000;
-  if (value <= 3000) return 3000;
-  return Math.ceil(value / 1000) * 1000;
+  const step = ChartCore.niceStep(Math.max(1, value) / 4);
+  return Math.ceil(value / step) * step;
 }
 
-function compactPower(value) {
-  if (value >= 1000) return `${Number((value / 1000).toFixed(1))}k`;
-  return `${Math.round(value)}`;
-}
+const compactPower = value => ChartCore.compactNumber(value);
 
 function drawPotentialChart() {
   const canvas = $('#potential-chart');
@@ -281,33 +271,45 @@ function drawPotentialChart() {
   $('#potential-empty').hidden = Boolean(model.length || history.length);
   if (!model.length && !history.length) return;
 
-  const pad = {left: 42, right: 10, top: 12, bottom: 28};
+  const pad = {left: 44, right: 12, top: 16, bottom: 30};
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   const maxValue = nicePowerMax(Math.max(state.capacityWatts, ...model.map(row => number(row.estimated_watts) || 0), ...history.map(row => number(row.pv_watts) || 0)));
   const x = time => pad.left + ((time - from) / (to - from)) * plotW;
   const y = value => pad.top + plotH - clamp(value / maxValue, 0, 1) * plotH;
 
-  ctx.clearRect(0, 0, width, height);
-  ctx.font = '9px Inter, -apple-system, sans-serif';
+  const axis = ChartCore.cssValue('--color-quiet', '#6b7a73');
+  const axisStrong = ChartCore.cssValue('--color-muted', '#4c5a53');
+  const grid = ChartCore.cssValue('--color-border', '#e1e9e5');
+  ctx.font = `10px ${ChartCore.FONT_STACK}`;
   ctx.textBaseline = 'middle';
-  for (let i = 0; i <= 4; i += 1) {
-    const value = maxValue * i / 4;
-    const yy = y(value);
-    ctx.strokeStyle = '#e1e9e5';
+  ChartCore.valueTicks(0, maxValue, 4).forEach(value => {
+    const yy = ChartCore.crisp(y(value));
+    ctx.strokeStyle = grid;
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(width - pad.right, yy); ctx.stroke();
-    ctx.fillStyle = '#8a9992';
+    ctx.fillStyle = axis;
     ctx.textAlign = 'right';
     ctx.fillText(compactPower(value), pad.left - 8, yy);
-  }
-  const labels = [from, now, to];
-  labels.forEach((time, index) => {
-    ctx.textAlign = index === 0 ? 'left' : index === 2 ? 'right' : 'center';
-    ctx.fillStyle = '#8a9992';
-    const label = index === 1 ? 'Now' : new Date(time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
-    ctx.fillText(label, x(time), height - 10);
   });
+  ctx.textAlign = 'left';
+  ctx.fillStyle = axisStrong;
+  ctx.fillText('W', 2, pad.top - 3);
+
+  // Same clock-boundary ticks the dashboard chart uses, so the two pages
+  // share one reading of time.
+  ctx.textBaseline = 'alphabetic';
+  ChartCore.timeTicks(from, to, plotW, {minSpacing: 64}).forEach(tick => {
+    const tx = ChartCore.crisp(x(tick.time));
+    if (tx < pad.left - 1 || tx > width - pad.right + 1) return;
+    ctx.strokeStyle = grid;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(tx, pad.top); ctx.lineTo(tx, pad.top + plotH); ctx.stroke();
+    ctx.fillStyle = tick.major ? axisStrong : axis;
+    ctx.textAlign = 'center';
+    ctx.fillText(tick.label, Math.min(Math.max(tx, pad.left + 14), width - pad.right - 14), height - 9);
+  });
+  ctx.textBaseline = 'middle';
 
   // A restrained green area makes actual energy readable without competing
   // with the model line.
@@ -335,8 +337,12 @@ function drawPotentialChart() {
   const lastPast = model.filter(row => timeOf(row) <= now).at(-1);
   drawModel(lastPast ? [lastPast, ...future] : future, true);
 
-  ctx.strokeStyle = '#b7c4be'; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
-  ctx.beginPath(); ctx.moveTo(x(now), pad.top); ctx.lineTo(x(now), pad.top + plotH); ctx.stroke(); ctx.setLineDash([]);
+  const nowX = ChartCore.crisp(x(now));
+  ctx.strokeStyle = axisStrong; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+  ctx.beginPath(); ctx.moveTo(nowX, pad.top); ctx.lineTo(nowX, pad.top + plotH); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = axisStrong; ctx.textAlign = 'center'; ctx.font = `9px ${ChartCore.FONT_STACK}`;
+  ctx.fillText('now', nowX, pad.top - 3);
+  ctx.font = `10px ${ChartCore.FONT_STACK}`;
   state.chartRows = model;
   state.chartGeometry = {from, to, x, y, pad, width, height};
 }

@@ -540,17 +540,10 @@ function axisPower(value) {
   return value >= 1000 ? `${(value / 1000).toFixed(value % 1000 ? 1 : 0)}k` : String(Math.round(value));
 }
 
-function roundedPath(ctx, points) {
-  if (!points.length) return;
-  ctx.moveTo(points[0].x, points[0].y);
-  if (points.length === 1) return;
-  for (let index = 1; index < points.length - 1; index += 1) {
-    const midpointX = (points[index].x + points[index + 1].x) / 2;
-    const midpointY = (points[index].y + points[index + 1].y) / 2;
-    ctx.quadraticCurveTo(points[index].x, points[index].y, midpointX, midpointY);
-  }
-  ctx.lineTo(points.at(-1).x, points.at(-1).y);
-}
+// Kept as a thin alias so the drawing code reads the same; the smoothing it
+// used to apply treated readings as Bezier control points, so the line ran
+// through midpoints and clipped every peak by up to 10%.
+const roundedPath = (ctx, points) => ChartCore.linePath(ctx, points);
 
 function renderChartTable(rows) {
   const displayRows = rows.slice(-120).reverse();
@@ -573,15 +566,14 @@ function renderChartTable(rows) {
 // them (the v2 design system does, including its dark theme) and otherwise fall
 // back to the original light-theme values, so the canvas matches whichever
 // dashboard is hosting it.
-function chartColor(name, fallback) {
-  const value = getComputedStyle(document.body).getPropertyValue(name).trim();
-  return value || fallback;
-}
+const chartColor = (name, fallback) => ChartCore.cssValue(name, fallback);
 
 function chartPalette() {
   return {
-    grid:    chartColor('--chart-grid', '#e6ede9'),
-    axis:    chartColor('--chart-axis', '#899790'),
+    grid:       chartColor('--chart-grid', '#e6ede9'),
+    gridStrong: chartColor('--chart-grid-strong', '#cfdbd5'),
+    axis:       chartColor('--chart-axis', '#6b7a73'),
+    axisStrong: chartColor('--chart-axis-strong', '#4c5a53'),
     solar:   chartColor('--chart-solar', '#c9780a'),
     solarFill: chartColor('--chart-solar-fill', 'rgba(201,120,10,.16)'),
     load:    chartColor('--chart-load', '#087d55'),
@@ -617,21 +609,15 @@ function drawChart() {
   }
   empty.hidden = true;
 
-  const ratio = window.devicePixelRatio || 1;
-  const width = chartCanvas.clientWidth;
-  const height = chartCanvas.clientHeight;
-  chartCanvas.width = Math.round(width * ratio);
-  chartCanvas.height = Math.round(height * ratio);
+  const {width, height, ratio} = ChartCore.setupCanvas(chartCanvas);
   overlayCanvas.width = chartCanvas.width;
   overlayCanvas.height = chartCanvas.height;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.scale(ratio, ratio);
   octx.setTransform(1, 0, 0, 1, 0, 0);
   octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
   const showBattery = seriesVisible.battery && batteryValues.length > 1;
   const compact = width < 500;
-  const padding = {left: compact ? 42 : 38, right: showBattery ? (compact ? 40 : 36) : 9, top: 12, bottom: compact ? 28 : 24};
+  const padding = {left: compact ? 46 : 44, right: showBattery ? (compact ? 42 : 40) : 12, top: 14, bottom: compact ? 30 : 26};
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
   const visibleValues = [
@@ -645,14 +631,16 @@ function drawChart() {
   const firstTime = timestamp(rows[0]);
   const lastTime = timestamp(rows.at(-1));
   const duration = Math.max(1, lastTime - firstTime);
-  const formatAxisDate = time => selectedHours > 24
-    ? time.toLocaleDateString([], {month: 'short', day: 'numeric'})
-    : time.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
 
-  ctx.font = `${compact ? 11 : 10}px Inter, system-ui`;
+  ctx.font = `${compact ? 11 : 10}px ${ChartCore.FONT_STACK}`;
   ctx.textBaseline = 'middle';
-  for (let index = 0; index <= 4; index += 1) {
-    const y = padding.top + plotHeight * index / 4;
+
+  // Horizontal gridlines on round wattages rather than fixed quarters, so the
+  // labels are numbers a reader recognises at a glance.
+  const powerTicks = ChartCore.valueTicks(yMin, yMax, 4);
+  const yFor = value => padding.top + plotHeight * (1 - (value - yMin) / ((yMax - yMin) || 1));
+  powerTicks.forEach(value => {
+    const y = ChartCore.crisp(yFor(value));
     ctx.strokeStyle = palette.grid;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -660,30 +648,46 @@ function drawChart() {
     ctx.lineTo(width - padding.right, y);
     ctx.stroke();
     ctx.fillStyle = palette.axis;
-    ctx.textAlign = 'left';
-    ctx.fillText(axisPower(yMax - (yMax - yMin) * index / 4), 1, y);
-  }
+    ctx.textAlign = 'right';
+    ctx.fillText(ChartCore.compactNumber(value), padding.left - 7, y);
+  });
+  ctx.textAlign = 'left';
+  ctx.fillStyle = palette.axisStrong;
+  ctx.fillText('W', 2, padding.top - 4);
 
   let batteryMin = 0;
   let batteryMax = 1;
   if (showBattery) {
     batteryMin = Math.floor(Math.min(...batteryValues) * 2) / 2 - .5;
     batteryMax = Math.ceil(Math.max(...batteryValues) * 2) / 2 + .5;
-    ctx.textAlign = 'right';
-    for (let index = 0; index <= 4; index += 1) {
-      const y = padding.top + plotHeight * index / 4;
-      const value = batteryMax - (batteryMax - batteryMin) * index / 4;
+    ctx.textAlign = 'left';
+    ChartCore.valueTicks(batteryMin, batteryMax, 4).forEach(value => {
+      const y = padding.top + plotHeight * (1 - (value - batteryMin) / ((batteryMax - batteryMin) || 1));
       ctx.fillStyle = palette.battery;
-      ctx.fillText(value.toFixed(1), width - 2, y);
-    }
+      ctx.fillText(value.toFixed(1), width - padding.right + 6, y);
+    });
+    ctx.fillText('V', width - padding.right + 6, padding.top - 4);
   }
 
-  [0, .5, 1].forEach(fraction => {
-    const time = new Date(firstTime + duration * fraction);
-    ctx.fillStyle = palette.axis;
-    ctx.textAlign = fraction === 0 ? 'left' : fraction === 1 ? 'right' : 'center';
-    ctx.fillText(formatAxisDate(time), padding.left + plotWidth * fraction, height - 7);
-  });
+  // Vertical gridlines on clock boundaries -- the top of an hour, local
+  // midnight -- instead of slicing the window into equal thirds.
+  const xFor = time => padding.left + plotWidth * (time - firstTime) / duration;
+  ctx.textBaseline = 'alphabetic';
+  ChartCore.timeTicks(firstTime, lastTime, plotWidth, {minSpacing: compact ? 62 : 78})
+    .forEach(tick => {
+      const x = ChartCore.crisp(xFor(tick.time));
+      if (x < padding.left - 1 || x > width - padding.right + 1) return;
+      ctx.strokeStyle = tick.major ? palette.gridStrong : palette.grid;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, padding.top);
+      ctx.lineTo(x, padding.top + plotHeight);
+      ctx.stroke();
+      ctx.fillStyle = tick.major ? palette.axisStrong : palette.axis;
+      ctx.textAlign = 'center';
+      ctx.fillText(tick.label, Math.min(Math.max(x, padding.left + 16), width - padding.right - 16), height - 8);
+    });
+  ctx.textBaseline = 'middle';
 
   function project(time, value, min, max) {
     const clamped = value === null ? min : Math.max(min, Math.min(max, value));
@@ -706,7 +710,9 @@ function drawChart() {
     ctx.closePath();
     const gradient = ctx.createLinearGradient(0, padding.top, 0, padding.top + plotHeight);
     gradient.addColorStop(0, fill);
-    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    // Fade the series' own colour to zero alpha. Fading to white assumed a
+    // white surface and would band against any other background.
+    gradient.addColorStop(1, ChartCore.fadeOut(fill));
     ctx.fillStyle = gradient;
     ctx.fill();
 

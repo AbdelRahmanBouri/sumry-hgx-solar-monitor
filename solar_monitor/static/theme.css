@@ -11,7 +11,7 @@
   --color-border-strong: #c7d5ce;
   --color-ink: #13211c;
   --color-muted: #66776f;
-  --color-quiet: #8a9992;
+  --color-quiet: #6b7a73;   /* 4.63:1 on white; was #8a9992 at 2.98:1 */
   --color-green: #087d55;
   --color-green-2: #24a775;
   --color-green-soft: #e6f5ee;

@@ -9,7 +9,9 @@
   --hairline: rgba(35, 67, 54, .12);
   --card-shadow: 0 1px 2px rgba(21, 45, 35, .025), 0 12px 34px rgba(21, 45, 35, .065);
   --chart-grid: #e3ebe7;
-  --chart-axis: #7e8f87;
+  --chart-grid-strong: #cbd9d2;
+  --chart-axis: #6b7a73;
+  --chart-axis-strong: #4c5a53;
   --chart-solar: #c9780a;
   --chart-solar-fill: rgba(201, 120, 10, .16);
   --chart-load: #087f5b;
