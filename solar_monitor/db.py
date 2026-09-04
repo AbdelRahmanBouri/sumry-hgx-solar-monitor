@@ -67,6 +67,19 @@ CREATE TABLE IF NOT EXISTS audit_events (
     action TEXT NOT NULL,
     detail TEXT
 );
+CREATE TABLE IF NOT EXISTS inverter_change_requests (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    requested_by TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    changes_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    decided_at TEXT,
+    decided_by TEXT,
+    applied_at TEXT,
+    result_json TEXT
+);
+CREATE INDEX IF NOT EXISTS change_requests_status ON inverter_change_requests(status);
 """
 
 # Metric columns accepted from a decoder's DecodeResult.metrics. Kept as an
@@ -198,6 +211,93 @@ class Database:
         if not row:
             return None
         return {"id": row["id"], "captured_at": row["captured_at"], "settings": json.loads(row["config_json"])}
+
+    # --- Inverter change requests -------------------------------------------
+    # A proposal is not a write. It records an intent that something else --
+    # an admin clicking approve, or a standing policy -- has to release before
+    # the collector will put it on the wire.
+
+    def create_change_request(
+        self, created_at: str, requested_by: str, reason: str, changes: dict[str, Any],
+        status: str = "pending", decided_by: str | None = None, decided_at: str | None = None,
+    ) -> int:
+        import json
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO inverter_change_requests "
+                "(created_at, requested_by, reason, changes_json, status, decided_by, decided_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (created_at, requested_by, reason, json.dumps(changes, sort_keys=True),
+                 status, decided_by, decided_at),
+            )
+            return int(cursor.lastrowid)
+
+    @staticmethod
+    def _change_request(row) -> dict[str, Any]:
+        import json
+        record = dict(row)
+        record["changes"] = json.loads(record.pop("changes_json"))
+        result = record.pop("result_json", None)
+        record["result"] = json.loads(result) if result else None
+        return record
+
+    def change_requests(self, limit: int = 50, statuses: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
+        query = "SELECT * FROM inverter_change_requests"
+        params: list[Any] = []
+        if statuses:
+            query += f" WHERE status IN ({','.join('?' * len(statuses))})"
+            params.extend(statuses)
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        with self.connect() as connection:
+            return [self._change_request(row) for row in connection.execute(query, params)]
+
+    def change_request(self, request_id: int) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM inverter_change_requests WHERE id = ?", (request_id,)
+            ).fetchone()
+        return self._change_request(row) if row else None
+
+    def decide_change_request(self, request_id: int, status: str, decided_by: str, decided_at: str) -> bool:
+        """Move a request out of 'pending'. Returns False when it was already
+        decided, so an approval cannot be replayed."""
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE inverter_change_requests SET status = ?, decided_by = ?, decided_at = ? "
+                "WHERE id = ? AND status = 'pending'",
+                (status, decided_by, decided_at, request_id),
+            )
+            return cursor.rowcount > 0
+
+    def claim_change_request(self, request_id: int) -> bool:
+        """Take an approved request for application exactly once."""
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE inverter_change_requests SET status = 'applying' "
+                "WHERE id = ? AND status = 'approved'",
+                (request_id,),
+            )
+            return cursor.rowcount > 0
+
+    def finish_change_request(self, request_id: int, status: str, applied_at: str, result: dict) -> None:
+        import json
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE inverter_change_requests SET status = ?, applied_at = ?, result_json = ? WHERE id = ?",
+                (status, applied_at, json.dumps(result, sort_keys=True, default=str), request_id),
+            )
+
+    def expire_change_requests(self, older_than_iso: str) -> int:
+        """A stale proposal must not be approved much later against a baseline
+        that has since moved."""
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE inverter_change_requests SET status = 'expired' "
+                "WHERE status = 'pending' AND created_at < ?",
+                (older_than_iso,),
+            )
+            return cursor.rowcount
 
     def latest_sample(self) -> dict[str, Any] | None:
         with self.connect() as connection:

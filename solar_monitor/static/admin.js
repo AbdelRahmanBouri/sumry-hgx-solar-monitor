@@ -179,6 +179,9 @@ async function loadInverter() {
       $('#inverter-current-stamp').textContent = 'No configuration snapshot yet — the collector reads one every few minutes.';
     }
     renderInverterSnapshots(data.snapshots || []);
+    renderChangeRequests(data.requests || []);
+    $('#auto-apply-toggle').checked = Boolean(data.auto_apply);
+    if (document.activeElement !== $('#auto-apply-policy')) $('#auto-apply-policy').value = data.auto_apply_policy || '';
   } catch (error) {
     result.textContent = error.message;
   }
@@ -276,3 +279,85 @@ async function runInverterWrite(url, body) {
 }
 
 api('/api/admin/inverter').then(data => { $('#writes-badge').textContent = `Inverter writes: ${data.writes_enabled ? 'on' : 'off'}`; }).catch(() => {});
+
+// --- Proposed changes --------------------------------------------------------
+// A proposal is an intent, not a write. It reaches the inverter only when
+// approved here or released by the automatic policy, and the collector -- the
+// process that owns the serial port -- is what actually sends it.
+const REQUEST_STATUS = {
+  pending: 'Waiting for you', approved: 'Approved · queued', applying: 'Writing…',
+  applied: 'Applied · verified', unverified: 'Sent · not verified',
+  failed: 'Failed', rejected: 'Rejected', expired: 'Expired',
+};
+
+function renderChangeRequests(requests) {
+  const body = $('#change-requests');
+  if (!requests || !requests.length) {
+    body.innerHTML = '<tr><td colspan="6">No proposals.</td></tr>';
+    return;
+  }
+  body.innerHTML = requests.map(request => {
+    const change = Object.entries(request.changes)
+      .map(([name, value]) => `${INVERTER_LABELS[name] || name} → ${inverterDisplay(name, value)}`).join('<br>');
+    const result = request.result || {};
+    let status = REQUEST_STATUS[request.status] || request.status;
+    if (request.status === 'unverified' && result.mismatches) {
+      status += ` (${Object.keys(result.mismatches).join(', ')})`;
+    } else if (request.status === 'failed' && result.error) {
+      status += ` — ${esc(result.error)}`;
+    }
+    const actions = request.status === 'pending'
+      ? `<button type="button" data-approve="${request.id}">Approve</button> <button type="button" class="secondary" data-reject="${request.id}">Reject</button>`
+      : '';
+    return `<tr><td>${formatTimestamp(request.created_at)}</td><td>${esc(request.requested_by)}</td>`
+      + `<td>${change}</td><td>${esc(request.reason)}</td><td>${status}</td><td>${actions}</td></tr>`;
+  }).join('');
+
+  body.querySelectorAll('[data-approve],[data-reject]').forEach(button => {
+    const approve = button.hasAttribute('data-approve');
+    const id = button.dataset.approve || button.dataset.reject;
+    button.onclick = async () => {
+      if (approve && !confirm('Approve this change? It will be written to the inverter and read back.')) return;
+      button.disabled = true;
+      try {
+        const data = await api(`/api/admin/inverter/requests/${id}/${approve ? 'approve' : 'reject'}`, {method: 'POST', body: '{}'});
+        const applied = data.applied;
+        $('#inverter-result').textContent = !approve ? 'Rejected.'
+          : applied ? (applied.status === 'applied'
+              ? 'Verified: the inverter now reports every requested value.'
+              : `Not verified: ${applied.result?.error || 'the inverter did not take every value'}.`)
+          : 'Approved; the collector will apply it on its next cycle.';
+      } catch (error) {
+        $('#inverter-result').textContent = error.message;
+      }
+      loadInverter();
+    };
+  });
+}
+
+$('#auto-apply-toggle').addEventListener('change', async event => {
+  try {
+    await api('/api/admin/inverter/auto-apply', {method: 'POST', body: JSON.stringify({enabled: event.target.checked})});
+    $('#auto-apply-result').textContent = event.target.checked
+      ? 'On — proposals fully covered by the policy apply without asking.'
+      : 'Off — every proposal waits for approval.';
+  } catch (error) {
+    $('#auto-apply-result').textContent = error.message;
+    event.target.checked = !event.target.checked;
+  }
+});
+
+$('#auto-apply-form').onsubmit = async event => {
+  event.preventDefault();
+  $('#auto-apply-result').textContent = 'Saving…';
+  try {
+    const data = await api('/api/admin/inverter/auto-apply', {
+      method: 'POST',
+      body: JSON.stringify({enabled: $('#auto-apply-toggle').checked, policy: $('#auto-apply-policy').value}),
+    });
+    $('#auto-apply-policy').value = data.auto_apply_policy;
+    $('#auto-apply-result').textContent = 'Policy saved.';
+  } catch (error) {
+    $('#auto-apply-result').textContent = error.message;
+  }
+};

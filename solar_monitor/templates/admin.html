@@ -8,7 +8,7 @@
   <link rel="manifest" href="/static/solar-dashboard.webmanifest">
   <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="{{ url_for('static', filename='theme.css', v=1) }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css', v=4) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css', v=5) }}">
 </head>
 <body>
   <header class="admin-header">
@@ -141,6 +141,24 @@
         </article>
 
         <article class="panel">
+          <div class="panel-head"><div><h2>Proposed changes</h2><p class="muted" id="requests-note">Changes queued by automation or tooling. Nothing reaches the inverter until it is approved here or released by the policy below.</p></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Proposed</th><th>By</th><th>Change</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody id="change-requests"><tr><td colspan="6">Loading…</td></tr></tbody></table></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><div><h2>Automatic application</h2><p class="muted">A proposal is applied without asking only when <em>every</em> field it touches is covered by this policy. Anything else waits for you.</p></div><label class="visibility-toggle"><input type="checkbox" id="auto-apply-toggle"><i></i></label></div>
+          <form id="auto-apply-form" class="settings">
+            <label>Policy<textarea name="policy" id="auto-apply-policy" rows="8" spellcheck="false" placeholder='{
+  "bulk_charge_voltage_v": {"min": 28.0, "max": 29.2},
+  "charge_cutoff_current_a": {"min": 2, "max": 10}
+}'></textarea></label>
+            <p class="muted">Numeric fields take <code class="inline">{"min": …, "max": …}</code>; switches and choices take a list of allowed values. The policy can only ever narrow what the protocol already permits.</p>
+            <div class="actions"><button type="submit">Save policy</button></div>
+          </form>
+          <p id="auto-apply-result" class="muted"></p>
+        </article>
+
+        <article class="panel">
           <div class="panel-head"><h2>Previous configurations</h2></div>
           <p>Each snapshot is what the inverter reported at that moment. Restoring writes its charging, protection and boost values back.</p>
           <div class="table-wrap"><table><thead><tr><th>Captured</th><th>Type</th><th>Bulk</th><th>Float</th><th>Cut-off</th><th>Low V</th><th>Boost</th><th></th></tr></thead><tbody id="inverter-snapshots"><tr><td colspan="8">Loading…</td></tr></tbody></table></div>
@@ -193,6 +211,6 @@
       </section>
     </div>
   </main>
-  <script src="{{ url_for('static', filename='admin.js', v=5) }}"></script>
+  <script src="{{ url_for('static', filename='admin.js', v=6) }}"></script>
 </body>
 </html>

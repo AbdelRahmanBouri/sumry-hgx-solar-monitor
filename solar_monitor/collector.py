@@ -5,6 +5,7 @@ import logging
 import threading
 import time
 
+from . import change_policy
 from .config import SerialConfig
 from .db import Database
 from .protocols import create_protocol
@@ -183,6 +184,36 @@ class Collector:
                 "write_reply_hex": written.response.hex(" ").upper(),
             }
 
+    def apply_approved_changes(self) -> list[dict]:
+        """Put approved change requests on the wire, one at a time, between
+        polls. This runs in the process that owns the serial port -- the whole
+        reason proposals are queued rather than applied by whoever made them.
+
+        Each request is claimed before it is sent, so a request cannot be
+        applied twice even if this is called concurrently.
+        """
+        if not hasattr(self.database, "change_requests"):
+            return []
+        outcomes = []
+        for request in reversed(self.database.change_requests(20, statuses=("approved",))):
+            if not self.database.claim_change_request(request["id"]):
+                continue  # someone else took it
+            try:
+                result = self.apply_config(request["changes"])
+                status = "applied" if result["verified"] else "unverified"
+            except (ValueError, PermissionError) as exc:
+                result = {"error": str(exc)}
+                status = "failed"
+                LOG.warning("Change request %d failed: %s", request["id"], exc)
+            self.database.finish_change_request(request["id"], status, _now(), result)
+            if hasattr(self.database, "audit"):
+                self.database.audit(
+                    _now(), request.get("decided_by"), f"inverter.change.{status}",
+                    f"request {request['id']}: {request['changes']}",
+                )
+            outcomes.append({"id": request["id"], "status": status, "result": result})
+        return outcomes
+
     def _record(self, result, decoded) -> None:
         self.database.save_raw_frame({
             "captured_at": result.timestamp, "port": result.port, "baudrate": result.baudrate,
@@ -256,6 +287,9 @@ class Collector:
         while not self.stop_event.is_set():
             try:
                 self.collect_once()
+                # Outside collect_once's lock: apply_config takes the same
+                # non-reentrant lock, so nesting them would deadlock.
+                self.apply_approved_changes()
             except Exception as exc:  # never let one bad cycle kill the poller
                 self.failures += 1
                 self.last_error = f"{type(exc).__name__}: {exc}"

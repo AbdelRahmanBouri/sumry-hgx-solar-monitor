@@ -23,6 +23,8 @@ from .protocols import create_protocol
 from .security import load_or_create_secret
 from .serial_io import discover_usb_serial_ports, escaped_ascii, exchange
 from . import battery as battery_model
+from . import change_policy
+from . import propose
 from . import solar_estimate
 
 MANUAL_REFRESH_COOLDOWN_SECONDS = 5.0
@@ -770,12 +772,69 @@ def create_app(
     @app.get("/api/admin/inverter")
     @login_required
     def admin_inverter():
+        settings = database.get_settings()
+        database.expire_change_requests(
+            (datetime.now(timezone.utc) - timedelta(hours=propose.PROPOSAL_TTL_HOURS)).isoformat()
+        )
         return jsonify({
             "writes_enabled": inverter_writes_enabled(),
             "collector_available": collector is not None,
             "current": database.latest_inverter_config(),
             "fields": writable_fields(),
             "snapshots": database.inverter_config_snapshots(30),
+            "requests": database.change_requests(25),
+            "auto_apply": settings.get(change_policy.ENABLED_SETTING) == "true",
+            "auto_apply_policy": settings.get(change_policy.POLICY_SETTING) or "",
+        })
+
+    @app.post("/api/admin/inverter/requests/<int:request_id>/<decision>")
+    @login_required
+    def admin_decide_request(request_id: int, decision: str):
+        if decision not in {"approve", "reject"}:
+            abort(404)
+        request_row = database.change_request(request_id)
+        if request_row is None:
+            return jsonify({"error": "No such change request"}), 404
+        if request_row["status"] != "pending":
+            return jsonify({"error": f"That request is already {request_row['status']}"}), 409
+        if decision == "approve" and not inverter_writes_enabled():
+            return jsonify({"error": "Inverter writes are switched off"}), 403
+        status = "approved" if decision == "approve" else "rejected"
+        if not database.decide_change_request(request_id, status, session["admin_user"], now()):
+            return jsonify({"error": "That request was already decided"}), 409
+        audit(f"inverter.change.{status}", f"request {request_id}: {request_row['changes']}")
+        # Approved requests are written by the collector, which owns the port.
+        outcomes = collector.apply_approved_changes() if (collector and status == "approved") else []
+        return jsonify({
+            "status": status,
+            "applied": next((o for o in outcomes if o["id"] == request_id), None),
+            "request": database.change_request(request_id),
+        })
+
+    @app.post("/api/admin/inverter/auto-apply")
+    @login_required
+    def admin_auto_apply():
+        payload = request.get_json(silent=True) or {}
+        values = {change_policy.ENABLED_SETTING: "true" if payload.get("enabled") else "false"}
+        if "policy" in payload:
+            raw = (payload.get("policy") or "").strip()
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                except ValueError as exc:
+                    return jsonify({"error": f"The policy is not valid JSON: {exc}"}), 400
+                if not isinstance(parsed, dict):
+                    return jsonify({"error": "The policy must be an object of field rules"}), 400
+                unknown = sorted(set(parsed) - set(writable_fields()))
+                if unknown:
+                    return jsonify({"error": f"Not writable settings: {', '.join(unknown)}"}), 400
+                raw = json.dumps(parsed, sort_keys=True, indent=2)
+            values[change_policy.POLICY_SETTING] = raw
+        database.set_settings(values, now())
+        audit("inverter.auto_apply", json.dumps(values, sort_keys=True))
+        return jsonify({
+            "auto_apply": values[change_policy.ENABLED_SETTING] == "true",
+            "auto_apply_policy": database.get_settings().get(change_policy.POLICY_SETTING, ""),
         })
 
     @app.post("/api/admin/inverter/writes")
