@@ -271,17 +271,25 @@ function formatRuntime(hours) {
   return whole ? `~${whole}h ${minutes}m` : `~${minutes} min`;
 }
 
+// The server's charge count, when it has one. It replaces the voltage guess
+// on the battery row and the health card, and lends its measured capacity
+// to the runtime estimate.
+let batteryState = null;
+const countedSoc = () => (batteryState?.state?.method === 'coulomb' ? number(batteryState.state.soc) : null);
+
 function updateEnergyInsights(sample) {
   const current = number(sample.battery_current);
   const voltage = number(sample.battery_voltage);
-  const soc = batteryStateOfCharge(voltage);
-  document.querySelector('#battery-soc').textContent = soc === null ? '—%' : `~${Math.round(soc)}%`;
+  const counted = countedSoc();
+  const soc = counted ?? batteryStateOfCharge(voltage);
+  document.querySelector('#battery-soc').textContent = soc === null ? '—%'
+    : counted !== null ? `${Math.round(soc)}%` : `~${Math.round(soc)}%`;
 
   // Runtime only means something while discharging, and only once a bank
-  // capacity has been entered. Rather than printing a two-word prompt into a
-  // column too narrow to hold it -- which overlapped the charge/discharge
-  // badge -- the tile simply stays out of the way until it has a figure.
-  const capacity = Number(dashboardSettings.capacityAh);
+  // capacity is known -- measured by the counter, or entered by hand.
+  // Rather than printing a two-word prompt into a column too narrow to hold
+  // it, the tile simply stays out of the way until it has a figure.
+  const capacity = number(batteryState?.state?.capacity_ah) ?? Number(dashboardSettings.capacityAh);
   const configured = Number.isFinite(capacity) && capacity > 0;
   const discharging = current !== null && current < -.05;
   const runtimeTile = document.querySelector('.battery-runtime-estimate');
@@ -1322,6 +1330,74 @@ async function fetchPotential() {
   }
 }
 
+function formatHoursAgo(iso) {
+  if (!iso) return '—';
+  const hours = (Date.now() - new Date(iso).getTime()) / 3600000;
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min ago`;
+  if (hours < 48) return `${hours.toFixed(hours < 10 ? 1 : 0)} h ago`;
+  return `${Math.round(hours / 24)} d ago`;
+}
+
+function renderBatteryHealth() {
+  const card = document.querySelector('#battery-health');
+  if (!card) return;
+  const state = batteryState?.state;
+  const days = batteryState?.days || [];
+  const set = (id, text) => { document.querySelector(id).textContent = text; };
+  if (!state) return;
+
+  const counted = state.method === 'coulomb';
+  set('#health-method', counted ? 'Counting charge' : 'Waiting for an anchor');
+  set('#health-soc', counted ? `${Math.round(state.soc)}%` : '—%');
+  set('#health-soc-note', counted
+    ? `${state.ah_out_since_full} Ah out · ${state.ah_in_since_full} Ah in since ${state.last_full_at ? 'full' : 'rest'} ${formatHoursAgo(state.last_anchor_at)}`
+    : 'needs a full charge or a 30-minute rest first');
+  set('#health-capacity', `${Math.round(state.capacity_ah)} Ah`);
+  set('#health-capacity-note', state.capacity_source === 'measured'
+    ? `measured over ${state.capacity_measurements.length} cycle${state.capacity_measurements.length === 1 ? '' : 's'} · nameplate ${Math.round(batteryState.nominal_ah)} Ah`
+    : 'nameplate · not yet measured by a full-to-rest cycle');
+
+  const today = days.at(-1);
+  const withPredawn = days.filter(day => day.predawn_volts !== null);
+  const latest = withPredawn.at(-1);
+  set('#health-predawn', latest ? `${latest.predawn_volts.toFixed(2)} V` : '— V');
+  if (withPredawn.length >= 2) {
+    const delta = latest.predawn_volts - withPredawn[0].predawn_volts;
+    set('#health-predawn-note', `${delta >= 0 ? '+' : ''}${delta.toFixed(2)} V over ${withPredawn.length} mornings · load ${Math.abs(latest.predawn_amps ?? 0).toFixed(1)} A`);
+  } else {
+    set('#health-predawn-note', latest ? `under ${Math.abs(latest.predawn_amps ?? 0).toFixed(1)} A of load` : 'the recovery gauge');
+  }
+
+  if (today?.absorption_reached) {
+    const minutes = today.absorption_minutes ?? 0;
+    set('#health-absorption', `${Math.floor(minutes / 60)}h ${minutes % 60}m${today.absorption_ended ? '' : ' so far'}`);
+    set('#health-tail', today.tail_amps === null ? 'tail current —' : `tail current ${today.tail_amps.toFixed(1)} A`);
+  } else {
+    set('#health-absorption', 'Not reached');
+    set('#health-tail', `bulk setpoint ${batteryState.bulk_setpoint_v.toFixed(1)} V`);
+  }
+  set('#health-ah', today ? `${today.ah_in.toFixed(0)} in · ${today.ah_out.toFixed(0)} out` : '— in · — out');
+  set('#health-full', `last full ${formatHoursAgo(state.last_full_at)}`);
+
+  const series = days.map(day => day.predawn_volts);
+  drawSparkline(document.querySelector('#predawn-sparkline'), series);
+  const first = withPredawn[0];
+  set('#predawn-first', first ? `${new Date(`${first.day}T12:00`).toLocaleDateString([], {month: 'short', day: 'numeric'})} · ${first.predawn_volts.toFixed(2)} V` : '—');
+  set('#predawn-last', latest && latest !== first ? `${new Date(`${latest.day}T12:00`).toLocaleDateString([], {month: 'short', day: 'numeric'})} · ${latest.predawn_volts.toFixed(2)} V` : '');
+}
+
+async function refreshBattery() {
+  try {
+    const response = await fetch('/api/battery', {cache: 'no-store'});
+    if (!response.ok) throw new Error('Battery state unavailable');
+    batteryState = await response.json();
+  } catch (_) {
+    batteryState = null;
+  }
+  renderBatteryHealth();
+  if (latestStatusSample && Object.keys(latestStatusSample).length) updateEnergyInsights(latestStatusSample);
+}
+
 async function refreshToday() {
   try {
     const response = await fetch('/api/history?hours=24', {cache: 'no-store'});
@@ -1617,7 +1693,9 @@ refreshHistory();
 refreshToday();
 refreshPeriodTotals();
 refreshSystemInfo();
+refreshBattery();
 setInterval(refreshStatus, 5000);
+setInterval(refreshBattery, 60000);
 setInterval(() => {
   if (updatedLabel.dataset.time) updatedLabel.textContent = relativeTime(updatedLabel.dataset.time);
 }, 15000);

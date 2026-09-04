@@ -171,6 +171,7 @@
             <label>Array azimuth<div><input name="estimator_azimuth_degrees" type="number" min="0" max="360" step="1" inputmode="decimal" placeholder="e.g. 185"><small>° true · 180 = due south</small></div></label>
             <label>Roof mounting<select name="estimator_dual_slope"><option value="true">Split across both roof slopes</option><option value="false">All panels on one plane</option></select></label>
             <label>String layout<select name="estimator_split_strings"><option value="true">Each string spans both slopes</option><option value="false">One string per slope</option></select></label>
+            <label>Battery bank capacity<div><input name="battery_capacity_ah" type="number" min="10" max="5000" step="1" inputmode="numeric" placeholder="e.g. 196"><small>Ah nameplate · the charge counter measures the real figure</small></div></label>
             <button type="button" id="estimator-locate" class="secondary">Use this device's location</button>
             <button type="submit">Save estimate settings</button>
             <span id="estimator-result"></span>

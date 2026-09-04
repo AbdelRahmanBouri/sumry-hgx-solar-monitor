@@ -22,6 +22,7 @@ from .db import Database
 from .protocols import create_protocol
 from .security import load_or_create_secret
 from .serial_io import discover_usb_serial_ports, escaped_ascii, exchange
+from . import battery as battery_model
 from . import solar_estimate
 
 MANUAL_REFRESH_COOLDOWN_SECONDS = 5.0
@@ -106,6 +107,9 @@ def create_app(
         "estimator_azimuth_degrees": "185",
         "estimator_dual_slope": "true",
         "estimator_split_strings": "true",
+        # Nameplate of the bank (4 x Odyssey ODX-AGM31, 2S2P). The counter
+        # replaces it with a measured figure once a full-to-rest cycle shows one.
+        "battery_capacity_ah": "196",
     }
     existing = database.get_settings()
     missing = {key: value for key, value in defaults.items() if key not in existing}
@@ -353,13 +357,45 @@ def create_app(
                 "inverter": "SUMRY HGX 4KW 24V/120V",
                 "battery_bank": "4 x Odyssey ODX-AGM31, 2S2P",
                 "battery_nominal_volts": 24,
-                "battery_capacity_ah": 196,
+                "battery_capacity_ah": float(settings.get("battery_capacity_ah") or 196),
                 "configured_charge_limit_amps": 80,
             },
             "weather_source": weather_source,
             "scenarios": scenarios,
             "points": points,
         })
+
+    # State of charge by counting charge, re-anchored on full and rest, with
+    # per-day health gauges. Two weeks of readings go into it, so it is
+    # recomputed at most once a minute rather than per request.
+    battery_cache: dict = {"at": 0.0, "value": None}
+
+    @app.get("/api/battery")
+    def battery_state():
+        if battery_cache["value"] and time.monotonic() - battery_cache["at"] < 60:
+            return jsonify(battery_cache["value"])
+        settings = database.get_settings()
+        try:
+            nominal = float(settings.get("battery_capacity_ah") or 196)
+        except ValueError:
+            nominal = 196.0
+        config = database.latest_inverter_config() or {}
+        try:
+            bulk = float((config.get("settings") or {}).get("bulk_charge_voltage_v") or 28.2)
+        except (TypeError, ValueError):
+            bulk = 28.2
+        since = datetime.now(timezone.utc) - timedelta(days=14)
+        samples = database.history(since.isoformat(), max_points=8000)
+        local_offset = datetime.now().astimezone().utcoffset() or timedelta(0)
+        payload = {
+            "state": battery_model.count_charge(samples, nominal),
+            "days": battery_model.daily_health(samples, bulk, int(local_offset.total_seconds() // 60))[-14:],
+            "nominal_ah": nominal,
+            "bulk_setpoint_v": bulk,
+            "computed_at": now(),
+        }
+        battery_cache.update(at=time.monotonic(), value=payload)
+        return jsonify(payload)
 
     @app.get("/api/history/faults")
     def history_faults():
@@ -618,6 +654,7 @@ def create_app(
             "estimator_capacity_watts", "estimator_performance_ratio",
             "estimator_tilt_degrees", "estimator_azimuth_degrees",
             "estimator_dual_slope", "estimator_split_strings",
+            "battery_capacity_ah",
         }
         values = {key: str(value).strip() for key, value in payload.items() if key in allowed}
         try:
@@ -656,6 +693,8 @@ def create_app(
                 raise ValueError("Dual slope must be true or false")
             if values.get("estimator_split_strings") not in (None, "", "true", "false"):
                 raise ValueError("String layout must be true or false")
+            if values.get("battery_capacity_ah") and not 10 <= float(values["battery_capacity_ah"]) <= 5000:
+                raise ValueError("Battery capacity must be between 10 and 5,000 Ah")
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         database.set_settings(values, now())
