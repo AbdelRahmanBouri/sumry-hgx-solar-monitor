@@ -40,6 +40,19 @@ INTERNAL_RESISTANCE_OHMS = 0.003
 HOLDING_VOLTS = 26.9        # Above this the charger is regulating, not the panels.
 FULL_TAIL_AMPS = 5.0        # Below this at the plateau the bank is taking a trickle.
 FULL_HOLD_MINUTES = 10
+# Sitting at float voltage is not proof of a full bank: on a fading afternoon
+# the current drops below the tail threshold because there is no more sun, not
+# because the bank stopped accepting. A full anchor therefore also requires a
+# real absorption to have happened recently.
+ABSORPTION_RECENCY_HOURS = 6
+ABSORPTION_ANCHOR_BAND = 0.35
+
+# The absorption voltage the chemistry actually wants, for a 24 V bank. A
+# charger set below this stops pushing before the bank is full, so its "done"
+# is short of 100% -- which makes every capacity measurement taken against it
+# a lower bound, not an estimate.
+RECOMMENDED_ABSORPTION_V = 28.8
+SETPOINT_TOLERANCE_V = 0.1
 # A true zero-current rest never happens on a lived-in system: this bank's
 # quietest overnight stretch sits at 3-4 A and never spends 30 minutes below
 # 1.5 A, so a fixed low threshold would mean the capacity was never measured
@@ -47,6 +60,12 @@ FULL_HOLD_MINUTES = 10
 # open circuit once polarisation has settled, and it scales with the bank.
 REST_C_RATE = 1 / 50
 REST_MINUTES = 30           # Long enough for polarisation to settle.
+# ...and the charger must not be driving the bank. Terminal voltage while the
+# charger holds float is its setpoint, not open circuit: reading the chemistry
+# curve off 26.98 V at +3 A returns a confident, wrong, 100%. Any real charge
+# current disqualifies a rest. A depleted bank at float would pull many amps,
+# so a trickle under this threshold does mean the charger has nothing to push.
+REST_MAX_CHARGE_AMPS = 1.0
 MAX_GAP_HOURS = 5 / 60      # A gap longer than this in the data is not integrated across.
 
 # --- Capacity learning -------------------------------------------------------
@@ -92,15 +111,34 @@ def soc_from_rest_voltage(volts: float, cells_nominal: int = 24) -> float:
     return 100.0
 
 
-def count_charge(samples: list[dict], nominal_ah: float) -> dict:
+def count_charge(
+    samples: list[dict],
+    nominal_ah: float,
+    bulk_setpoint_v: float | None = None,
+    recommended_absorption_v: float = RECOMMENDED_ABSORPTION_V,
+) -> dict:
     """Walk the readings in order, integrating current and re-anchoring on
-    full and rest events. Returns the state at the last reading."""
+    full and rest events. Returns the state at the last reading.
+
+    `bulk_setpoint_v` is what the charger is actually set to. When it is
+    below what the chemistry wants, the charger's "full" is short of full:
+    the returned state says so, and the capacity figures become lower
+    bounds, because a too-low anchor makes every measurement read light.
+    """
+    charger_limited = (
+        bulk_setpoint_v is not None
+        and bulk_setpoint_v < recommended_absorption_v - SETPOINT_TOLERANCE_V
+    )
     state: dict[str, Any] = {
         "soc": None, "method": "unavailable", "capacity_ah": nominal_ah,
         "capacity_source": "nameplate", "capacity_measurements": [],
         "last_full_at": None, "last_rest_at": None, "last_anchor_at": None,
         "ah_in_since_full": 0.0, "ah_out_since_full": 0.0,
         "full_events": [], "rest_events": [], "sample_count": 0,
+        "charger_limited": charger_limited,
+        "bulk_setpoint_v": bulk_setpoint_v,
+        "recommended_absorption_v": recommended_absorption_v,
+        "capacity_is_lower_bound": False,
     }
     rows = [row for row in samples if _number(row.get("battery_voltage")) is not None
             and _number(row.get("battery_current")) is not None]
@@ -114,6 +152,11 @@ def count_charge(samples: list[dict], nominal_ah: float) -> dict:
     full_run_start: datetime | None = None
     rest_run_start: datetime | None = None
     full_anchored = rest_anchored = False  # this run has already fired
+    last_absorption: datetime | None = None
+    # Above this the bank is genuinely in absorption rather than on float.
+    absorption_floor = (
+        bulk_setpoint_v - ABSORPTION_ANCHOR_BAND if bulk_setpoint_v is not None else None
+    )
     # Charge taken out since the last full anchor, for capacity learning.
     out_since_full = 0.0
     in_since_full = 0.0
@@ -144,10 +187,20 @@ def count_charge(samples: list[dict], nominal_ah: float) -> dict:
             full_run_start = rest_run_start = None
             full_anchored = rest_anchored = False
 
-        # Full anchor: holding the plateau while taking a trickle. The count
-        # keeps running through the run; the anchor pins it to 100 for as
-        # long as the condition holds.
-        if volts >= HOLDING_VOLTS and 0 <= _number(row["battery_current"]) < FULL_TAIL_AMPS:
+        if absorption_floor is not None and volts >= absorption_floor:
+            last_absorption = now
+
+        # Full anchor: holding the plateau while taking a trickle, *and* an
+        # absorption actually happened recently. Without that second test a
+        # bank idling at float on a fading afternoon anchors at 100% purely
+        # because the sun ran out -- which is what the middle of this
+        # installation's three anchors was doing.
+        absorbed_recently = (
+            absorption_floor is None
+            or (last_absorption is not None
+                and (now - last_absorption) <= timedelta(hours=ABSORPTION_RECENCY_HOURS))
+        )
+        if absorbed_recently and volts >= HOLDING_VOLTS and 0 <= _number(row["battery_current"]) < FULL_TAIL_AMPS:
             full_run_start = full_run_start or now
             if (now - full_run_start) >= timedelta(minutes=FULL_HOLD_MINUTES):
                 if not full_anchored:
@@ -162,25 +215,28 @@ def count_charge(samples: list[dict], nominal_ah: float) -> dict:
             full_run_start = None
             full_anchored = False
 
-        # Rest anchor: a light enough load, for long enough, that terminal
-        # voltage stands in for open circuit. Fires once per rest; the count
-        # carries on from the rested value.
-        if abs(_number(row["battery_current"])) < capacity * REST_C_RATE:
+        # Rest anchor: a light enough load, for long enough, and with the
+        # charger not pushing, so terminal voltage stands in for open
+        # circuit. Fires once per rest; the count carries on from there.
+        amps_now = _number(row["battery_current"])
+        if -capacity * REST_C_RATE < amps_now < REST_MAX_CHARGE_AMPS:
             rest_run_start = rest_run_start or now
             if (now - rest_run_start) >= timedelta(minutes=REST_MINUTES) and not rest_anchored:
                 rest_anchored = True
-                rested = soc_from_rest_voltage(
-                    open_circuit_voltage(volts, _number(row["battery_current"]))
-                )
+                rested = soc_from_rest_voltage(open_circuit_voltage(volts, amps_now))
                 if full_seen and out_since_full >= capacity * MIN_LEARNING_DEPTH and rested < 100:
                     net_out = out_since_full - in_since_full
                     if net_out > 0:
                         measured = net_out / (1 - rested / 100)
                         capacity = capacity * (1 - LEARNING_BLEND) + measured * LEARNING_BLEND
-                        state["capacity_measurements"].append(
-                            {"at": now.isoformat(), "measured_ah": round(measured, 1), "rest_soc": round(rested, 1)}
-                        )
+                        state["capacity_measurements"].append({
+                            "at": now.isoformat(),
+                            "measured_ah": round(measured, 1),
+                            "rest_soc": round(rested, 1),
+                            "lower_bound": charger_limited,
+                        })
                         state["capacity_source"] = "measured"
+                        state["capacity_is_lower_bound"] = charger_limited
                 state["rest_events"].append(now.isoformat())
                 soc = rested
                 state["last_rest_at"] = now.isoformat()

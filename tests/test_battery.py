@@ -100,6 +100,58 @@ class CoulombCountTests(unittest.TestCase):
         state = battery.count_charge(rows, 200)
         self.assertEqual(state["rest_events"], [])
 
+    def test_float_alone_is_not_proof_of_a_full_bank(self):
+        """The regression this guards: on a fading afternoon the bank idles at
+        float and current falls below the tail threshold because the sun ran
+        out, not because the bank stopped accepting. One of this
+        installation's three anchors was doing exactly that."""
+        rows = readings(T0, 60, 26.98, 3.0, pv=800)   # float only, never absorbed
+        state = battery.count_charge(rows, 200, bulk_setpoint_v=28.2)
+        self.assertEqual(state["full_events"], [])
+        self.assertIsNone(state["soc"])
+
+    def test_a_charger_holding_float_is_not_a_rest(self):
+        """26.98 V at +3 A is the charger holding the bank up, not an open
+        circuit. Reading the chemistry curve off it returns a confident,
+        wrong, 100% -- so any real charge current disqualifies a rest."""
+        rows = readings(T0, 90, 26.98, 3.0, pv=800)
+        state = battery.count_charge(rows, 200, bulk_setpoint_v=28.2)
+        self.assertEqual(state["rest_events"], [])
+        self.assertIsNone(state["soc"])
+
+    def test_float_after_a_real_absorption_still_anchors(self):
+        rows = readings(T0, 20, 28.18, 4.0, pv=900)                       # absorption completes
+        rows += readings(T0 + timedelta(minutes=20), 60, 26.98, 3.0, pv=800)  # drops to float
+        state = battery.count_charge(rows, 200, bulk_setpoint_v=28.2)
+        self.assertTrue(state["full_events"])
+        self.assertEqual(state["soc"], 100.0)
+
+    def test_a_low_setpoint_marks_the_capacity_as_a_lower_bound(self):
+        """A charger set below what the chemistry wants stops short of full,
+        so its anchor is under 100% and every capacity measured against it
+        reads light. The figure is a floor, not an estimate."""
+        rows = readings(T0, 20, 28.18, 4.0, pv=900)
+        rows += readings(T0 + timedelta(minutes=20), 300, 24.8, -12.0)
+        rows += readings(T0 + timedelta(minutes=320), 40, 24.36, -3.5)
+        limited = battery.count_charge(rows, 200, bulk_setpoint_v=28.2)
+        self.assertTrue(limited["charger_limited"])
+        self.assertTrue(limited["capacity_is_lower_bound"])
+        self.assertTrue(limited["capacity_measurements"][0]["lower_bound"])
+
+        # The same readings under a charger set where the chemistry wants it.
+        adequate = readings(T0, 20, 29.0, 4.0, pv=900)
+        adequate += readings(T0 + timedelta(minutes=20), 300, 24.8, -12.0)
+        adequate += readings(T0 + timedelta(minutes=320), 40, 24.36, -3.5)
+        proper = battery.count_charge(adequate, 200, bulk_setpoint_v=29.0)
+        self.assertFalse(proper["charger_limited"])
+        self.assertFalse(proper["capacity_is_lower_bound"])
+
+    def test_an_unknown_setpoint_does_not_claim_a_limit(self):
+        rows = readings(T0, 20, 27.2, 3.0)
+        state = battery.count_charge(rows, 200)
+        self.assertFalse(state["charger_limited"])
+        self.assertEqual(state["soc"], 100.0, "no setpoint means the old behaviour")
+
     def test_a_shallow_stretch_does_not_learn(self):
         rows = readings(T0, 15, 27.2, 3.0)
         rows += readings(T0 + timedelta(minutes=15), 60, 25.4, -10.0)   # only 10 Ah of 200

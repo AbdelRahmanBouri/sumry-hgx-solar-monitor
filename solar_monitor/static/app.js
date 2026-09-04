@@ -1347,15 +1347,24 @@ function renderBatteryHealth() {
   if (!state) return;
 
   const counted = state.method === 'coulomb';
-  set('#health-method', counted ? 'Counting charge' : 'Waiting for an anchor');
+  // A charger set below what the chemistry wants stops short of full, so its
+  // "100%" is not 100% and every capacity measured against it reads light.
+  const limited = Boolean(state.charger_limited);
+  set('#health-method', counted ? (limited ? 'Counting · charger-limited' : 'Counting charge') : 'Waiting for an anchor');
+  document.querySelector('#health-method').classList.toggle('is-limited', counted && limited);
   set('#health-soc', counted ? `${Math.round(state.soc)}%` : '—%');
-  set('#health-soc-note', counted
-    ? `${state.ah_out_since_full} Ah out · ${state.ah_in_since_full} Ah in since ${state.last_full_at ? 'full' : 'rest'} ${formatHoursAgo(state.last_anchor_at)}`
-    : 'needs a full charge or a 30-minute rest first');
-  set('#health-capacity', `${Math.round(state.capacity_ah)} Ah`);
-  set('#health-capacity-note', state.capacity_source === 'measured'
-    ? `measured over ${state.capacity_measurements.length} cycle${state.capacity_measurements.length === 1 ? '' : 's'} · nameplate ${Math.round(batteryState.nominal_ah)} Ah`
-    : 'nameplate · not yet measured by a full-to-rest cycle');
+  set('#health-soc-note', !counted
+    ? 'needs a completed absorption or a 30-minute rest first'
+    : limited
+      ? `as full as a ${state.bulk_setpoint_v.toFixed(1)} V charger gets it — the chemistry wants ${state.recommended_absorption_v.toFixed(1)} V, so true charge is higher`
+      : `${state.ah_out_since_full} Ah out · ${state.ah_in_since_full} Ah in since ${state.last_full_at ? 'full' : 'rest'} ${formatHoursAgo(state.last_anchor_at)}`);
+  const cycles = state.capacity_measurements.length;
+  set('#health-capacity', `${state.capacity_is_lower_bound ? '≥ ' : ''}${Math.round(state.capacity_ah)} Ah`);
+  set('#health-capacity-note', state.capacity_source !== 'measured'
+    ? 'nameplate · not yet measured by a full-to-rest cycle'
+    : state.capacity_is_lower_bound
+      ? `lower bound from ${cycles} cycle${cycles === 1 ? '' : 's'} · reads light while absorption is capped low · nameplate ${Math.round(batteryState.nominal_ah)} Ah`
+      : `measured over ${cycles} cycle${cycles === 1 ? '' : 's'} · nameplate ${Math.round(batteryState.nominal_ah)} Ah`);
 
   const today = days.at(-1);
   const withPredawn = days.filter(day => day.predawn_volts !== null);

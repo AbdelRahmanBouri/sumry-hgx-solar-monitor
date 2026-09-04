@@ -388,7 +388,7 @@ def create_app(
         samples = database.history(since.isoformat(), max_points=8000)
         local_offset = datetime.now().astimezone().utcoffset() or timedelta(0)
         payload = {
-            "state": battery_model.count_charge(samples, nominal),
+            "state": battery_model.count_charge(samples, nominal, bulk_setpoint_v=bulk),
             "days": battery_model.daily_health(samples, bulk, int(local_offset.total_seconds() // 60))[-14:],
             "nominal_ah": nominal,
             "bulk_setpoint_v": bulk,
