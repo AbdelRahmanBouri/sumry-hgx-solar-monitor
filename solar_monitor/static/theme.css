@@ -51,6 +51,7 @@
   --chart-shortfall: rgba(201, 120, 10, .16);
   --chart-bar-soft: rgba(201, 120, 10, .28);
   --chart-captured-fill: rgba(8, 125, 85, .2);
+  --chart-current: #7b61c9;
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -114,6 +115,7 @@
   --chart-shortfall: rgba(232, 151, 58, .18);
   --chart-bar-soft: rgba(232, 151, 58, .26);
   --chart-captured-fill: rgba(63, 188, 138, .18);
+  --chart-current: #b8a4ec;
 
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, .35);
   --shadow-md: 0 6px 22px rgba(0, 0, 0, .4);

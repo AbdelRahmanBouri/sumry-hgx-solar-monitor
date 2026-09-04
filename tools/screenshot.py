@@ -25,6 +25,8 @@ VIEWS = {
     # Battery voltage is off by default and lives in localStorage, which a
     # fresh headless profile does not have; the query parameter turns it on.
     "dashboard-phone-battery": ("/?series=pv,load,battery", 390, 844),
+    "dashboard-phone-advanced": ("/?series=pv,load,current,potential", 390, 844),
+    "dashboard-desktop-advanced": ("/?series=pv,load,battery,current,potential", 1280, 900),
     "dashboard-desktop": ("/", 1280, 900),
     "estimate-phone": ("/estimate", 390, 844),
     "estimate-desktop": ("/estimate", 1280, 900),

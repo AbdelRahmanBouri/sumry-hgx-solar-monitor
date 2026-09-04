@@ -34,6 +34,7 @@ const cardControls = document.querySelector('#card-controls');
 const storageKey = name => `solar-dashboard-${name}`;
 
 let historyRows = [];
+let potentialRows = []; // modelled output from /api/estimate, past points only
 let todayRows = [];
 let selectedHours = 24;
 let viewWindow = null;
@@ -83,19 +84,27 @@ function loadDashboardSettings() {
 
 let dashboardSettings = loadDashboardSettings();
 
+// `current` (battery amps) and `potential` (the learned model) are the
+// advanced series: hidden behind "More" so the default chart stays simple.
 function loadSeriesVisibility() {
-  const defaults = {pv: true, load: true, battery: false};
-  // A link can name the series to show (?series=pv,load,battery). It is not
-  // saved, so it never overrides what this device chose for itself.
+  const defaults = {pv: true, load: true, battery: false, current: false, potential: false, advanced: false};
+  // A link can name the series to show (?series=pv,load,battery,current,potential).
+  // It is not saved, so it never overrides what this device chose for itself.
   const requested = new URLSearchParams(location.search).get('series');
   if (requested) {
     const wanted = new Set(requested.split(',').map(name => name.trim()));
-    return {pv: wanted.has('pv'), load: wanted.has('load'), battery: wanted.has('battery')};
+    return {
+      pv: wanted.has('pv'), load: wanted.has('load'), battery: wanted.has('battery'),
+      current: wanted.has('current'), potential: wanted.has('potential'),
+      advanced: wanted.has('current') || wanted.has('potential'),
+    };
   }
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey('series-v1')));
     return {
       pv: saved?.pv !== false, load: saved?.load !== false, battery: Boolean(saved?.battery),
+      current: Boolean(saved?.current), potential: Boolean(saved?.potential),
+      advanced: Boolean(saved?.advanced),
     };
   } catch (_) {
     return defaults;
@@ -506,7 +515,27 @@ function filteredRows() {
 // drawn peaks are the real peaks and match the summary tiles at every range.
 function downsample(rows) {
   const plotWidth = Math.max(100, chartCanvas.clientWidth - 90);
-  return ChartCore.downsample(rows, plotWidth, timestamp, ['pv_watts', 'ac_load_watts', 'battery_voltage']);
+  return ChartCore.downsample(rows, plotWidth, timestamp, ['pv_watts', 'ac_load_watts', 'battery_voltage', 'battery_current']);
+}
+
+// Linear interpolation of a series at a time, for reading the model where
+// the readings are: the two are sampled on different clocks.
+function valueAt(rows, at, key) {
+  if (!rows.length || at < timestamp(rows[0]) || at > timestamp(rows.at(-1))) return null;
+  let low = 0;
+  let high = rows.length - 1;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (timestamp(rows[mid]) <= at) low = mid;
+    else high = mid - 1;
+  }
+  const before = rows[low];
+  const after = rows[low + 1] || before;
+  const a = number(before[key]);
+  const b = number(after[key]);
+  if (a === null || b === null) return a;
+  const span = timestamp(after) - timestamp(before);
+  return span ? a + (b - a) * ((at - timestamp(before)) / span) : a;
 }
 
 function niceMaximum(maximum) {
@@ -590,10 +619,15 @@ function chartPalette() {
     load:    chartColor('--chart-load', '#087d55'),
     loadFill: chartColor('--chart-load-fill', 'rgba(8,125,85,.1)'),
     battery: chartColor('--chart-battery', '#5a86ab'),
+    current: chartColor('--chart-current', '#7b61c9'),
     crosshair: chartColor('--chart-crosshair', 'rgba(19,33,28,.3)'),
     dotEdge: chartColor('--chart-dot-edge', '#ffffff'),
   };
 }
+
+// The potential line only exists at chart resolution for the ranges the
+// estimate covers; the daily-average views have nothing to compare it to.
+const potentialAvailable = () => selectedHours <= 24;
 
 function drawChart() {
   const palette = chartPalette();
@@ -627,13 +661,20 @@ function drawChart() {
   octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
   const showBattery = seriesVisible.battery && batteryValues.length > 1;
+  const currentValues = rows.map(row => number(row.battery_current)).filter(value => value !== null);
+  const showCurrent = seriesVisible.current && currentValues.length > 1;
+  const potential = seriesVisible.potential && potentialAvailable() ? potentialRows : [];
+  const showPotential = potential.length > 1;
   const compact = width < 500;
-  const padding = {left: compact ? 46 : 44, right: showBattery ? (compact ? 42 : 40) : 12, top: 14, bottom: compact ? 30 : 26};
+  // Each right-hand axis takes a column of labels: volts, then amps.
+  const rightAxes = (showBattery ? 1 : 0) + (showCurrent ? 1 : 0);
+  const padding = {left: compact ? 46 : 44, right: rightAxes ? 12 + rightAxes * (compact ? 32 : 30) : 12, top: 20, bottom: compact ? 30 : 26};
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
   const visibleValues = [
     ...(seriesVisible.pv ? solarValues : []),
     ...(seriesVisible.load ? loadValues : []),
+    ...(showPotential ? potential.map(row => number(row.estimated_watts) || 0) : []),
   ];
   const autoMax = niceMaximum(Math.max(...visibleValues, 100));
   const yWindow = yViewWindow || {min: 0, max: autoMax};
@@ -664,10 +705,11 @@ function drawChart() {
   });
   ctx.textAlign = 'left';
   ctx.fillStyle = palette.axisStrong;
-  ctx.fillText('W', 2, padding.top - 4);
+  ctx.fillText('W', 2, padding.top - 11);
 
   let batteryMin = 0;
   let batteryMax = 1;
+  let axisX = width - padding.right + 6;
   if (showBattery) {
     batteryMin = Math.floor(Math.min(...batteryValues) * 2) / 2 - .5;
     batteryMax = Math.ceil(Math.max(...batteryValues) * 2) / 2 + .5;
@@ -675,9 +717,39 @@ function drawChart() {
     ChartCore.valueTicks(batteryMin, batteryMax, 4).forEach(value => {
       const y = padding.top + plotHeight * (1 - (value - batteryMin) / ((batteryMax - batteryMin) || 1));
       ctx.fillStyle = palette.battery;
-      ctx.fillText(value.toFixed(1), width - padding.right + 6, y);
+      ctx.fillText(value.toFixed(1), axisX, y);
     });
-    ctx.fillText('V', width - padding.right + 6, padding.top - 4);
+    ctx.fillText('V', axisX, padding.top - 11);
+    axisX += compact ? 32 : 30;
+  }
+
+  // Battery current is signed: charging above zero, the home drawing from the
+  // bank below it. The scale always includes zero and a faint zero line is
+  // drawn so the direction can be read without the numbers.
+  let currentMin = -1;
+  let currentMax = 1;
+  if (showCurrent) {
+    const step = ChartCore.niceStep((Math.max(...currentValues) - Math.min(0, ...currentValues)) / 4 || 1);
+    currentMin = Math.floor(Math.min(0, ...currentValues) / step) * step;
+    currentMax = Math.ceil(Math.max(0, ...currentValues) / step) * step;
+    if (currentMax === currentMin) currentMax = currentMin + step;
+    ctx.textAlign = 'left';
+    ChartCore.valueTicks(currentMin, currentMax, 4).forEach(value => {
+      const y = padding.top + plotHeight * (1 - (value - currentMin) / ((currentMax - currentMin) || 1));
+      ctx.fillStyle = palette.current;
+      ctx.fillText(String(Math.round(value)), axisX, y);
+    });
+    ctx.fillText('A', axisX, padding.top - 11);
+    const zeroY = ChartCore.crisp(padding.top + plotHeight * (1 - (0 - currentMin) / ((currentMax - currentMin) || 1)));
+    ctx.save();
+    ctx.globalAlpha = .45;
+    ctx.strokeStyle = palette.current;
+    ctx.setLineDash([2, 4]);
+    ctx.beginPath();
+    ctx.moveTo(padding.left, zeroY);
+    ctx.lineTo(width - padding.right, zeroY);
+    ctx.stroke();
+    ctx.restore();
   }
 
   // Vertical gridlines on clock boundaries -- the top of an hour, local
@@ -772,9 +844,31 @@ function drawChart() {
   const batteryPoints = showBattery
     ? casedLineSeries('battery_voltage', palette.battery, batteryMin, batteryMax)
     : pointsFor('battery_voltage', batteryMin, batteryMax);
+  const currentPoints = showCurrent
+    ? casedLineSeries('battery_current', palette.current, currentMin, currentMax)
+    : pointsFor('battery_current', currentMin, currentMax);
+
+  // The learned potential, dashed like the forecast on the estimate page and
+  // clipped to the readings' own window so it never extends past the data.
+  let potentialPoints = [];
+  if (showPotential) {
+    potentialPoints = potential
+      .filter(row => timestamp(row) >= firstTime && timestamp(row) <= lastTime)
+      .map(row => project(timestamp(row), number(row.estimated_watts), yMin, yMax));
+    if (potentialPoints.length > 1) {
+      ctx.beginPath();
+      roundedPath(ctx, potentialPoints);
+      ctx.strokeStyle = palette.solar;
+      ctx.lineWidth = 1.75;
+      ctx.setLineDash([5, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
   renderedChart = {
-    rows, solarPoints, loadPoints, batteryPoints,
-    padding, plotWidth, plotHeight, width, height, yMin, yMax,
+    rows, solarPoints, loadPoints, batteryPoints, currentPoints, potentialPoints,
+    padding, plotWidth, plotHeight, width, height, yMin, yMax, showCurrent, showPotential,
+    yFor: value => project(firstTime, value, yMin, yMax).y,
   };
 }
 
@@ -808,7 +902,7 @@ function setupChartInteractions() {
     if (index === null || !renderedChart) return;
     const ratio = window.devicePixelRatio || 1;
     octx.scale(ratio, ratio);
-    const {solarPoints, loadPoints, batteryPoints, padding, plotHeight} = renderedChart;
+    const {solarPoints, loadPoints, batteryPoints, currentPoints, padding, plotHeight, rows} = renderedChart;
     const x = solarPoints[index].x;
     octx.beginPath();
     octx.moveTo(x, padding.top);
@@ -831,6 +925,11 @@ function setupChartInteractions() {
     if (seriesVisible.pv) dot(solarPoints[index], palette.solar);
     if (seriesVisible.load) dot(loadPoints[index], palette.load);
     if (seriesVisible.battery) dot(batteryPoints[index], palette.battery);
+    if (renderedChart.showCurrent) dot(currentPoints[index], palette.current);
+    if (renderedChart.showPotential) {
+      const modelled = valueAt(potentialRows, timestamp(rows[index]), 'estimated_watts');
+      if (modelled !== null) dot({x, y: renderedChart.yFor(Math.max(renderedChart.yMin, Math.min(renderedChart.yMax, modelled)))}, palette.solar);
+    }
   }
   const octx = overlayCanvas.getContext('2d');
 
@@ -856,6 +955,11 @@ function setupChartInteractions() {
     if (seriesVisible.pv) lines.push(`<span><i class="solar-key"></i>${format(number(row.pv_watts), 0)} W</span>`);
     if (seriesVisible.load) lines.push(`<span><i class="load-key"></i>${format(number(row.ac_load_watts), 0)} W</span>`);
     if (seriesVisible.battery) lines.push(`<span><i class="battery-key"></i>${format(number(row.battery_voltage), 1)} V</span>`);
+    if (renderedChart.showCurrent) lines.push(`<span><i class="current-key"></i>${format(number(row.battery_current), 1)} A</span>`);
+    if (renderedChart.showPotential) {
+      const modelled = valueAt(potentialRows, timestamp(row), 'estimated_watts');
+      lines.push(`<span><i class="potential-key"></i>${modelled === null ? '—' : `${format(modelled, 0)} W`}</span>`);
+    }
     chartReading.innerHTML = lines.join('');
     chartReading.hidden = false;
     chartHint.hidden = true;
@@ -1113,9 +1217,29 @@ document.querySelectorAll('.legend-toggle').forEach(button => {
     seriesVisible[key] = !seriesVisible[key];
     button.classList.toggle('active', seriesVisible[key]);
     saveSeriesVisibility();
-    drawChart();
+    // The model is fetched only when someone asks to see it.
+    if (key === 'potential' && seriesVisible.potential && !potentialRows.length) refreshHistory();
+    else drawChart();
   });
 });
+
+// "More" reveals the advanced series; the potential toggle is disabled on
+// the daily-average ranges, where there is no comparable model.
+const legendMore = document.querySelector('#legend-more');
+const legendAdvanced = document.querySelector('#legend-advanced');
+function syncAdvancedLegend() {
+  legendAdvanced.hidden = !seriesVisible.advanced;
+  legendMore.setAttribute('aria-expanded', String(seriesVisible.advanced));
+  legendMore.textContent = seriesVisible.advanced ? 'Less' : 'More';
+  const potentialToggle = legendAdvanced.querySelector('[data-series="potential"]');
+  potentialToggle.disabled = !potentialAvailable();
+}
+legendMore.addEventListener('click', () => {
+  seriesVisible.advanced = !seriesVisible.advanced;
+  saveSeriesVisibility();
+  syncAdvancedLegend();
+});
+syncAdvancedLegend();
 
 function drawSparkline(canvas, values) {
   if (!canvas) return;
@@ -1176,10 +1300,25 @@ async function refreshHistory() {
       if (!response.ok) throw new Error('History unavailable');
       historyRows = await response.json();
     }
+    potentialRows = seriesVisible.potential && potentialAvailable() ? await fetchPotential() : [];
     drawChart();
   } catch (_) {
     historyRows = [];
+    potentialRows = [];
     drawChart();
+  }
+}
+
+async function fetchPotential() {
+  try {
+    const response = await fetch('/api/estimate?hours=24', {cache: 'no-store'});
+    if (!response.ok) return [];
+    const payload = await response.json();
+    return (payload.points || [])
+      .filter(point => !point.forecast)
+      .map(point => ({captured_at: point.timestamp, estimated_watts: point.estimated_watts}));
+  } catch (_) {
+    return [];
   }
 }
 
@@ -1427,6 +1566,7 @@ document.querySelectorAll('.range-control button').forEach(button => {
     document.querySelectorAll('.range-control button').forEach(item => item.classList.toggle('active', item === button));
     viewWindow = null;
     updateZoomResetVisibility();
+    syncAdvancedLegend();
     refreshHistory();
   });
 });
