@@ -91,7 +91,7 @@ h2 { font-size: 20px; line-height: 1.1; letter-spacing: -.035em; }
 .model-notice svg { width: 18px; height: 18px; flex: 0 0 auto; margin-top: 1px; }
 .model-notice p { font-size: 11.5px; line-height: 1.45; }
 
-.chart-panel, .opportunity-panel, .calculator-panel, .system-panel { padding: 18px 16px; }
+.chart-panel, .opportunity-panel, .losses-panel, .calculator-panel, .system-panel { padding: 18px 16px; }
 .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .range-tabs { display: grid; grid-template-columns: repeat(3, 1fr); min-width: 142px; padding: 3px; border: 1px solid var(--border); border-radius: 11px; background: #f1f5f3; }
 .range-tabs button { min-width: 42px; min-height: 34px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--quiet); font-size: 11.5px; font-weight: 800; cursor: pointer; }
@@ -172,6 +172,9 @@ input[type="range"] { width: 100%; height: 30px; margin: 3px 0 0; accent-color: 
   main { grid-template-columns: minmax(0, 1.25fr) minmax(310px, .75fr); gap: 14px; padding-top: 22px; }
   .intro-panel, .model-notice, .chart-panel { grid-column: 1; }
   .opportunity-panel { grid-column: 2; grid-row: 1 / span 2; align-self: start; }
+  /* Its own cell beside the chart. Sharing .opportunity-panel's placement
+     put both panels in one grid area, drawn straight through each other. */
+  .losses-panel { grid-column: 2; grid-row: 3; align-self: start; }
   .calculator-panel, .system-panel { grid-column: 1 / -1; }
   .intro-panel { display: grid; grid-template-columns: 1.1fr .9fr; }
   .now-grid { grid-template-columns: 1fr; }
@@ -187,7 +190,7 @@ input[type="range"] { width: 100%; height: 30px; margin: 3px 0 0; accent-color: 
 @media (max-width: 380px) {
   .potential-bar, main { width: calc(100% - 16px); }
   .bar-live small { display: none; }
-  .chart-panel, .opportunity-panel, .calculator-panel, .system-panel { padding-inline: 13px; }
+  .chart-panel, .opportunity-panel, .losses-panel, .calculator-panel, .system-panel { padding-inline: 13px; }
   .range-tabs { min-width: 132px; }
   .now-grid > div { padding-inline: 10px; }
 }
