@@ -260,14 +260,19 @@ function updateEnergyInsights(sample) {
   const soc = batteryStateOfCharge(voltage);
   document.querySelector('#battery-soc').textContent = soc === null ? '—%' : `~${Math.round(soc)}%`;
 
+  // Runtime only means something while discharging, and only once a bank
+  // capacity has been entered. Rather than printing a two-word prompt into a
+  // column too narrow to hold it -- which overlapped the charge/discharge
+  // badge -- the tile simply stays out of the way until it has a figure.
   const capacity = Number(dashboardSettings.capacityAh);
-  let runtime = 'Set capacity';
-  if (Number.isFinite(capacity) && capacity > 0 && soc !== null && current !== null) {
-    if (current < -.05) runtime = formatRuntime(capacity * soc / 100 / Math.abs(current));
-    else if (current > .05) runtime = 'Charging';
-    else runtime = 'Standby';
+  const configured = Number.isFinite(capacity) && capacity > 0;
+  const discharging = current !== null && current < -.05;
+  const runtimeTile = document.querySelector('.battery-runtime-estimate');
+  if (runtimeTile) runtimeTile.hidden = !(configured && discharging);
+  if (configured && discharging && soc !== null) {
+    document.querySelector('#battery-runtime').textContent =
+      formatRuntime(capacity * soc / 100 / Math.abs(current));
   }
-  document.querySelector('#battery-runtime').textContent = runtime;
 
 }
 

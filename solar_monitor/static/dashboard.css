@@ -191,8 +191,12 @@ main { gap: 12px; }
   white-space: normal;
 }
 .battery-runtime-estimate[hidden] { display: none; }
-.battery-row:has(#battery-direction.discharge) .battery-estimates { grid-template-columns: 1fr 1fr; }
-.battery-row:has(#battery-direction.discharge) .battery-runtime-estimate[hidden] { display: flex; }
+/* Track however many tiles are actually visible instead of forcing two, and
+   never let a long value push into the neighbouring column. */
+.battery-estimates { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.battery-row > * { min-width: 0; }
+.battery-estimates > span { min-width: 0; }
+.battery-estimates strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .today-card { padding: 17px 18px; }
 .today-card > div:first-child { display: block; }

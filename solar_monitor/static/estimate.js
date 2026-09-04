@@ -274,7 +274,14 @@ function drawPotentialChart() {
   const pad = {left: 44, right: 12, top: 16, bottom: 30};
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
-  const maxValue = nicePowerMax(Math.max(state.capacityWatts, ...model.map(row => number(row.estimated_watts) || 0), ...history.map(row => number(row.pv_watts) || 0)));
+  // Scale to what is actually plotted. Flooring this at the array nameplate
+  // left the top 45% of the plot permanently empty on a normal day.
+  const peak = Math.max(
+    0,
+    ...model.map(row => number(row.estimated_watts) || 0),
+    ...history.map(row => number(row.pv_watts) || 0),
+  );
+  const maxValue = nicePowerMax(Math.max(300, peak * 1.08));
   const x = time => pad.left + ((time - from) / (to - from)) * plotW;
   const y = value => pad.top + plotH - clamp(value / maxValue, 0, 1) * plotH;
 
