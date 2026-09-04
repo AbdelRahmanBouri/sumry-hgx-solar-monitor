@@ -85,6 +85,13 @@ let dashboardSettings = loadDashboardSettings();
 
 function loadSeriesVisibility() {
   const defaults = {pv: true, load: true, battery: false};
+  // A link can name the series to show (?series=pv,load,battery). It is not
+  // saved, so it never overrides what this device chose for itself.
+  const requested = new URLSearchParams(location.search).get('series');
+  if (requested) {
+    const wanted = new Set(requested.split(',').map(name => name.trim()));
+    return {pv: wanted.has('pv'), load: wanted.has('load'), battery: wanted.has('battery')};
+  }
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey('series-v1')));
     return {
@@ -495,12 +502,11 @@ function filteredRows() {
   return valid.filter(row => timestamp(row) >= cutoff);
 }
 
-function downsample(rows, maxPoints = 600) {
-  if (rows.length <= maxPoints) return rows;
-  const stride = Math.ceil(rows.length / maxPoints);
-  const sampled = rows.filter((_, index) => index % stride === 0);
-  if (sampled.at(-1) !== rows.at(-1)) sampled.push(rows.at(-1));
-  return sampled;
+// Thinned to the plot's own width, keeping each column's extremes, so the
+// drawn peaks are the real peaks and match the summary tiles at every range.
+function downsample(rows) {
+  const plotWidth = Math.max(100, chartCanvas.clientWidth - 90);
+  return ChartCore.downsample(rows, plotWidth, timestamp, ['pv_watts', 'ac_load_watts', 'battery_voltage']);
 }
 
 function niceMaximum(maximum) {
@@ -706,8 +712,10 @@ function drawChart() {
     return rows.map(row => project(timestamp(row), number(row[key]), min, max));
   }
 
-  function areaSeries(key, stroke, fill, lineWidth = 2) {
+  function areaSeries(key, stroke, fill, lineWidth = 2, alpha = 1) {
     const points = pointsFor(key, yMin, yMax);
+    ctx.globalAlpha = alpha;
+    ctx.lineJoin = 'round';
     ctx.beginPath();
     roundedPath(ctx, points);
     ctx.lineTo(points.at(-1).x, padding.top + plotHeight);
@@ -726,32 +734,43 @@ function drawChart() {
     ctx.strokeStyle = stroke;
     ctx.lineWidth = lineWidth;
     ctx.stroke();
+    ctx.globalAlpha = 1;
     return points;
   }
 
-  function dashedLineSeries(key, stroke, min, max) {
+  // Battery voltage sits on its own axis over the two power series, so it is
+  // cased: a wider stroke of the surface colour underneath separates it from
+  // whatever it crosses, the way a road is drawn over a map. Solid rather
+  // than dashed -- dashes on a dense series read as gaps in the data.
+  function casedLineSeries(key, stroke, min, max) {
     const points = pointsFor(key, min, max);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
     ctx.beginPath();
     roundedPath(ctx, points);
-    ctx.strokeStyle = stroke;
-    ctx.lineWidth = 1.6;
-    ctx.setLineDash([5, 3]);
+    ctx.globalAlpha = .55;
+    ctx.strokeStyle = palette.dotEdge;
+    ctx.lineWidth = 4.5;
     ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1.9;
+    ctx.stroke();
     return points;
   }
 
-  // Load first, as a thin line over a faint tint: it is spiky (compressors,
-  // heaters cycling) and a solid fill under it buried the solar curve. Solar
-  // is the smooth series and the one people read, so it goes on top.
+  // A deliberate hierarchy. Load is spiky (compressors and heaters cycling)
+  // and at one reading per pixel it draws as a comb straight through the
+  // solar curve, so it goes underneath, thin and translucent. Solar is the
+  // smooth series people actually read: bold, opaque, on top.
   const loadPoints = seriesVisible.load
-    ? areaSeries('ac_load_watts', palette.load, palette.loadFill, 1.5)
+    ? areaSeries('ac_load_watts', palette.load, palette.loadFill, 1.25, .72)
     : pointsFor('ac_load_watts', yMin, yMax);
   const solarPoints = seriesVisible.pv
-    ? areaSeries('pv_watts', palette.solar, palette.solarFill, 2)
+    ? areaSeries('pv_watts', palette.solar, palette.solarFill, 2.4)
     : pointsFor('pv_watts', yMin, yMax);
   const batteryPoints = showBattery
-    ? dashedLineSeries('battery_voltage', palette.battery, batteryMin, batteryMax)
+    ? casedLineSeries('battery_voltage', palette.battery, batteryMin, batteryMax)
     : pointsFor('battery_voltage', batteryMin, batteryMax);
   renderedChart = {
     rows, solarPoints, loadPoints, batteryPoints,

@@ -140,9 +140,44 @@ const ChartCore = (() => {
     }
   }
 
+  /* Thin a series to what a plot can show without losing its extremes.
+     Each pixel column keeps the rows holding the minimum and maximum of every
+     plotted key, plus the first and last row it covers -- the M4 method. A
+     stride ("every nth row") is cheaper but drops peaks at random, so a
+     30-day view could disagree with the summary tiles by hundreds of watts.
+     Rows come back in time order and unchanged. */
+  function downsample(rows, pixelWidth, timeOf, keys) {
+    if (rows.length < 3 || pixelWidth < 2) return rows;
+    const columns = Math.max(1, Math.floor(pixelWidth));
+    if (rows.length <= columns * 2) return rows;
+    const first = timeOf(rows[0]);
+    const span = Math.max(1, timeOf(rows[rows.length - 1]) - first);
+    const keep = new Set([0, rows.length - 1]);
+    let bucket = -1;
+    let extremes = null;
+    rows.forEach((row, index) => {
+      const column = Math.min(columns - 1, Math.floor(((timeOf(row) - first) / span) * columns));
+      if (column !== bucket) {
+        if (extremes) Object.values(extremes).forEach(pair => { keep.add(pair.min); keep.add(pair.max); });
+        bucket = column;
+        extremes = {};
+        keep.add(index);
+      }
+      keys.forEach(key => {
+        const value = Number(row[key]);
+        if (!Number.isFinite(value)) return;
+        const pair = extremes[key] || (extremes[key] = {min: index, max: index, low: value, high: value});
+        if (value < pair.low) { pair.low = value; pair.min = index; }
+        if (value > pair.high) { pair.high = value; pair.max = index; }
+      });
+    });
+    if (extremes) Object.values(extremes).forEach(pair => { keep.add(pair.min); keep.add(pair.max); });
+    return [...keep].sort((a, b) => a - b).map(index => rows[index]);
+  }
+
   return {
     FONT_STACK, setupCanvas, cssValue, fadeOut,
-    niceStep, valueTicks, timeTicks, compactNumber, crisp, linePath,
+    niceStep, valueTicks, timeTicks, compactNumber, crisp, linePath, downsample,
   };
 })();
 

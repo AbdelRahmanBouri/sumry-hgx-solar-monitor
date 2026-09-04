@@ -139,6 +139,29 @@ test('linePath draws straight segments and never a curve', () => {
   for (const point of points) assert.ok(plotted.includes(`${point.x},${point.y}`));
 });
 
+test('downsample keeps every peak and trough the plot could show', () => {
+  // Ten thousand readings, one spike buried where a stride would skip it.
+  const rows = Array.from({length: 10000}, (_, i) => ({t: i * MINUTE, pv: 500 + (i % 7), load: 100}));
+  rows[4321].pv = 2500;
+  rows[8765].load = 1900;
+  rows[1234].pv = 3;
+  const thinned = ChartCore.downsample(rows, 320, row => row.t, ['pv', 'load']);
+
+  assert.ok(thinned.length < rows.length / 4, `only thinned to ${thinned.length}`);
+  assert.equal(Math.max(...thinned.map(r => r.pv)), 2500, 'solar peak lost');
+  assert.equal(Math.max(...thinned.map(r => r.load)), 1900, 'load peak lost');
+  assert.equal(Math.min(...thinned.map(r => r.pv)), 3, 'solar trough lost');
+  assert.equal(thinned[0], rows[0]);
+  assert.equal(thinned.at(-1), rows.at(-1));
+  for (let i = 1; i < thinned.length; i += 1) assert.ok(thinned[i].t > thinned[i - 1].t, 'out of order');
+});
+
+test('downsample leaves a series the plot can already show alone', () => {
+  const rows = Array.from({length: 200}, (_, i) => ({t: i * MINUTE, pv: i}));
+  assert.deepEqual(ChartCore.downsample(rows, 320, row => row.t, ['pv']), rows);
+  assert.deepEqual(ChartCore.downsample([], 320, row => row.t, ['pv']), []);
+});
+
 test('linePath handles empty and single-point series', () => {
   const calls = [];
   const ctx = new Proxy({}, {get: (_t, name) => (...args) => calls.push([name, ...args])});
