@@ -125,7 +125,11 @@ const updateHeaderElevation = () => stickyHeader?.classList.toggle('scrolled', w
 window.addEventListener('scroll', updateHeaderElevation, {passive: true});
 updateHeaderElevation();
 
-const sectionLinks = [...document.querySelectorAll('.bottom-nav a')];
+// Only same-page anchors name a section. The nav also links to other pages
+// ("/estimate"), and passing that to querySelector throws a SyntaxError that
+// aborted the rest of this file -- taking the scroll-spy with it.
+const sectionLinks = [...document.querySelectorAll('.bottom-nav a')]
+  .filter(link => (link.getAttribute('href') || '').startsWith('#'));
 const observedSections = sectionLinks
   .map(link => document.querySelector(link.getAttribute('href')))
   .filter(Boolean);

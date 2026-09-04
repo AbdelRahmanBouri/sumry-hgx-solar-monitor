@@ -545,7 +545,9 @@ async function refresh() {
   try {
     const [statusResponse, historyResponse, estimateResponse] = await Promise.all([
       fetch('/api/status', {cache: 'no-store'}),
-      fetch(`/api/history?hours=${Math.max(24, state.hours)}&points=3000`, {cache: 'no-store'}),
+      // Only the three columns this page reads; the full row is ~7x larger.
+      fetch(`/api/history?hours=${Math.max(24, state.hours)}&points=3000`
+            + '&fields=pv_watts,battery_voltage,battery_current', {cache: 'no-store'}),
       fetch(`/api/estimate?hours=${Math.max(24, state.hours)}`, {cache: 'no-store'}),
     ]);
     if (!statusResponse.ok || !historyResponse.ok || !estimateResponse.ok) throw new Error('Request failed');

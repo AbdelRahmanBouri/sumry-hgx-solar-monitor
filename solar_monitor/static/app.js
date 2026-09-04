@@ -33,7 +33,19 @@ const cardControls = document.querySelector('#card-controls');
 // variants were retired still resolve.
 const storageKey = name => `solar-dashboard-${name}`;
 
+// The only columns the chart and today's tiles read. Asking for these instead
+// of the whole 29-field row cuts the 24-hour response from ~870 KB to ~190 KB,
+// which on a phone is the difference between the chart appearing and the page
+// looking stuck while it parses.
+const HISTORY_FIELDS = ['pv_watts', 'ac_load_watts', 'battery_voltage', 'battery_current'].join(',');
+// The two sparklines plot only their last 60 readings, so they fetch one hour
+// of their own columns rather than dragging them through the whole day.
+const SPARKLINE_FIELDS = [
+  'ntc2_temperature', 'ntc3_temperature', 'ntc4_temperature', 'fan1_percent', 'fan2_percent',
+].join(',');
+
 let historyRows = [];
+let sparklineRows = [];
 let potentialRows = []; // modelled output from /api/estimate, past points only
 let todayRows = [];
 let selectedHours = 24;
@@ -1279,7 +1291,7 @@ function drawSparkline(canvas, values) {
 }
 
 function updateSparklines() {
-  const rows = todayRows.slice(-60);
+  const rows = sparklineRows.slice(-60);
   drawSparkline(document.querySelector('#temperature-sparkline'), rows.map(row => {
     const values = [row.ntc2_temperature, row.ntc3_temperature, row.ntc4_temperature].map(number).filter(v => v !== null);
     return values.length ? Math.max(...values) : null;
@@ -1304,9 +1316,14 @@ async function refreshHistory() {
         battery_voltage: row.min_battery_voltage,
       }));
     } else {
-      const response = await fetch(`/api/history?hours=${Math.max(selectedHours, 24)}`, {cache: 'no-store'});
+      const response = await fetch(
+        `/api/history?hours=${Math.max(selectedHours, 24)}&fields=${HISTORY_FIELDS}`, {cache: 'no-store'});
       if (!response.ok) throw new Error('History unavailable');
       historyRows = await response.json();
+      // The 24-hour fetch already covers today, so today's tiles reuse it
+      // rather than pulling the same payload a second time.
+      todayRows = historyRows;
+      updateDailySummary();
     }
     potentialRows = seriesVisible.potential && potentialAvailable() ? await fetchPotential() : [];
     drawChart();
@@ -1407,16 +1424,28 @@ async function refreshBattery() {
   if (latestStatusSample && Object.keys(latestStatusSample).length) updateEnergyInsights(latestStatusSample);
 }
 
+// Only needed on the multi-day ranges, where refreshHistory fetches daily
+// averages instead and so has nothing today's tiles can reuse.
 async function refreshToday() {
   try {
-    const response = await fetch('/api/history?hours=24', {cache: 'no-store'});
-    if (!response.ok) throw new Error('History unavailable');
-    todayRows = await response.json();
+    const response = await fetch(`/api/history?hours=1&fields=${SPARKLINE_FIELDS}`, {cache: 'no-store'});
+    if (response.ok) sparklineRows = await response.json();
   } catch (_) {
-    todayRows = [];
+    sparklineRows = [];
   }
-  updateDailySummary();
   updateSparklines();
+  // On the multi-day ranges refreshHistory fetches daily averages, so today's
+  // tiles have nothing to reuse and need their own day of readings.
+  if (selectedHours > 24 || !historyRows.length) {
+    try {
+      const response = await fetch(`/api/history?hours=24&fields=${HISTORY_FIELDS}`, {cache: 'no-store'});
+      if (!response.ok) throw new Error('History unavailable');
+      todayRows = await response.json();
+    } catch (_) {
+      todayRows = [];
+    }
+    updateDailySummary();
+  }
 }
 
 async function refreshPeriodTotals() {

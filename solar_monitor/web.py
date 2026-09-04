@@ -230,8 +230,16 @@ def create_app(
         max_points = _bounded_int(
             "points", int(settings.get("history_max_points", "1500")), 250, 5000
         )
-        rows = database.history(since.isoformat(), max_points=max_points)
-        response = jsonify([public_sample(sample) for sample in rows])
+        rows = [public_sample(sample) for sample in database.history(since.isoformat(), max_points=max_points)]
+        # A caller may ask for only the columns it draws. The full row carries
+        # 29 fields; a chart reads five of them, and at 1,400 rows the other
+        # 24 are three quarters of a megabyte the client parses and discards.
+        wanted = (request.args.get("fields") or "").strip()
+        if wanted:
+            keep = {name.strip() for name in wanted.split(",") if name.strip()}
+            keep.add("captured_at")
+            rows = [{key: row[key] for key in keep if key in row} for row in rows]
+        response = jsonify(rows)
         response.headers["X-History-Points"] = str(len(rows))
         return response
 
