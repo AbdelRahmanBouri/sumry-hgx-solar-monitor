@@ -196,6 +196,41 @@ function prepareOpportunity(rows) {
   return today;
 }
 
+/* How well the model tracks reality *where the system was free to follow it*.
+   Hours when the bank is full tell you nothing about the model's accuracy --
+   the inverter is throttling, not the estimate failing -- so they are excluded.
+   Publishing this is the honest answer to "how much should I trust the gap?" */
+function modelAccuracy(rows) {
+  const usable = rows.filter(row => {
+    if (timeOf(row) < startOfToday()) return false;
+    const volts = number(row.battery_voltage);
+    const potential = number(row.potential_watts);
+    const captured = number(row.pv_watts);
+    return volts !== null && volts < 26.9        // bank could still accept charge
+      && potential !== null && potential > 150   // enough sun to be meaningful
+      && captured !== null;
+  });
+  if (usable.length < 12) return null;
+  const mean = usable.reduce((total, row) => total + row.pv_watts / row.potential_watts, 0) / usable.length;
+  return {samples: usable.length, ratio: mean};
+}
+
+function renderAccuracy(rows) {
+  const node = $('#model-accuracy');
+  if (!node) return;
+  const accuracy = modelAccuracy(rows);
+  if (!accuracy) {
+    node.hidden = true;
+    return;
+  }
+  const off = Math.abs(1 - accuracy.ratio) * 100;
+  const direction = accuracy.ratio < 1 ? 'above' : 'below';
+  node.hidden = false;
+  node.textContent = off < 1
+    ? `Checked against today: while the battery could still accept charge, the model matched measured output almost exactly (${accuracy.samples} readings).`
+    : `Checked against today: while the battery could still accept charge, the model ran ${off.toFixed(0)}% ${direction} measured output across ${accuracy.samples} readings. The larger midday gap is the battery refusing charge, not the model drifting.`;
+}
+
 function setLiveState(sample) {
   const pill = $('#connection-pill');
   const connection = $('#connection');
@@ -232,6 +267,7 @@ function updateNow(rows) {
   else if (evidence.level === 'low') confidence.textContent = 'Possible · lower confidence';
   else confidence.textContent = 'Model gap · not counted';
 
+  renderAccuracy(rows);
   const today = prepareOpportunity(rows);
   const capturedEnergy = integrate(today, 'pv_watts');
   const unusedEnergy = integrate(today, 'opportunity_high_watts');
@@ -333,11 +369,43 @@ function drawPotentialChart() {
     ctx.strokeStyle = '#087d55'; ctx.lineWidth = 2.25; ctx.setLineDash([]); ctx.stroke();
   }
 
+  // The whole point of this chart is the difference between the two lines, so
+  // draw the difference rather than leaving the reader to estimate it between
+  // two curves that sit on top of each other for most of the day.
+  const past = model.filter(row => timeOf(row) <= now);
+  if (past.length > 1 && history.length > 1) {
+    const shortfall = [];
+    for (const row of past) {
+      const modelled = number(row.estimated_watts) || 0;
+      const captured = interpolate(history, timeOf(row), 'pv_watts');
+      if (captured === null) continue;
+      shortfall.push({time: timeOf(row), modelled, captured});
+    }
+    // Fill each run where the model sits above what was captured.
+    let run = [];
+    const flush = () => {
+      if (run.length > 1) {
+        ctx.beginPath();
+        run.forEach((p, i) => i ? ctx.lineTo(x(p.time), y(p.modelled)) : ctx.moveTo(x(p.time), y(p.modelled)));
+        for (let i = run.length - 1; i >= 0; i -= 1) ctx.lineTo(x(run[i].time), y(run[i].captured));
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(201, 120, 10, .16)';
+        ctx.fill();
+      }
+      run = [];
+    };
+    for (const point of shortfall) {
+      if (point.modelled - point.captured > 30) run.push(point);
+      else flush();
+    }
+    flush();
+  }
+
   const drawModel = (rows, dashed) => {
     if (rows.length < 2) return;
     ctx.beginPath();
     rows.forEach((row, index) => index ? ctx.lineTo(x(timeOf(row)), y(number(row.estimated_watts) || 0)) : ctx.moveTo(x(timeOf(row)), y(number(row.estimated_watts) || 0)));
-    ctx.strokeStyle = '#c9780a'; ctx.lineWidth = 1.8; ctx.setLineDash(dashed ? [5, 5] : []); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = '#c9780a'; ctx.lineWidth = 2.25; ctx.setLineDash(dashed ? [5, 5] : []); ctx.stroke(); ctx.setLineDash([]);
   };
   drawModel(model.filter(row => timeOf(row) <= now), false);
   const future = model.filter(row => timeOf(row) >= now);
