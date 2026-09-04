@@ -44,6 +44,33 @@ def exchange(
     settle_seconds: float = 0.15,
 ) -> Exchange:
     protocol.assert_read_only_frame(query.frame)
+    return _transact(port, baudrate, timeout, query.name, query.frame, settle_seconds)
+
+
+def write_exchange(
+    port: str,
+    baudrate: int,
+    timeout: float,
+    protocol,
+    frame: bytes,
+    template: bytes,
+    settle_seconds: float = 0.15,
+) -> Exchange:
+    """Send a configuration write. The protocol's write gate runs first, so
+    a frame that is not a permitted change of the inverter's own last reply
+    never reaches the port."""
+    protocol.assert_write_frame(frame, template)
+    return _transact(port, baudrate, timeout, protocol.write_query_name, frame, settle_seconds)
+
+
+def _transact(
+    port: str,
+    baudrate: int,
+    timeout: float,
+    name: str,
+    frame: bytes,
+    settle_seconds: float,
+) -> Exchange:
     started = time.monotonic()
     timestamp = datetime.now(timezone.utc).isoformat()
     try:
@@ -61,7 +88,7 @@ def exchange(
         ) as connection:
             connection.reset_input_buffer()
             time.sleep(settle_seconds)
-            connection.write(query.frame)
+            connection.write(frame)
             connection.flush()
             response = connection.read(512)
             # Collect bytes that arrive in short trailing bursts.
@@ -74,11 +101,11 @@ def exchange(
                 else:
                     time.sleep(0.01)
             return Exchange(
-                timestamp, port, baudrate, query.name, query.frame, response,
+                timestamp, port, baudrate, name, frame, response,
                 round((time.monotonic() - started) * 1000),
             )
     except (serial.SerialException, OSError) as exc:
         return Exchange(
-            timestamp, port, baudrate, query.name, query.frame, b"",
+            timestamp, port, baudrate, name, frame, b"",
             round((time.monotonic() - started) * 1000), str(exc),
         )

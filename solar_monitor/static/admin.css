@@ -65,6 +65,14 @@ details summary{color:var(--green);font-size:11px;font-weight:700;cursor:pointer
 .divider{display:flex;align-items:center;gap:10px;margin:17px 0;color:var(--quiet);font-size:10px}
 .divider:before,.divider:after{content:"";height:1px;background:var(--line);flex:1}
 .pin-form input{font-size:22px;letter-spacing:.25em;text-align:center}
+.inverter-settings{max-width:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px}
+.inverter-settings .actions{grid-column:1/-1;margin:4px 0 0}
+.inverter-settings label>div{display:grid;gap:4px}
+.inverter-settings small{color:var(--quiet);font-size:10px;font-weight:600}
+.diff-changed{color:var(--green);font-weight:750}
+.verify-ok{color:var(--green);font-weight:750}
+.verify-bad{color:var(--red);font-weight:750}
+@media(max-width:760px){.inverter-settings{grid-template-columns:1fr}}
 
 .auth-page{min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 50% 15%,rgba(8,125,85,.09),transparent 24rem),var(--bg)}
 .auth-card{width:min(410px,100%);padding:25px;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:0 18px 50px rgba(25,56,44,.1)}

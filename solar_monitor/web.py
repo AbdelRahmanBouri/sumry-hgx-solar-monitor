@@ -705,6 +705,94 @@ def create_app(
         audit(f"serial.{mode}", f"{port} @ {baudrate}")
         return jsonify(record), (400 if record.get("error") else 200)
 
+    # --- Inverter settings ---------------------------------------------------
+    # The one place the monitor is not read-only. Gated by an admin-controlled
+    # switch that defaults to off, and every write goes through the protocol's
+    # own gate (only the inverter's last reply, only whitelisted fields, only
+    # in range) before it reaches the port. Nothing is reported as applied on
+    # the strength of having been sent: the collector reads the block back
+    # and the response says whether the inverter now holds each value.
+
+    def inverter_writes_enabled() -> bool:
+        return database.get_settings().get("writes_enabled") == "true"
+
+    def writable_fields() -> dict:
+        protocol = collector.protocol if collector is not None else create_protocol(
+            database.get_settings().get("protocol", "sumry_8851_probe")
+        )
+        return {
+            name: {
+                "kind": field.kind, "scale": field.scale, "low": field.low,
+                "high": field.high, "choices": list(field.choices),
+            }
+            for name, field in getattr(protocol, "writable_fields", {}).items()
+        }
+
+    @app.get("/api/admin/inverter")
+    @login_required
+    def admin_inverter():
+        return jsonify({
+            "writes_enabled": inverter_writes_enabled(),
+            "collector_available": collector is not None,
+            "current": database.latest_inverter_config(),
+            "fields": writable_fields(),
+            "snapshots": database.inverter_config_snapshots(30),
+        })
+
+    @app.post("/api/admin/inverter/writes")
+    @login_required
+    def admin_inverter_writes():
+        payload = request.get_json(silent=True) or {}
+        enabled = bool(payload.get("enabled"))
+        database.set_settings({"writes_enabled": "true" if enabled else "false"}, now())
+        audit("inverter.writes", "enabled" if enabled else "disabled")
+        return jsonify({"writes_enabled": enabled})
+
+    def perform_inverter_write(changes: dict, origin: str):
+        if collector is None:
+            return jsonify({"error": "The collector is disabled on this instance"}), 503
+        if not inverter_writes_enabled():
+            return jsonify({"error": "Inverter writes are switched off"}), 403
+        fields = writable_fields()
+        unknown = sorted(set(changes) - set(fields))
+        if unknown:
+            return jsonify({"error": f"Not writable: {', '.join(unknown)}"}), 400
+        if not changes:
+            return jsonify({"error": "No settings to change"}), 400
+        try:
+            result = collector.apply_config(changes)
+        except (ValueError, PermissionError) as exc:
+            audit("inverter.write_failed", json.dumps({"origin": origin, "changes": changes, "error": str(exc)}, sort_keys=True))
+            return jsonify({"error": str(exc)}), 400
+        audit("inverter.write", json.dumps({
+            "origin": origin, "changes": changes,
+            "verified": result["verified"], "mismatches": result["mismatches"],
+        }, sort_keys=True, default=str))
+        return jsonify(result)
+
+    @app.post("/api/admin/inverter/settings")
+    @login_required
+    def admin_inverter_write():
+        payload = request.get_json(silent=True) or {}
+        changes = payload.get("changes")
+        if not isinstance(changes, dict):
+            return jsonify({"error": "Expected a 'changes' object"}), 400
+        return perform_inverter_write(changes, "form")
+
+    @app.post("/api/admin/inverter/restore")
+    @login_required
+    def admin_inverter_restore():
+        payload = request.get_json(silent=True) or {}
+        try:
+            snapshot = database.inverter_config_snapshot(int(payload.get("snapshot_id")))
+        except (TypeError, ValueError):
+            snapshot = None
+        if snapshot is None:
+            return jsonify({"error": "No such configuration snapshot"}), 404
+        fields = writable_fields()
+        changes = {key: value for key, value in snapshot["settings"].items() if key in fields}
+        return perform_inverter_write(changes, f"restore snapshot {snapshot['id']} ({snapshot['captured_at']})")
+
     @app.get("/api/admin/export/frames.jsonl")
     @login_required
     def export_frames():

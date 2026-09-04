@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import struct
+from typing import Any
 
 from .base import DecodeResult, Query, ReadOnlyProtocol
 
@@ -16,6 +18,94 @@ from .base import DecodeResult, Query, ReadOnlyProtocol
 _HEADER = bytes.fromhex("8851")
 _FRAME_LENGTH = 158
 _CONFIG_FRAME_LENGTH = 104
+_READ_COMMAND = bytes.fromhex("0003")
+_WRITE_COMMAND = bytes.fromhex("0010")
+_CONFIG_ADDRESS = bytes.fromhex("0200")
+_CONFIG_DATA_LENGTH = 94
+
+# --- Writing settings ---------------------------------------------------------
+# The inverter has no per-register write. A write is the whole 94-byte
+# configuration block sent back with command 0x0010 in place of 0x0003 --
+# the same layout it replies with, re-checksummed. That is the safety
+# property this module enforces: a write frame is built only from a frame
+# the inverter itself just sent, and may differ from it only in the fields
+# listed below, within their ranges. Everything else goes back byte for byte.
+#
+# Ranges are the 24 V limits of the inverter's own menu (confirmed by the
+# community 8851 integration); values it would refuse are refused here first.
+
+
+@dataclass(frozen=True)
+class WritableField:
+    kind: str                      # "u16" scaled integer, or "bits" in a flag byte
+    offset: int                    # frame byte offset (header included)
+    scale: float = 1.0
+    low: float = 0.0
+    high: float = 0.0
+    shift: int = 0                 # bit fields only
+    mask: int = 0x01               # bit fields only, applied after shifting
+    choices: tuple[str, ...] = ()  # bit fields with named values
+
+
+WRITABLE_FIELDS: dict[str, WritableField] = {
+    "battery_type": WritableField(
+        "bits", 8, shift=3, mask=0x03,
+        choices=("AGM", "Flooded", "User-defined", "Lithium/BMS library"),
+    ),
+    "bulk_charge_voltage_v": WritableField("u16", 48, 100, 24.0, 29.2),
+    "float_charge_voltage_v": WritableField("u16", 52, 100, 24.0, 29.2),
+    "low_battery_cutoff_v": WritableField("u16", 38, 100, 20.0, 24.0),
+    "charge_cutoff_current_a": WritableField("u16", 60, 10, 2.0, 20.0),
+    "maximum_charge_current_a": WritableField("u16", 58, 10, 10.0, 130.0),
+    "overload_auto_restart": WritableField("bits", 11, shift=1, choices=("false", "true")),
+    "overtemperature_auto_restart": WritableField("bits", 11, shift=6, choices=("false", "true")),
+    "buzzer": WritableField("bits", 10, shift=1, choices=("false", "true")),
+    "warning_buzzer": WritableField("bits", 10, shift=0, choices=("false", "true")),
+    "equalization_enabled": WritableField("u16", 82, 1, 0, 1),
+    "equalization_voltage_v": WritableField("u16", 90, 100, 25.0, 29.5),
+    "equalization_time_min": WritableField("u16", 92, 1, 5, 900),
+    "equalization_timeout_min": WritableField("u16", 94, 1, 5, 900),
+    "equalization_interval_days": WritableField("u16", 96, 1, 0, 90),
+}
+
+
+def _writable_masks() -> dict[int, int]:
+    """Which bits of which bytes a write is allowed to change."""
+    masks: dict[int, int] = {}
+    for field in WRITABLE_FIELDS.values():
+        if field.kind == "u16":
+            masks[field.offset] = 0xFF
+            masks[field.offset + 1] = 0xFF
+        else:
+            masks[field.offset] = masks.get(field.offset, 0) | (field.mask << field.shift)
+    return masks
+
+
+_WRITABLE_MASKS = _writable_masks()
+
+
+_TRUTHY = {"true", "on", "1", "yes"}
+_FALSY = {"false", "off", "0", "no"}
+
+
+def _encode(field: WritableField, value: Any) -> int:
+    if field.kind == "bits":
+        if isinstance(value, bool):
+            value = "true" if value else "false"
+        if isinstance(value, str) and value in field.choices:
+            return field.choices.index(value)
+        raise ValueError(f"must be one of {', '.join(field.choices)}")
+    if isinstance(value, bool):
+        value = int(value)
+    elif isinstance(value, str) and value.strip().lower() in _TRUTHY | _FALSY:
+        value = int(value.strip().lower() in _TRUTHY)
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("must be a number") from None
+    if not field.low <= number <= field.high:
+        raise ValueError(f"must be between {field.low:g} and {field.high:g}")
+    return int(round(number * field.scale))
 
 
 def _crc16_modbus(data: bytes) -> int:
@@ -55,6 +145,9 @@ class Sumry8851ProbeProtocol(ReadOnlyProtocol):
         ),
     )
 
+    writable_fields = WRITABLE_FIELDS
+    write_query_name = "write_settings_0200"
+
     def decode(self, frame: bytes) -> DecodeResult:
         if not frame:
             return DecodeResult({}, False, "No reply bytes to decode")
@@ -63,6 +156,62 @@ class Sumry8851ProbeProtocol(ReadOnlyProtocol):
         if frame[4:6] == bytes.fromhex("0200"):
             return self._decode_config(frame)
         return self._decode_state(frame)
+
+    def build_config_write(self, reply: bytes, changes: dict[str, Any]) -> bytes:
+        """The inverter's own configuration reply with `changes` applied and
+        the command switched to write. Raises ValueError for a reply that is
+        not a valid configuration frame, an unknown field, or a value the
+        inverter's menu would not accept."""
+        invalid = self._validate(reply, _CONFIG_FRAME_LENGTH, "configuration")
+        if invalid:
+            raise ValueError(f"Cannot write from this reply: {invalid.note}")
+        if reply[2:4] != _READ_COMMAND or reply[4:6] != _CONFIG_ADDRESS:
+            raise ValueError("Cannot write from this reply: not a configuration read")
+        if not changes:
+            raise ValueError("No settings to change")
+        frame = bytearray(reply)
+        frame[2:4] = _WRITE_COMMAND
+        problems = []
+        for name, value in changes.items():
+            field = WRITABLE_FIELDS.get(name)
+            if field is None:
+                problems.append(f"{name}: not a writable setting")
+                continue
+            try:
+                encoded = _encode(field, value)
+            except ValueError as exc:
+                problems.append(f"{name}: {exc}")
+                continue
+            if field.kind == "u16":
+                struct.pack_into("<H", frame, field.offset, encoded)
+            else:
+                cleared = frame[field.offset] & ~(field.mask << field.shift)
+                frame[field.offset] = cleared | ((encoded & field.mask) << field.shift)
+        if problems:
+            raise ValueError("; ".join(problems))
+        struct.pack_into("<H", frame, len(frame) - 2, _crc16_modbus(bytes(frame[:-2])))
+        built = bytes(frame)
+        self.assert_write_frame(built, reply)
+        return built
+
+    def assert_write_frame(self, frame: bytes, template: bytes) -> None:
+        """The gate every outbound write passes: a well-formed configuration
+        write that differs from the inverter's own reply only in writable
+        fields. Anything else is refused before it reaches the port."""
+        if len(frame) != _CONFIG_FRAME_LENGTH or len(template) != _CONFIG_FRAME_LENGTH:
+            raise PermissionError("Outbound write rejected: wrong frame length")
+        if frame[:2] != _HEADER or frame[2:4] != _WRITE_COMMAND or frame[4:6] != _CONFIG_ADDRESS:
+            raise PermissionError("Outbound write rejected: not a configuration write")
+        if _u16(frame, 6) != _CONFIG_DATA_LENGTH:
+            raise PermissionError("Outbound write rejected: wrong data length")
+        if int.from_bytes(frame[-2:], "little") != _crc16_modbus(frame[:-2]):
+            raise PermissionError("Outbound write rejected: checksum does not match")
+        for index in range(8, _CONFIG_FRAME_LENGTH - 2):
+            allowed = _WRITABLE_MASKS.get(index, 0)
+            if (frame[index] ^ template[index]) & ~allowed & 0xFF:
+                raise PermissionError(
+                    f"Outbound write rejected: byte {index} is not a writable setting"
+                )
 
     def _validate(self, frame: bytes, expected_length: int, kind: str) -> DecodeResult | None:
         if len(frame) != expected_length:

@@ -8,7 +8,7 @@
   <link rel="manifest" href="/static/solar-dashboard.webmanifest">
   <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="{{ url_for('static', filename='theme.css', v=1) }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css', v=3) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css', v=4) }}">
 </head>
 <body>
   <header class="admin-header">
@@ -26,6 +26,7 @@
       <button data-view="overview" class="active">Overview</button>
       <button data-view="pi">Raspberry Pi</button>
       <button data-view="serial">Serial</button>
+      <button data-view="inverter">Inverter</button>
       <button data-view="data">Data</button>
       <button data-view="settings">Settings</button>
       <button data-view="estimator">Solar estimate</button>
@@ -47,7 +48,7 @@
         </div>
         <article class="panel">
           <h2>Inverter writes</h2>
-          <p><span class="badge">Inverter writes: staged</span> Write controls remain separate while the HGX command set is being confirmed.</p>
+          <p><span class="badge" id="writes-badge">Inverter writes: off</span> Charger and protection settings can be written from the Inverter section once writes are switched on there; every write is read back and audited.</p>
         </article>
       </section>
 
@@ -102,6 +103,50 @@
         <article class="panel"><p>Passive listening transmits nothing. Candidate probe sends only the protocol driver's allow-listed status query.</p><div class="actions"><button id="listen">Listen only</button><button id="probe" class="warning">Send status probe</button></div><pre id="serial-output">No diagnostic run in this session.</pre></article>
       </section>
 
+      <section id="inverter" class="view">
+        <div class="view-heading"><span class="eyebrow">INVERTER</span><h2>Charger &amp; protection settings</h2></div>
+
+        <article class="panel">
+          <div class="panel-head"><div><h2>Inverter writes</h2><p class="muted" id="inverter-write-state">Checking…</p></div><label class="visibility-toggle"><input type="checkbox" id="inverter-writes-toggle"><i></i></label></div>
+          <p>A write sends the inverter's own configuration block back with only the fields below changed, then reads it again and shows what the inverter actually holds. Nothing is reported as applied on the strength of having been sent, and every earlier snapshot can be written back.</p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><div><h2>Battery charging &amp; behaviour</h2><p class="muted" id="inverter-current-stamp">Waiting for a configuration snapshot…</p></div><div><button type="button" class="secondary" id="inverter-preset-odyssey">Odyssey AGM preset</button><button type="button" class="secondary" id="inverter-reload">Reload</button></div></div>
+          <form id="inverter-form" class="settings inverter-settings">
+            <label>Battery type<select name="battery_type"><option>AGM</option><option>Flooded</option><option>User-defined</option><option>Lithium/BMS library</option></select></label>
+            <label>Maximum charge current<div><input name="maximum_charge_current_a" type="number" step="1" min="10" max="130" inputmode="decimal"><small>A · PV and grid combined</small></div></label>
+            <label>Bulk / absorption voltage<div><input name="bulk_charge_voltage_v" type="number" step="0.1" min="24" max="29.2" inputmode="decimal"><small>V · only honoured with the User-defined type</small></div></label>
+            <label>Float voltage<div><input name="float_charge_voltage_v" type="number" step="0.1" min="24" max="29.2" inputmode="decimal"><small>V · only honoured with the User-defined type</small></div></label>
+            <label>Charge cut-off current<div><input name="charge_cutoff_current_a" type="number" step="0.1" min="2" max="20" inputmode="decimal"><small>A · absorption ends when charge current falls below this</small></div></label>
+            <label>Low-battery cut-off<div><input name="low_battery_cutoff_v" type="number" step="0.1" min="20" max="24" inputmode="decimal"><small>V · inverter disconnects the battery here</small></div></label>
+            <label>Overload auto-restart<select name="overload_auto_restart"><option value="false">Off</option><option value="true">On</option></select></label>
+            <label>Over-temperature auto-restart<select name="overtemperature_auto_restart"><option value="false">Off</option><option value="true">On</option></select></label>
+            <label>Button buzzer<select name="buzzer"><option value="false">Off</option><option value="true">On</option></select></label>
+            <label>Warning buzzer<select name="warning_buzzer"><option value="false">Off</option><option value="true">On</option></select></label>
+            <label>Boost (equalisation) program<select name="equalization_enabled"><option value="0">Off</option><option value="1">On</option></select></label>
+            <label>Boost voltage<div><input name="equalization_voltage_v" type="number" step="0.1" min="25" max="29.5" inputmode="decimal"><small>V · the menu caps this at 29.5</small></div></label>
+            <label>Boost time<div><input name="equalization_time_min" type="number" step="1" min="5" max="900" inputmode="numeric"><small>minutes held at boost voltage</small></div></label>
+            <label>Boost timeout<div><input name="equalization_timeout_min" type="number" step="1" min="5" max="900" inputmode="numeric"><small>minutes before giving up</small></div></label>
+            <label>Boost interval<div><input name="equalization_interval_days" type="number" step="1" min="0" max="90" inputmode="numeric"><small>days between runs · 0 = only when started by hand</small></div></label>
+            <div class="actions"><button type="submit">Review changes</button></div>
+          </form>
+          <div id="inverter-review" hidden>
+            <div class="table-wrap"><table><thead><tr><th>Setting</th><th>Inverter now</th><th>Write</th></tr></thead><tbody id="inverter-diff"></tbody></table></div>
+            <p class="muted" id="inverter-review-note"></p>
+            <div class="actions"><button type="button" class="warning" id="inverter-write">Write to inverter</button><button type="button" class="secondary" id="inverter-cancel">Cancel</button></div>
+          </div>
+          <p id="inverter-result" class="muted"></p>
+          <div class="table-wrap" id="inverter-verify-wrap" hidden><table><thead><tr><th>Setting</th><th>Requested</th><th>Inverter reports</th><th></th></tr></thead><tbody id="inverter-verify"></tbody></table></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>Previous configurations</h2></div>
+          <p>Each snapshot is what the inverter reported at that moment. Restoring writes its charging, protection and boost values back.</p>
+          <div class="table-wrap"><table><thead><tr><th>Captured</th><th>Type</th><th>Bulk</th><th>Float</th><th>Cut-off</th><th>Low V</th><th>Boost</th><th></th></tr></thead><tbody id="inverter-snapshots"><tr><td colspan="8">Loading…</td></tr></tbody></table></div>
+        </article>
+      </section>
+
       <section id="data" class="view">
         <div class="view-heading"><span class="eyebrow">INVERTER</span><h2>Captured data</h2></div>
         <article class="panel"><div class="panel-head"><div><h2>Storage policy</h2><p class="muted" id="storage-counts">Loading record counts…</p></div><button id="cleanup-data" class="secondary" type="button">Clean now</button></div><p>Routine raw captures are kept briefly; errors and unusual replies are kept longer. Decoded history is retained in full, while large chart responses are automatically slimmed for speed.</p><p id="cleanup-result" class="muted"></p></article>
@@ -147,6 +192,6 @@
       </section>
     </div>
   </main>
-  <script src="{{ url_for('static', filename='admin.js', v=4) }}"></script>
+  <script src="{{ url_for('static', filename='admin.js', v=5) }}"></script>
 </body>
 </html>

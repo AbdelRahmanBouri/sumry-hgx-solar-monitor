@@ -1,6 +1,6 @@
 # SUMRY HGX Solar Monitor
 
-A lightweight, local-first Raspberry Pi monitor for a SUMRY HGX 4 kW 24 V/120 V inverter. It is intentionally **read-only**. It captures raw serial replies and decodes the validated status frame into dashboard metrics.
+A lightweight, local-first Raspberry Pi monitor for a SUMRY HGX 4 kW 24 V/120 V inverter. It captures raw serial replies and decodes the validated status frame into dashboard metrics. Polling is **read-only**; the one write path — charger and protection settings from the admin portal — is off by default, sends back the inverter's own configuration block with only whitelisted fields changed, and reports a change as applied only after reading it back.
 
 ## Safety and connection notes
 

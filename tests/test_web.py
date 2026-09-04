@@ -156,6 +156,67 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(collector.poll_seconds, 10)
 
+    def _admin_client(self, collector=None):
+        client = create_app(self.db, collector=collector).test_client()
+        token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
+        client.post(
+            f"/admin/setup?token={token}",
+            data={"token": token, "username": "admin", "password": "correct-horse-1",
+                  "confirmation": "correct-horse-1"},
+        )
+        return client
+
+    def test_inverter_writes_are_off_by_default_and_gated(self):
+        class FakeCollector:
+            from solar_monitor.protocols.sumry_8851 import Sumry8851ProbeProtocol
+            protocol = Sumry8851ProbeProtocol()
+            calls = []
+
+            def state(self):
+                return {"running": True}
+
+            def set_poll_seconds(self, seconds):
+                pass
+
+            def apply_config(self, changes, settle_seconds=0.6):
+                self.calls.append(changes)
+                return {"requested": changes, "before": {}, "after": dict(changes),
+                        "verified": True, "mismatches": {}, "written_at": "t", "write_reply_hex": ""}
+
+        collector = FakeCollector()
+        client = self._admin_client(collector)
+        overview = client.get("/api/admin/inverter").json
+        self.assertFalse(overview["writes_enabled"])
+        self.assertIn("bulk_charge_voltage_v", overview["fields"])
+        self.assertEqual(overview["fields"]["bulk_charge_voltage_v"]["high"], 29.2)
+
+        refused = client.post("/api/admin/inverter/settings", json={"changes": {"buzzer": False}})
+        self.assertEqual(refused.status_code, 403)
+        self.assertEqual(collector.calls, [])
+
+        client.post("/api/admin/inverter/writes", json={"enabled": True})
+        self.assertTrue(client.get("/api/admin/inverter").json["writes_enabled"])
+        bad = client.post("/api/admin/inverter/settings", json={"changes": {"output_voltage_v": 110}})
+        self.assertEqual(bad.status_code, 400)
+        self.assertEqual(collector.calls, [])
+
+        ok = client.post("/api/admin/inverter/settings", json={"changes": {"bulk_charge_voltage_v": 29.2}})
+        self.assertEqual(ok.status_code, 200)
+        self.assertTrue(ok.json["verified"])
+        self.assertEqual(collector.calls, [{"bulk_charge_voltage_v": 29.2}])
+        actions = [row["action"] for row in self.db.recent_audit(10)]
+        self.assertIn("inverter.writes", actions)
+        self.assertIn("inverter.write", actions)
+
+        missing = client.post("/api/admin/inverter/restore", json={"snapshot_id": 999})
+        self.assertEqual(missing.status_code, 404)
+
+    def test_inverter_write_needs_a_collector(self):
+        client = self._admin_client()
+        client.post("/api/admin/inverter/writes", json={"enabled": True})
+        response = client.post("/api/admin/inverter/settings", json={"changes": {"buzzer": False}})
+        self.assertEqual(response.status_code, 503)
+
     def test_public_system_endpoint_is_available_without_login(self):
         payload = self.client.get("/api/system").json
         self.assertIn("uptime_seconds", payload)

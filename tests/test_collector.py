@@ -1,7 +1,12 @@
 import unittest
+from unittest.mock import patch
 
+from solar_monitor import collector as collector_module
 from solar_monitor.collector import Collector, start_collector
 from solar_monitor.config import SerialConfig
+from solar_monitor.serial_io import Exchange
+
+from tests.test_safety import REAL_CONFIG_REPLY, as_reply
 
 
 class FakeDatabase:
@@ -81,6 +86,74 @@ class CollectorResilienceTests(unittest.TestCase):
         state = Collector(self.config, self.database).state()
         self.assertFalse(state["running"])
         self.assertIsNone(state["started_at"])
+
+    def test_apply_config_reads_writes_and_verifies_by_reading_back(self):
+        collector = Collector(self.config, self.database)
+        collector._port = lambda: "/dev/fake"
+        sent = []
+        replies = {"count": 0}
+
+        def fake_exchange(port, baudrate, timeout, protocol, query, settle_seconds=0.15):
+            replies["count"] += 1
+            # First read: the inverter as it is. Second: as it is after the write.
+            response = REAL_CONFIG_REPLY if replies["count"] == 1 else as_reply(sent[0])
+            return Exchange("t", port, baudrate, query.name, query.frame, response, 5)
+
+        def fake_write(port, baudrate, timeout, protocol, frame, template, settle_seconds=0.15):
+            protocol.assert_write_frame(frame, template)
+            sent.append(frame)
+            return Exchange("t-write", port, baudrate, protocol.write_query_name, frame, b"", 5)
+
+        with patch.object(collector_module, "exchange", fake_exchange), \
+             patch.object(collector_module, "write_exchange", fake_write):
+            result = collector.apply_config(
+                {"bulk_charge_voltage_v": 29.2, "battery_type": "User-defined", "overload_auto_restart": True},
+                settle_seconds=0,
+            )
+
+        self.assertEqual(len(sent), 1)
+        self.assertTrue(result["verified"], result["mismatches"])
+        self.assertEqual(result["before"]["bulk_charge_voltage_v"], 28.2)
+        self.assertEqual(result["after"]["bulk_charge_voltage_v"], 29.2)
+        self.assertEqual(result["after"]["battery_type"], "User-defined")
+        self.assertTrue(result["after"]["overload_auto_restart"])
+        # Both reads and the write are on record, and the read-back is a snapshot.
+        self.assertEqual([f["query_name"] for f in self.database.raw_frames],
+                         ["current_settings_0200", "write_settings_0200", "current_settings_0200"])
+        self.assertEqual(len(self.database.configs), 2)
+
+    def test_apply_config_is_not_verified_when_the_inverter_ignores_it(self):
+        collector = Collector(self.config, self.database)
+        collector._port = lambda: "/dev/fake"
+
+        def stubborn(port, baudrate, timeout, protocol, query, settle_seconds=0.15):
+            return Exchange("t", port, baudrate, query.name, query.frame, REAL_CONFIG_REPLY, 5)
+
+        def fake_write(port, baudrate, timeout, protocol, frame, template, settle_seconds=0.15):
+            return Exchange("t-write", port, baudrate, protocol.write_query_name, frame, b"", 5)
+
+        with patch.object(collector_module, "exchange", stubborn), \
+             patch.object(collector_module, "write_exchange", fake_write):
+            result = collector.apply_config({"float_charge_voltage_v": 27.2}, settle_seconds=0)
+        self.assertFalse(result["verified"])
+        self.assertEqual(result["mismatches"]["float_charge_voltage_v"]["inverter"], 27.0)
+
+    def test_apply_config_refuses_without_a_readable_configuration(self):
+        collector = Collector(self.config, self.database)
+        collector._port = lambda: None
+        with self.assertRaises(ValueError):
+            collector.apply_config({"buzzer": False})
+        collector._port = lambda: "/dev/fake"
+
+        def broken(port, baudrate, timeout, protocol, query, settle_seconds=0.15):
+            return Exchange("t", port, baudrate, query.name, query.frame, b"", 5, "port vanished")
+
+        writes = []
+        with patch.object(collector_module, "exchange", broken), \
+             patch.object(collector_module, "write_exchange", lambda *a, **k: writes.append(a)):
+            with self.assertRaises(ValueError):
+                collector.apply_config({"buzzer": False}, settle_seconds=0)
+        self.assertEqual(writes, [], "nothing may be written without a valid template")
 
     def test_poll_interval_can_change_at_runtime(self):
         collector = Collector(self.config, self.database)

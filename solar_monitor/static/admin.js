@@ -5,7 +5,7 @@ const esc = value => String(value ?? '').replace(/[&<>'"]/g, c=>({'&':'&amp;','<
 const formatTimestamp = iso => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString(undefined, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit', second:'2-digit', timeZoneName:'short'}); };
 
 async function api(url, options={}) { const response=await fetch(url,{cache:'no-store',headers:{'Content-Type':'application/json'},...options}); const data=await response.json(); if(!response.ok) throw new Error(data.error||`HTTP ${response.status}`); return data; }
-document.querySelectorAll('nav button').forEach(button=>button.onclick=()=>{document.querySelectorAll('nav button,.view').forEach(x=>x.classList.remove('active'));button.classList.add('active');$(`#${button.dataset.view}`).classList.add('active');if(button.dataset.view==='data')loadFrames();if(button.dataset.view==='audit')loadAudit();if(button.dataset.view==='security')loadSecurity();});
+document.querySelectorAll('nav button').forEach(button=>button.onclick=()=>{document.querySelectorAll('nav button,.view').forEach(x=>x.classList.remove('active'));button.classList.add('active');$(`#${button.dataset.view}`).classList.add('active');if(button.dataset.view==='data')loadFrames();if(button.dataset.view==='audit')loadAudit();if(button.dataset.view==='security')loadSecurity();if(button.dataset.view==='inverter')loadInverter();});
 
 async function overview(){const data=await api('/api/admin/overview');$('#port-state').textContent=data.ports.length?data.ports.join(', '):'Not connected';$('#db-size').textContent=formatBytes(data.database_bytes);$('#disk-free').textContent=formatBytes(data.disk_free_bytes);$('#uptime').textContent=formatDuration(data.uptime_seconds);Object.entries(data.settings).forEach(([key,value])=>{const field=document.querySelector(`[name="${key}"]`);if(field)field.value=value;});renderStorageCounts(data.storage_counts);const system=data.system||{};$('#cpu-temp').textContent=system.cpu_temperature_c!=null?`${system.cpu_temperature_c.toFixed(1)}°C`:'—';$('#cpu-load').textContent=system.cpu_load_percent!=null?`${system.cpu_load_percent}%`:'—';$('#mem-used').textContent=system.memory?`${system.memory.used_mb} / ${system.memory.total_mb} MB`:'—';$('#service-state').textContent=system.service_active==null?'Unknown':(system.service_active?'Active':'Stopped');renderPiPanel(system);}
 
@@ -88,3 +88,191 @@ async function loadSecurity(){const data=await api('/api/admin/security');$('#pi
 $('#pin-form').onsubmit=async event=>{event.preventDefault();const form=new FormData(event.target),pin=form.get('pin');if(pin!==form.get('confirmation')){$('#pin-result').textContent='PINs do not match.';return;}try{await api('/api/admin/security',{method:'POST',body:JSON.stringify({action:'set',pin})});event.target.reset();$('#pin-result').textContent='PIN saved.';loadSecurity();}catch(error){$('#pin-result').textContent=error.message;}};
 $('#disable-pin').onclick=async()=>{try{await api('/api/admin/security',{method:'POST',body:JSON.stringify({action:'disable'})});$('#pin-result').textContent='PIN disabled.';loadSecurity();}catch(error){$('#pin-result').textContent=error.message;}};
 overview().catch(()=>location.href='/admin/login');
+
+// --- Inverter settings -------------------------------------------------------
+// The only place the monitor writes to the inverter. The form is filled from
+// the inverter's own latest reply; "Review" shows exactly which fields differ;
+// the write is confirmed only by what the inverter reports afterwards.
+const inverterState = {current: null, fields: {}, pending: null};
+const INVERTER_LABELS = {
+  battery_type: 'Battery type', maximum_charge_current_a: 'Maximum charge current',
+  bulk_charge_voltage_v: 'Bulk / absorption voltage', float_charge_voltage_v: 'Float voltage',
+  charge_cutoff_current_a: 'Charge cut-off current', low_battery_cutoff_v: 'Low-battery cut-off',
+  overload_auto_restart: 'Overload auto-restart', overtemperature_auto_restart: 'Over-temperature auto-restart',
+  buzzer: 'Button buzzer', warning_buzzer: 'Warning buzzer',
+  equalization_enabled: 'Boost program', equalization_voltage_v: 'Boost voltage',
+  equalization_time_min: 'Boost time', equalization_timeout_min: 'Boost timeout',
+  equalization_interval_days: 'Boost interval',
+};
+const INVERTER_UNITS = {
+  maximum_charge_current_a: ' A', bulk_charge_voltage_v: ' V', float_charge_voltage_v: ' V',
+  charge_cutoff_current_a: ' A', low_battery_cutoff_v: ' V', equalization_voltage_v: ' V',
+  equalization_time_min: ' min', equalization_timeout_min: ' min', equalization_interval_days: ' days',
+};
+
+function inverterDisplay(name, value) {
+  if (value === undefined || value === null) return '—';
+  if (typeof value === 'boolean') return value ? 'On' : 'Off';
+  if (name === 'equalization_enabled') return Number(value) ? 'On' : 'Off';
+  if (typeof value === 'number') return `${value}${INVERTER_UNITS[name] || ''}`;
+  return String(value);
+}
+
+// The form's own value for a field, typed the way the API compares it.
+function inverterFormValue(name) {
+  const field = $(`#inverter-form [name="${name}"]`);
+  if (!field || field.value === '') return undefined;
+  const spec = inverterState.fields[name];
+  if (spec?.kind === 'bits' && spec.choices.includes('true')) return field.value === 'true';
+  if (spec?.kind === 'bits') return field.value;
+  return Number(field.value);
+}
+
+function inverterSame(name, a, b) {
+  if (typeof a === 'boolean' || typeof b === 'boolean') return Boolean(a) === Boolean(b);
+  if (typeof a === 'number' || typeof b === 'number') return Math.abs(Number(a) - Number(b)) < 0.051;
+  return String(a) === String(b);
+}
+
+function fillInverterForm(settings) {
+  Object.keys(INVERTER_LABELS).forEach(name => {
+    const field = $(`#inverter-form [name="${name}"]`);
+    if (!field || settings[name] === undefined) return;
+    const value = settings[name];
+    if (typeof value === 'boolean') field.value = value ? (name === 'equalization_enabled' ? '1' : 'true') : (name === 'equalization_enabled' ? '0' : 'false');
+    else field.value = String(value);
+  });
+}
+
+function renderInverterSnapshots(snapshots) {
+  const body = $('#inverter-snapshots');
+  if (!snapshots.length) { body.innerHTML = '<tr><td colspan="8">No configuration snapshots yet.</td></tr>'; return; }
+  body.innerHTML = snapshots.map(snap => {
+    const s = snap.settings;
+    return `<tr><td>${formatTimestamp(snap.captured_at)}</td><td>${esc(s.battery_type)}</td><td>${esc(s.bulk_charge_voltage_v)} V</td><td>${esc(s.float_charge_voltage_v)} V</td><td>${esc(s.charge_cutoff_current_a)} A</td><td>${esc(s.low_battery_cutoff_v)} V</td><td>${s.equalization_enabled ? `${esc(s.equalization_voltage_v)} V` : 'Off'}</td><td><button type="button" class="secondary" data-restore="${snap.id}">Restore</button></td></tr>`;
+  }).join('');
+  body.querySelectorAll('[data-restore]').forEach(button => {
+    button.onclick = async () => {
+      if (!confirm('Write this snapshot\'s charging, protection and boost values back to the inverter?')) return;
+      await runInverterWrite('/api/admin/inverter/restore', {snapshot_id: Number(button.dataset.restore)});
+    };
+  });
+}
+
+async function loadInverter() {
+  const result = $('#inverter-result');
+  try {
+    const data = await api('/api/admin/inverter');
+    inverterState.current = data.current?.settings || null;
+    inverterState.fields = data.fields || {};
+    $('#inverter-writes-toggle').checked = data.writes_enabled;
+    $('#inverter-write-state').textContent = !data.collector_available
+      ? 'The collector is disabled on this instance, so nothing can be written.'
+      : data.writes_enabled ? 'Writes are on. Changes below go to the inverter after review.' : 'Writes are off. Switch on to enable the form below.';
+    $('#writes-badge').textContent = `Inverter writes: ${data.writes_enabled ? 'on' : 'off'}`;
+    $('#inverter-form').querySelectorAll('input,select,button').forEach(el => { el.disabled = !data.writes_enabled || !data.collector_available; });
+    $('#inverter-preset-odyssey').disabled = !data.writes_enabled;
+    if (inverterState.current) {
+      fillInverterForm(inverterState.current);
+      $('#inverter-current-stamp').textContent = `Inverter reported these at ${formatTimestamp(data.current.captured_at)}.`;
+    } else {
+      $('#inverter-current-stamp').textContent = 'No configuration snapshot yet — the collector reads one every few minutes.';
+    }
+    renderInverterSnapshots(data.snapshots || []);
+  } catch (error) {
+    result.textContent = error.message;
+  }
+}
+
+$('#inverter-writes-toggle').addEventListener('change', async event => {
+  const enabled = event.target.checked;
+  try {
+    await api('/api/admin/inverter/writes', {method: 'POST', body: JSON.stringify({enabled})});
+  } catch (error) {
+    $('#inverter-result').textContent = error.message;
+    event.target.checked = !enabled;
+  }
+  loadInverter();
+});
+
+$('#inverter-reload').onclick = () => { $('#inverter-review').hidden = true; loadInverter(); };
+
+// Odyssey ODX-AGM31 at room temperature: 14.6 V/12 V absorption (the menu's
+// 29.2 V ceiling), 13.6 V float, absorption held until 2 A, and a 22 V floor.
+$('#inverter-preset-odyssey').onclick = () => {
+  const set = (name, value) => { const f = $(`#inverter-form [name="${name}"]`); if (f) f.value = String(value); };
+  set('battery_type', 'User-defined');
+  set('bulk_charge_voltage_v', 29.2);
+  set('float_charge_voltage_v', 27.2);
+  set('charge_cutoff_current_a', 2);
+  set('low_battery_cutoff_v', 22.0);
+  set('overload_auto_restart', 'true');
+  $('#inverter-result').textContent = 'Preset filled in — nothing is written until you review and confirm.';
+};
+
+$('#inverter-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const current = inverterState.current;
+  if (!current) { $('#inverter-result').textContent = 'No configuration snapshot to compare against yet.'; return; }
+  const changes = {};
+  Object.keys(INVERTER_LABELS).forEach(name => {
+    const wanted = inverterFormValue(name);
+    if (wanted === undefined || !(name in current)) return;
+    if (!inverterSame(name, wanted, current[name])) changes[name] = wanted;
+  });
+  const note = $('#inverter-review-note');
+  note.textContent = '';
+  // Bulk and float are only honoured with the User-defined type; writing them
+  // under the AGM preset would appear to work and change nothing.
+  const wantsVoltages = 'bulk_charge_voltage_v' in changes || 'float_charge_voltage_v' in changes;
+  const resultingType = changes.battery_type ?? current.battery_type;
+  if (wantsVoltages && resultingType !== 'User-defined') {
+    changes.battery_type = 'User-defined';
+    note.textContent = 'Battery type is switched to User-defined so the charge voltages take effect.';
+  }
+  if (!Object.keys(changes).length) {
+    $('#inverter-review').hidden = true;
+    $('#inverter-result').textContent = 'Nothing differs from what the inverter reports.';
+    return;
+  }
+  inverterState.pending = changes;
+  $('#inverter-diff').innerHTML = Object.entries(changes).map(([name, value]) =>
+    `<tr><td>${esc(INVERTER_LABELS[name] || name)}</td><td>${esc(inverterDisplay(name, current[name]))}</td><td class="diff-changed">${esc(inverterDisplay(name, value))}</td></tr>`
+  ).join('');
+  $('#inverter-review').hidden = false;
+  $('#inverter-verify-wrap').hidden = true;
+  $('#inverter-result').textContent = '';
+});
+
+$('#inverter-cancel').onclick = () => { $('#inverter-review').hidden = true; inverterState.pending = null; };
+$('#inverter-write').onclick = async () => {
+  if (!inverterState.pending) return;
+  await runInverterWrite('/api/admin/inverter/settings', {changes: inverterState.pending});
+};
+
+async function runInverterWrite(url, body) {
+  const result = $('#inverter-result');
+  const button = $('#inverter-write');
+  button.disabled = true;
+  result.textContent = 'Writing… reading the inverter, sending, reading back.';
+  try {
+    const data = await api(url, {method: 'POST', body: JSON.stringify(body)});
+    $('#inverter-review').hidden = true;
+    inverterState.pending = null;
+    result.textContent = data.verified
+      ? `Verified: the inverter now reports every requested value (${formatTimestamp(data.written_at)}).`
+      : `Sent, but the inverter does not report ${Object.keys(data.mismatches).length} of the requested values. Check the table and the front panel.`;
+    $('#inverter-verify').innerHTML = Object.entries(data.requested).map(([name, value]) => {
+      const bad = data.mismatches[name];
+      return `<tr><td>${esc(INVERTER_LABELS[name] || name)}</td><td>${esc(inverterDisplay(name, value))}</td><td>${esc(inverterDisplay(name, data.after[name]))}</td><td class="${bad ? 'verify-bad' : 'verify-ok'}">${bad ? 'Differs' : 'OK'}</td></tr>`;
+    }).join('');
+    $('#inverter-verify-wrap').hidden = false;
+  } catch (error) {
+    result.textContent = `Not applied: ${error.message}`;
+  } finally {
+    button.disabled = false;
+    loadInverter();
+  }
+}
+
+api('/api/admin/inverter').then(data => { $('#writes-badge').textContent = `Inverter writes: ${data.writes_enabled ? 'on' : 'off'}`; }).catch(() => {});

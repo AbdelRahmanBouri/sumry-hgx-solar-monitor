@@ -8,13 +8,34 @@ import time
 from .config import SerialConfig
 from .db import Database
 from .protocols import create_protocol
-from .serial_io import discover_usb_serial_ports, escaped_ascii, exchange
+from .serial_io import discover_usb_serial_ports, escaped_ascii, exchange, write_exchange
 
 
 LOG = logging.getLogger(__name__)
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _same_setting(requested, reported) -> bool:
+    """A requested value matches a decoded read-back: numbers to the
+    resolution the inverter stores, switches by truth, names exactly."""
+    def truth(value):
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        if text in {"true", "on", "yes", "1", "1.0"}:
+            return True
+        if text in {"false", "off", "no", "0", "0.0"}:
+            return False
+        return None
+
+    if isinstance(requested, bool) or isinstance(reported, bool):
+        return truth(requested) is not None and truth(requested) == truth(reported)
+    try:
+        return abs(float(requested) - float(reported)) < 0.051
+    except (TypeError, ValueError):
+        return str(requested) == str(reported)
 
 
 class Collector:
@@ -94,6 +115,85 @@ class Collector:
                 self._collect_query(port, self.protocol.query("current_settings_0200"))
             self._run_maintenance_if_due()
             return success
+
+    def apply_config(self, changes: dict, settle_seconds: float = 0.6) -> dict:
+        """Change inverter settings: read the current block, write it back
+        with `changes`, then read again and report what the inverter now
+        says. Holds the port lock throughout so no poll can interleave.
+
+        The result is never "done" on the strength of having sent the frame.
+        `verified` is true only when the read-back carries every requested
+        value; `mismatches` lists the ones it does not.
+        """
+        if not hasattr(self.protocol, "build_config_write"):
+            raise ValueError(f"Protocol {self.protocol.name} does not support writes")
+        with self.lock:
+            port = self._port()
+            if port is None:
+                raise ValueError("No /dev/ttyUSB* or /dev/serial/by-id device found")
+            read_query = self.protocol.query("current_settings_0200")
+
+            before = exchange(port, self.config.baudrate, self.config.timeout_seconds, self.protocol, read_query)
+            decoded_before = self.protocol.decode(before.response)
+            self._record(before, decoded_before)
+            if before.error or not decoded_before.valid:
+                raise ValueError(
+                    f"Could not read the current configuration: {before.error or decoded_before.note}"
+                )
+
+            frame = self.protocol.build_config_write(before.response, changes)
+            written = write_exchange(
+                port, self.config.baudrate, self.config.timeout_seconds, self.protocol, frame, before.response
+            )
+            self.database.save_raw_frame({
+                "captured_at": written.timestamp, "port": written.port, "baudrate": written.baudrate,
+                "protocol": self.protocol.name, "query_name": written.query_name,
+                "request_hex": written.request.hex(" ").upper(),
+                "response_hex": written.response.hex(" ").upper(),
+                "response_ascii": escaped_ascii(written.response),
+                "elapsed_ms": written.elapsed_ms,
+                "decode_note": f"configuration write: {sorted(changes)}",
+                "error": written.error,
+            })
+            if written.error:
+                raise ValueError(f"Write failed on the serial port: {written.error}")
+
+            time.sleep(settle_seconds)
+            after = exchange(port, self.config.baudrate, self.config.timeout_seconds, self.protocol, read_query)
+            decoded_after = self.protocol.decode(after.response)
+            self._record(after, decoded_after)
+            if after.error or not decoded_after.valid:
+                raise ValueError(
+                    "The write was sent but the configuration could not be read back: "
+                    f"{after.error or decoded_after.note}"
+                )
+
+            mismatches = {}
+            for name, wanted in changes.items():
+                got = decoded_after.metrics.get(name)
+                if not _same_setting(wanted, got):
+                    mismatches[name] = {"requested": wanted, "inverter": got}
+            return {
+                "requested": changes,
+                "before": decoded_before.metrics,
+                "after": decoded_after.metrics,
+                "verified": not mismatches,
+                "mismatches": mismatches,
+                "written_at": written.timestamp,
+                "write_reply_hex": written.response.hex(" ").upper(),
+            }
+
+    def _record(self, result, decoded) -> None:
+        self.database.save_raw_frame({
+            "captured_at": result.timestamp, "port": result.port, "baudrate": result.baudrate,
+            "protocol": self.protocol.name, "query_name": result.query_name,
+            "request_hex": result.request.hex(" ").upper(),
+            "response_hex": result.response.hex(" ").upper(),
+            "response_ascii": escaped_ascii(result.response),
+            "elapsed_ms": result.elapsed_ms, "decode_note": decoded.note, "error": result.error,
+        })
+        if decoded.metrics and result.query_name == "current_settings_0200":
+            self.database.save_inverter_config(result.timestamp, decoded.metrics)
 
     def _run_maintenance_if_due(self, force: bool = False) -> dict | None:
         if not hasattr(self.database, "cleanup_retention"):

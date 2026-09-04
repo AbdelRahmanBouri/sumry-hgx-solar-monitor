@@ -176,6 +176,29 @@ class Database:
             return None
         return {"captured_at": row["captured_at"], "settings": json.loads(row["config_json"])}
 
+    def inverter_config_snapshots(self, limit: int = 20) -> list[dict[str, Any]]:
+        import json
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, captured_at, config_json FROM inverter_config_snapshots "
+                "ORDER BY captured_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [
+            {"id": row["id"], "captured_at": row["captured_at"], "settings": json.loads(row["config_json"])}
+            for row in rows
+        ]
+
+    def inverter_config_snapshot(self, snapshot_id: int) -> dict[str, Any] | None:
+        import json
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT id, captured_at, config_json FROM inverter_config_snapshots WHERE id = ?",
+                (snapshot_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {"id": row["id"], "captured_at": row["captured_at"], "settings": json.loads(row["config_json"])}
+
     def latest_sample(self) -> dict[str, Any] | None:
         with self.connect() as connection:
             row = connection.execute(
