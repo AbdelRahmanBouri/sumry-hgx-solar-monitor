@@ -36,12 +36,15 @@ def find_chromium() -> str | None:
     return None
 
 
-def capture(binary: str, url: str, target: Path, width: int, height: int, wait_ms: int) -> None:
+def capture(binary: str, url: str, target: Path, width: int, height: int, wait_ms: int,
+            scheme: str = "light") -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [
             binary, "--headless", "--disable-gpu", "--no-sandbox",
             "--hide-scrollbars", "--force-device-scale-factor=2",
+            # Chromium's preferredColorScheme is 0=dark, 1=light.
+            f"--blink-settings=preferredColorScheme={0 if scheme == 'dark' else 1}",
             f"--window-size={width},{height}",
             f"--virtual-time-budget={wait_ms}",
             f"--screenshot={target}", url,
@@ -57,6 +60,8 @@ def main() -> int:
     parser.add_argument("--wait-ms", type=int, default=6000,
                         help="virtual time budget, so polling and charts settle")
     parser.add_argument("--only", help="capture a single named view")
+    parser.add_argument("--scheme", choices=("light", "dark"), default="light",
+                        help="emulate a colour scheme preference")
     args = parser.parse_args()
 
     binary = find_chromium()
@@ -69,7 +74,7 @@ def main() -> int:
     views = {args.only: VIEWS[args.only]} if args.only else VIEWS
     for name, (path, width, height) in views.items():
         target = out / f"{name}.png"
-        capture(binary, f"{args.base}{path}", target, width, height, args.wait_ms)
+        capture(binary, f"{args.base}{path}", target, width, height, args.wait_ms, args.scheme)
         size = target.stat().st_size if target.exists() else 0
         print(f"  {name:20s} {width}x{height}  {target}  ({size // 1024} KB)")
     return 0

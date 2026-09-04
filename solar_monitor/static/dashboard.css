@@ -2,28 +2,28 @@
    Loaded by index.html after style.css, which carries the structure. */
 
 {
-  --accent: #087f5b;
-  --accent-strong: #066947;
-  --ink-strong: #14231d;
-  --muted-soft: #62736b;
-  --hairline: rgba(35, 67, 54, .12);
-  --card-shadow: 0 1px 2px rgba(21, 45, 35, .025), 0 12px 34px rgba(21, 45, 35, .065);
-  --chart-grid: #e3ebe7;
-  --chart-grid-strong: #cbd9d2;
-  --chart-axis: #6b7a73;
-  --chart-axis-strong: #4c5a53;
-  --chart-solar: #c9780a;
+  --accent: var(--color-green);
+  --accent-strong: var(--color-green-2);
+  --ink-strong: var(--color-ink);
+  --muted-soft: var(--color-muted);
+  --hairline: var(--color-border);
+  --card-shadow: var(--shadow-md);
+  --chart-grid: var(--color-border);
+  --chart-grid-strong: var(--color-border-strong);
+  --chart-axis: var(--color-quiet);
+  --chart-axis-strong: var(--color-muted);
+  --chart-solar: var(--color-amber);
   --chart-solar-fill: rgba(201, 120, 10, .16);
-  --chart-load: #087f5b;
+  --chart-load: var(--color-green);
   --chart-load-fill: rgba(8, 127, 91, .11);
   --chart-battery: #477da6;
   --chart-crosshair: rgba(20, 35, 29, .28);
-  --chart-dot-edge: #fff;
+  --chart-dot-edge: var(--color-surface);
   overflow-x: hidden;
   overscroll-behavior-y: none;
   background:
     radial-gradient(circle at 92% 0%, rgba(63, 166, 123, .095), transparent 23rem),
-    linear-gradient(180deg, #f8faf9 0, #f2f6f4 42rem, #f5f7f6 100%);
+    linear-gradient(180deg, var(--color-surface-subtle) 0, var(--color-surface-sunken) 42rem, var(--color-surface-subtle) 100%);
   color: var(--ink-strong);
   -webkit-tap-highlight-color: transparent;
 }
@@ -114,14 +114,14 @@ main { gap: 12px; }
   width: 46px;
   height: 46px;
   border: 0;
-  background: linear-gradient(145deg, #e9f8f1, #dff3e9);
+  background: linear-gradient(145deg, var(--color-green-soft), var(--color-green-soft));
   box-shadow: inset 0 0 0 1px rgba(8,127,91,.22), 0 0 0 6px rgba(231,246,239,.7);
 }
 .inverter small { font-size: 11.5px; }
 .flow-connector {
   height: 2px;
   border-radius: 99px;
-  background: #dce9e3;
+  background: var(--color-border-strong);
   opacity: 1;
   transition: opacity .25s ease;
 }
@@ -129,7 +129,7 @@ main { gap: 12px; }
 .flow-connector i { animation-duration: 1.65s; }
 .flow-card.system-idle .inverter > span {
   color: #718078;
-  background: #edf2ef;
+  background: var(--color-border);
   box-shadow: inset 0 0 0 1px rgba(67,85,77,.12), 0 0 0 6px rgba(237,242,239,.7);
 }
 
@@ -143,7 +143,7 @@ main { gap: 12px; }
   padding: 11px 12px;
   border-color: rgba(8,127,91,.16);
   border-radius: 16px;
-  background: linear-gradient(135deg, rgba(243,249,246,.98), rgba(249,251,250,.98));
+  background: linear-gradient(135deg, var(--color-surface-subtle), var(--color-surface));
   box-shadow: inset 0 1px 0 white;
 }
 .battery-icon { grid-column: 1; }
@@ -236,10 +236,10 @@ main { gap: 12px; }
 .trend-heading h2 { font-size: 22px; }
 .trend-heading.compact { align-items: center; justify-content: flex-start; }
 .trend-subtitle { margin: 5px 0 0; color: var(--muted-soft); font-size: 12px; }
-.range-control { border-color: transparent; border-radius: 12px; background: #f0f4f2; }
+.range-control { border-color: transparent; border-radius: 12px; background: var(--color-surface-sunken); }
 .range-control button { min-width: 39px; height: 32px; border-radius: 9px; font-size: 11.5px; }
 .range-control button.active {
-  background: #dff2e9;
+  background: var(--color-green-soft);
   color: var(--accent-strong);
   box-shadow: none;
 }
@@ -279,7 +279,7 @@ main { gap: 12px; }
   gap: 2px;
   padding: 3px;
   border-color: transparent;
-  background: #f0f4f2;
+  background: var(--color-surface-sunken);
 }
 .chart-controls button { min-height: 38px; padding-inline: 11px; }
 .chart-mode button.active { color: var(--accent-strong); }
@@ -290,7 +290,7 @@ main { gap: 12px; }
   justify-content: space-between;
   padding: 0 8px 0 12px;
   border-color: transparent;
-  background: #f0f4f2;
+  background: var(--color-surface-sunken);
 }
 .y-scale-control span { font-size: 11.5px; }
 .y-scale-control select {
@@ -298,7 +298,7 @@ main { gap: 12px; }
   min-height: 36px;
   padding-left: 9px;
   border: 0;
-  background-color: rgba(255,255,255,.9);
+  background-color: color-mix(in srgb, var(--color-surface) 90%, transparent);
   font-size: 12px;
 }
 .chart-wrap,
@@ -369,7 +369,7 @@ main { gap: 12px; }
 .extra-metric > button { width: 44px; height: 44px; position: absolute; top: 2px; right: 2px; padding: 0; border: 0; background: transparent; color: var(--quiet); font-size: 22px; cursor: pointer; }
 .preference-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .preference-title > strong { font-size: 13px; }
-.clear-data-cards { min-height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: white; color: var(--muted); font-size: 12px; font-weight: 700; }
+.clear-data-cards { min-height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--color-surface); color: var(--muted); font-size: 12px; font-weight: 700; }
 .metric-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 310px; overflow: auto; }
 .metric-choice { min-height: 50px; display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-subtle); color: var(--muted); font-size: 12px; font-weight: 650; }
 .metric-choice input { width: 21px; height: 21px; flex: 0 0 auto; accent-color: var(--green); }
@@ -384,12 +384,12 @@ main { gap: 12px; }
   padding: 4px;
   border-color: rgba(35,67,54,.13);
   border-radius: 22px;
-  background: rgba(252,253,252,.88);
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
   box-shadow: 0 16px 44px rgba(21,45,35,.17), inset 0 1px 0 rgba(255,255,255,.9);
   backdrop-filter: blur(24px) saturate(150%);
 }
 .bottom-nav a { min-height: 52px; border-radius: 18px; font-size: 11.5px; }
-.bottom-nav a.active { background: #e3f3eb; color: var(--accent-strong); }
+.bottom-nav a.active { background: var(--color-green-soft); color: var(--accent-strong); }
 
 .metric-updated { animation: value-settle .42s ease-out; }
 @keyframes value-settle {
@@ -405,7 +405,7 @@ main { gap: 12px; }
     padding-right: max(12px, env(safe-area-inset-right));
     padding-left: max(12px, env(safe-area-inset-left));
     border-bottom: 1px solid rgba(35,67,54,.075);
-    background: rgba(248,250,249,.88);
+    background: color-mix(in srgb, var(--color-surface) 88%, transparent);
     box-shadow: 0 4px 18px rgba(21,45,35,.035);
     backdrop-filter: blur(24px) saturate(145%);
   }
@@ -582,4 +582,19 @@ main { gap: 12px; }
   .flow-connector i,
   .battery-path i { animation: none; }
   .metric-updated { animation: none; }
+}
+
+/* The chart draws onto canvas, so its colours cannot cascade: they are read
+   from these tokens at paint time. Only the ones that must change for a dark
+   ground are restated here -- the series hues already carry on it. */
+@media (prefers-color-scheme: dark) {
+  body {
+    --chart-solar-fill: rgba(232, 151, 58, .20);
+    --chart-load-fill: rgba(63, 188, 138, .16);
+    --chart-battery: #7fb0d8;
+    --chart-crosshair: rgba(232, 240, 236, .35);
+    background:
+      radial-gradient(circle at 92% 0%, rgba(63, 166, 123, .10), transparent 23rem),
+      linear-gradient(180deg, #0e1613 0, #0c1411 42rem, #0e1613 100%);
+  }
 }

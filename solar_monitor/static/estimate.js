@@ -366,7 +366,7 @@ function drawPotentialChart() {
     ctx.fillStyle = gradient; ctx.fill();
     ctx.beginPath();
     history.forEach((row, index) => index ? ctx.lineTo(x(timeOf(row)), y(number(row.pv_watts) || 0)) : ctx.moveTo(x(timeOf(row)), y(number(row.pv_watts) || 0)));
-    ctx.strokeStyle = '#087d55'; ctx.lineWidth = 2.25; ctx.setLineDash([]); ctx.stroke();
+    ctx.strokeStyle = ChartCore.cssValue('--color-green', '#087d55'); ctx.lineWidth = 2.25; ctx.setLineDash([]); ctx.stroke();
   }
 
   // The whole point of this chart is the difference between the two lines, so
@@ -405,7 +405,7 @@ function drawPotentialChart() {
     if (rows.length < 2) return;
     ctx.beginPath();
     rows.forEach((row, index) => index ? ctx.lineTo(x(timeOf(row)), y(number(row.estimated_watts) || 0)) : ctx.moveTo(x(timeOf(row)), y(number(row.estimated_watts) || 0)));
-    ctx.strokeStyle = '#c9780a'; ctx.lineWidth = 2.25; ctx.setLineDash(dashed ? [5, 5] : []); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = ChartCore.cssValue('--color-amber', '#c9780a'); ctx.lineWidth = 2.25; ctx.setLineDash(dashed ? [5, 5] : []); ctx.stroke(); ctx.setLineDash([]);
   };
   drawModel(model.filter(row => timeOf(row) <= now), false);
   const future = model.filter(row => timeOf(row) >= now);
@@ -464,9 +464,9 @@ function drawOpportunityChart() {
     const center = pad.left + slot * (index + .5);
     const highH = (row.high / max) * plotH;
     const lowH = (row.low / max) * plotH;
-    ctx.fillStyle = 'rgba(201,120,10,.22)';
+    ctx.fillStyle = ChartCore.cssValue('--chart-bar-soft', 'rgba(201,120,10,.22)');
     ctx.fillRect(center - barW / 2, pad.top + plotH - highH - lowH, barW, highH + lowH);
-    ctx.fillStyle = '#c9780a';
+    ctx.fillStyle = ChartCore.cssValue('--color-amber', '#c9780a');
     ctx.fillRect(center - barW / 2, pad.top + plotH - highH, barW, highH);
     if (index === 0 || index === rows.length - 1 || index === Math.floor(rows.length / 2)) {
       ctx.fillStyle = '#8a9992'; ctx.textAlign = index === 0 ? 'left' : index === rows.length - 1 ? 'right' : 'center';
