@@ -839,6 +839,7 @@ function setupChartInteractions() {
   function hideOverlay() {
     chartReading.hidden = true;
     chartHint.hidden = false;
+    chartReading.parentElement.classList.remove('is-reading');
     drawCrosshair(null);
   }
 
@@ -858,6 +859,7 @@ function setupChartInteractions() {
     chartReading.innerHTML = lines.join('');
     chartReading.hidden = false;
     chartHint.hidden = true;
+    chartReading.parentElement.classList.add('is-reading');
     drawCrosshair(index);
   }
 

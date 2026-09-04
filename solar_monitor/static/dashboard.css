@@ -229,7 +229,6 @@ main { gap: 12px; }
 .trend-card { padding: 19px 18px 15px; scroll-margin-top: 78px; overflow: hidden; }
 .trend-heading { align-items: flex-end; }
 .trend-heading h2 { font-size: 22px; }
-.trend-heading.compact { align-items: center; justify-content: flex-start; }
 .trend-subtitle { margin: 5px 0 0; color: var(--muted-soft); font-size: 12px; }
 .range-control { border-color: transparent; border-radius: 12px; background: var(--color-surface-sunken); }
 .range-control button { min-width: 39px; height: 32px; border-radius: 9px; font-size: 11.5px; }
@@ -241,10 +240,11 @@ main { gap: 12px; }
 .legend {
   justify-content: flex-start;
   gap: 6px;
-  margin-top: 15px;
+  margin-top: 0;
   overflow-x: auto;
   scrollbar-width: none;
 }
+.trend-heading.compact { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 14px; }
 .legend::-webkit-scrollbar { display: none; }
 .legend-toggle,
 .zoom-reset {
@@ -299,26 +299,22 @@ main { gap: 12px; }
 .chart-wrap,
 #power-chart,
 #power-chart-overlay { height: 288px; }
-.chart-wrap { margin-top: 4px; }
-.chart-readout { min-height: 28px; margin-top: 10px; }
-.chart-options { margin-top: 3px; border-top: 1px solid var(--hairline); }
-.chart-options > summary {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 7px;
-  list-style: none;
-  color: var(--muted-soft);
-  font-size: 12px;
-  font-weight: 750;
-  cursor: pointer;
+.chart-wrap { margin-top: 8px; }
+/* The reading is the one thing on the card that changes under your finger,
+   so it gets its own sunken strip; the border warms when a value is shown. */
+.chart-readout {
+  min-height: 40px;
+  margin-top: 12px;
+  padding: 6px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--color-surface-sunken);
+  transition: border-color .2s ease;
 }
-.chart-options > summary::-webkit-details-marker { display: none; }
-.chart-options > summary svg { width: 16px; height: 16px; transition: transform .2s ease; }
-.chart-options[open] > summary svg { transform: rotate(180deg); }
-.chart-options .chart-controls { margin-top: 0; margin-bottom: 10px; }
-.trend-stats { padding-top: 12px; }
+.chart-readout.is-reading { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.chart-reading strong { color: var(--accent-strong); }
+.chart-controls { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+.trend-stats { margin-top: 12px; padding-top: 12px; }
 .trend-stats span { font-size: 10px; }
 .trend-stats strong { font-size: 13px; }
 .chart-data summary { min-height: 58px; }
@@ -394,14 +390,13 @@ main { gap: 12px; }
   .pull-now svg, .theme-toggle svg { width: 18px; height: 18px; }
   .settings-link { display: none; }
   .summary-card { min-height: 142px; }
-  .trend-heading { display: block; }
-  .trend-heading.compact .range-control { margin-top: 0; }
+  .trend-heading.compact { flex-direction: column; align-items: stretch; gap: 12px; }
   .range-control {
     width: max-content;
     max-width: 100%;
     display: flex;
     flex-wrap: nowrap;
-    margin-top: 15px;
+    margin-top: 0;
     overflow-x: auto;
     scrollbar-width: none;
   }
