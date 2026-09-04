@@ -17,6 +17,7 @@ const chartCanvas = document.querySelector('#power-chart');
 const overlayCanvas = document.querySelector('#power-chart-overlay');
 const chartWrap = chartCanvas.parentElement;
 const chartHint = document.querySelector('#chart-hint');
+const chartReading = document.querySelector('#chart-reading');
 const zoomResetButton = document.querySelector('#zoom-reset');
 const chartInspectButton = document.querySelector('#chart-inspect');
 const chartPanButton = document.querySelector('#chart-pan');
@@ -567,10 +568,9 @@ function renderChartTable(rows) {
   chartWindowLabel.textContent = `${rows.length} samples · newest first`;
 }
 
-// Chart colours come from CSS custom properties when the stylesheet defines
-// them (the v2 design system does, including its dark theme) and otherwise fall
-// back to the original light-theme values, so the canvas matches whichever
-// dashboard is hosting it.
+// Chart colours are read from the theme tokens at paint time, so the canvas
+// follows the scheme in force. The fallbacks are the light values and only
+// matter if theme.css failed to load.
 const chartColor = (name, fallback) => ChartCore.cssValue(name, fallback);
 
 function chartPalette() {
@@ -706,7 +706,7 @@ function drawChart() {
     return rows.map(row => project(timestamp(row), number(row[key]), min, max));
   }
 
-  function areaSeries(key, stroke, fill) {
+  function areaSeries(key, stroke, fill, lineWidth = 2) {
     const points = pointsFor(key, yMin, yMax);
     ctx.beginPath();
     roundedPath(ctx, points);
@@ -724,7 +724,7 @@ function drawChart() {
     ctx.beginPath();
     roundedPath(ctx, points);
     ctx.strokeStyle = stroke;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = lineWidth;
     ctx.stroke();
     return points;
   }
@@ -741,12 +741,15 @@ function drawChart() {
     return points;
   }
 
-  const solarPoints = seriesVisible.pv
-    ? areaSeries('pv_watts', palette.solar, palette.solarFill)
-    : pointsFor('pv_watts', yMin, yMax);
+  // Load first, as a thin line over a faint tint: it is spiky (compressors,
+  // heaters cycling) and a solid fill under it buried the solar curve. Solar
+  // is the smooth series and the one people read, so it goes on top.
   const loadPoints = seriesVisible.load
-    ? areaSeries('ac_load_watts', palette.load, palette.loadFill)
+    ? areaSeries('ac_load_watts', palette.load, palette.loadFill, 1.5)
     : pointsFor('ac_load_watts', yMin, yMax);
+  const solarPoints = seriesVisible.pv
+    ? areaSeries('pv_watts', palette.solar, palette.solarFill, 2)
+    : pointsFor('pv_watts', yMin, yMax);
   const batteryPoints = showBattery
     ? dashedLineSeries('battery_voltage', palette.battery, batteryMin, batteryMax)
     : pointsFor('battery_voltage', batteryMin, batteryMax);
@@ -765,11 +768,6 @@ function resetZoom() {
 }
 
 function setupChartInteractions() {
-  const tooltip = document.createElement('div');
-  tooltip.className = 'chart-tooltip';
-  tooltip.hidden = true;
-  chartWrap.appendChild(tooltip);
-
   function nearestIndex(clientX) {
     if (!renderedChart) return null;
     const rect = chartCanvas.getBoundingClientRect();
@@ -817,28 +815,30 @@ function setupChartInteractions() {
   }
   const octx = overlayCanvas.getContext('2d');
 
+  // The reading is shown in the strip above the plot, never over it, so the
+  // peaks stay visible while they are being inspected.
   function hideOverlay() {
-    tooltip.hidden = true;
+    chartReading.hidden = true;
+    chartHint.hidden = false;
     drawCrosshair(null);
   }
 
   function showOverlay(clientX) {
     const index = nearestIndex(clientX);
     if (index === null) return hideOverlay();
-    const rect = chartCanvas.getBoundingClientRect();
-    const {rows, solarPoints} = renderedChart;
+    const {rows} = renderedChart;
     const row = rows[index];
-    const left = Math.max(54, Math.min(rect.width - 54, solarPoints[index].x));
-    tooltip.style.left = `${left}px`;
+    const at = new Date(timestamp(row));
     const when = selectedHours > 24
-      ? new Date(timestamp(row)).toLocaleDateString([], {month: 'short', day: 'numeric'})
-      : new Date(timestamp(row)).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+      ? at.toLocaleString([], {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'})
+      : at.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
     const lines = [`<strong>${when}</strong>`];
     if (seriesVisible.pv) lines.push(`<span><i class="solar-key"></i>${format(number(row.pv_watts), 0)} W</span>`);
     if (seriesVisible.load) lines.push(`<span><i class="load-key"></i>${format(number(row.ac_load_watts), 0)} W</span>`);
     if (seriesVisible.battery) lines.push(`<span><i class="battery-key"></i>${format(number(row.battery_voltage), 1)} V</span>`);
-    tooltip.innerHTML = lines.join('');
-    tooltip.hidden = false;
+    chartReading.innerHTML = lines.join('');
+    chartReading.hidden = false;
+    chartHint.hidden = true;
     drawCrosshair(index);
   }
 
@@ -848,8 +848,6 @@ function setupChartInteractions() {
   let pinchState = null;
   let gestureMoved = false;
   let lastTap = {time: 0, x: 0, y: 0};
-
-  function dismissHint() { chartHint.classList.add('dismissed'); }
 
   function inYAxisZone(clientX) {
     const rect = chartCanvas.getBoundingClientRect();
@@ -865,7 +863,6 @@ function setupChartInteractions() {
   }
 
   chartCanvas.addEventListener('pointerdown', event => {
-    dismissHint();
     try { chartCanvas.setPointerCapture(event.pointerId); } catch (_) { /* older browsers */ }
     pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
     if (pointers.size === 1) {
@@ -1008,7 +1005,6 @@ function setupChartInteractions() {
 
   chartCanvas.addEventListener('wheel', event => {
     event.preventDefault();
-    dismissHint();
     if (!renderedChart) return;
     const rect = chartCanvas.getBoundingClientRect();
     const factor = event.deltaY > 0 ? 1.25 : 0.8;
@@ -1051,7 +1047,6 @@ function setChartMode(mode) {
   chartHint.textContent = chartMode === 'pan'
     ? 'Drag left or right to move through time · pinch to zoom'
     : 'Drag to inspect exact values · pinch to zoom';
-  chartHint.classList.remove('dismissed');
 }
 
 function zoomChart(factor) {
@@ -1421,6 +1416,31 @@ document.querySelectorAll('.bottom-nav a').forEach(link => {
   });
 });
 
+// Colour scheme. theme.js owns the choice; this wires the header toggle and
+// the three-way control in the customize dialog to it, and repaints the
+// canvases, which cannot follow a token change on their own.
+function setupThemeControls() {
+  const control = document.querySelector('#theme-control');
+  const reflect = () => {
+    if (!control || !window.SolarTheme) return;
+    const choice = SolarTheme.preference();
+    control.querySelectorAll('button').forEach(button => {
+      button.classList.toggle('active', button.dataset.themeChoice === choice);
+      button.setAttribute('aria-pressed', String(button.dataset.themeChoice === choice));
+    });
+  };
+  document.querySelector('#theme-toggle')?.addEventListener('click', () => SolarTheme.toggle());
+  control?.querySelectorAll('button').forEach(button => {
+    button.addEventListener('click', () => SolarTheme.set(button.dataset.themeChoice));
+  });
+  document.addEventListener('themechange', () => {
+    reflect();
+    drawChart();
+    updateSparklines();
+  });
+  reflect();
+}
+
 let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
@@ -1428,6 +1448,7 @@ window.addEventListener('resize', () => {
 });
 
 setupChartInteractions();
+setupThemeControls();
 applyCardPreferences();
 initializeDashboardSettings();
 refreshStatus();

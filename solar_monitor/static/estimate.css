@@ -47,7 +47,7 @@ svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: 
   top: 0;
   z-index: 30;
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-columns: 40px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   background: color-mix(in srgb, var(--canvas) 90%, transparent);
@@ -62,7 +62,8 @@ svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: 
 .bar-live i { width: 7px; height: 7px; border-radius: 50%; background: var(--quiet); }
 .bar-live small { padding-left: 7px; border-left: 1px solid var(--border); color: var(--quiet); font-size: 10.5px; }
 .bar-live.online { color: var(--green); }
-.bar-live.online i { background: var(--green); box-shadow: 0 0 0 4px rgba(8,125,85,.1); }
+.bar-live.online i { background: var(--green); box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 12%, transparent); }
+.theme-toggle { width: 38px; height: 38px; border-radius: 12px; background: color-mix(in srgb, var(--surface) 92%, transparent); }
 .bar-live.offline { color: var(--color-red); }
 .bar-live.offline i { background: var(--color-red); }
 
@@ -106,9 +107,15 @@ h2 { font-size: 20px; line-height: 1.1; letter-spacing: -.035em; }
 .unused-key { background: var(--amber); }
 .chart-shell { height: 264px; position: relative; margin-top: 3px; touch-action: pan-y; }
 #potential-chart, #opportunity-chart { width: 100%; height: 100%; display: block; }
-.chart-tooltip { min-width: 116px; position: absolute; z-index: 4; top: 12px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 11px; background: var(--surface); box-shadow: 0 10px 28px rgba(19,33,28,.13); pointer-events: none; font-size: 10.5px; }
-.chart-tooltip strong { display: block; margin-bottom: 3px; font-size: 11.5px; }
-.chart-tooltip span { display: block; color: var(--muted); }
+/* The inspected reading sits above the plot rather than floating over the
+   peaks it is meant to let you read. */
+.chart-readout { min-height: 24px; display: flex; align-items: center; gap: 12px; margin-top: 6px; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.chart-hint { color: var(--quiet); font-weight: 600; }
+.chart-reading { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 12px; }
+.chart-reading strong { color: var(--ink); }
+.chart-reading span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 650; white-space: nowrap; }
+.chart-reading span i { width: 8px; height: 8px; border-radius: 50%; }
+.chart-reading em { color: var(--quiet); font-style: normal; }
 .chart-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--quiet); font-size: 12px; text-align: center; }
 .chart-empty[hidden] { display: none; }
 /* Any element the JS hides must stay hidden whatever its display rule says. */
@@ -145,7 +152,7 @@ input[type="range"] { width: 100%; height: 30px; margin: 3px 0 0; accent-color: 
 .calculator-result > strong small { font-size: 12px; letter-spacing: 0; }
 .result-meter { margin-top: 14px; }
 .calculator-result > p { margin: 9px 0 13px; color: var(--color-amber-ink); font-size: 11.5px; }
-.calculator-result dl { display: grid; gap: 7px; margin: 0; padding-top: 12px; border-top: 1px solid rgba(201,120,10,.2); }
+.calculator-result dl { display: grid; gap: 7px; margin: 0; padding-top: 12px; border-top: 1px solid var(--color-amber-soft-border); }
 .calculator-result dl div { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
 .calculator-result dt { color: var(--color-amber-ink); font-size: 10.5px; }
 .calculator-result dd { margin: 0; font-size: 11.5px; font-weight: 800; }
@@ -162,7 +169,9 @@ input[type="range"] { width: 100%; height: 30px; margin: 3px 0 0; accent-color: 
 .method-details[open] summary svg { transform: rotate(180deg); }
 .method-details > div { display: grid; gap: 10px; padding: 0 2px 4px; color: var(--muted); font-size: 11.5px; }
 
-.potential-nav { height: 62px; position: fixed; z-index: 40; left: 12px; right: 12px; bottom: calc(9px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3,1fr); align-items: center; padding: 4px; border: 1px solid var(--border-strong); border-radius: 18px; background: color-mix(in srgb, var(--surface) 95%, transparent); box-shadow: var(--shadow-lg); backdrop-filter: blur(18px); }
+/* Own compositing layer and no backdrop blur, for the same reason as the
+   dashboard's bottom nav: a blurring fixed element lags the scroll on iOS. */
+.potential-nav { height: 62px; position: fixed; z-index: 40; left: 12px; right: 12px; bottom: calc(9px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3,1fr); align-items: center; padding: 4px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-lg); transform: translateZ(0); will-change: transform; }
 .potential-nav a { min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 13px; color: var(--quiet); font-size: 10.5px; font-weight: 700; }
 .potential-nav a.active { color: var(--green); background: var(--green-soft); }
 .potential-nav svg { width: 17px; height: 17px; }
@@ -220,7 +229,7 @@ input[type="range"] { width: 100%; height: 30px; margin: 3px 0 0; accent-color: 
   min-width: 46px;
   padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(8, 125, 85, .1);
+  background: var(--color-green-soft);
   color: var(--color-green);
   font-size: 12px;
   font-style: normal;
@@ -229,12 +238,9 @@ input[type="range"] { width: 100%; height: 30px; margin: 3px 0 0; accent-color: 
 }
 
 /* Live self-check under the modelling caveat. */
-.accuracy-note { grid-column: 2; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(118,81,25,.18); font-size: 10.5px; line-height: 1.45; }
+.accuracy-note { grid-column: 2; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--color-amber-soft-border); font-size: 10.5px; line-height: 1.45; }
 .accuracy-note[hidden] { display: none; }
 
-@media (prefers-color-scheme: dark) {
-  :root { --page-tint: rgba(232, 151, 58, .07); }
-  body { --chart-bar-soft: rgba(232, 151, 58, .24); }
-  .intro-panel { background: linear-gradient(140deg, var(--color-green-soft), var(--color-surface) 60%); }
-  .recoverable-list > div { background: var(--color-surface-subtle); }
-}
+:root[data-theme="dark"] { --page-tint: rgba(232, 151, 58, .07); }
+:root[data-theme="dark"] .intro-panel { background: linear-gradient(140deg, var(--color-green-soft), var(--color-surface) 60%); }
+:root[data-theme="dark"] .recoverable-list > div { background: var(--color-surface-subtle); }

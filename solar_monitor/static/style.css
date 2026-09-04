@@ -74,7 +74,7 @@ svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: 
   font-weight: 700;
   box-shadow: 0 3px 12px rgba(25,56,44,.035);
 }
-.connection i { width: 7px; height: 7px; border-radius: 50%; background: #9ca9a3; }
+.connection i { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); }
 .connection small { padding-left: 6px; border-left: 1px solid var(--border); color: var(--quiet); font-size: 10.5px; font-weight: 650; }
 .connection.online { color: var(--green); }
 .connection.online i { background: var(--green); box-shadow: 0 0 0 4px rgba(8,125,85,.1); }
@@ -131,7 +131,7 @@ h1, h2 { margin: 0; color: var(--ink); font-size: 18px; line-height: 1.15; lette
 .flow-end strong small { color: var(--quiet); font-size: 12px; font-weight: 600; letter-spacing: 0; }
 .flow-meta { margin-top: 4px; color: var(--quiet); font-size: 11.5px; white-space: nowrap; }
 .inverter { display: flex; flex-direction: column; align-items: center; gap: 5px; }
-.inverter > span { width: 43px; height: 43px; display: grid; place-items: center; border: 1px solid #b9ddcd; border-radius: 50%; background: var(--green-soft); color: var(--green); box-shadow: 0 0 0 5px var(--color-green-soft); }
+.inverter > span { width: 43px; height: 43px; display: grid; place-items: center; border: 1px solid var(--color-green-soft-border); border-radius: 50%; background: var(--green-soft); color: var(--green); box-shadow: 0 0 0 5px var(--color-green-soft); }
 .inverter svg { width: 20px; height: 20px; stroke-width: 2; }
 .inverter small { color: var(--quiet); font-size: 10.5px; font-weight: 750; }
 .flow-connector { height: 2px; overflow: hidden; background: var(--color-border-strong); position: relative; }
@@ -139,7 +139,7 @@ h1, h2 { margin: 0; color: var(--ink); font-size: 18px; line-height: 1.15; lette
 .outbound i { animation-delay: .7s; }
 @keyframes move-right { from { left: -40%; } to { left: 100%; } }
 .battery-path { width: 18px; height: 31px; margin: -19px auto -1px; position: relative; }
-.battery-path::before { content: ""; position: absolute; top: 0; left: 8px; width: 2px; height: 27px; background: #9bcdb8; }
+.battery-path::before { content: ""; position: absolute; top: 0; left: 8px; width: 2px; height: 27px; background: var(--color-green-soft-border); }
 .battery-path b { position: absolute; left: 4px; bottom: 1px; width: 10px; height: 10px; border-right: 2px solid var(--green); border-bottom: 2px solid var(--green); transform: rotate(45deg); }
 .battery-path i { position: absolute; z-index: 1; left: 6px; top: 1px; width: 6px; height: 6px; border: 2px solid var(--color-surface); border-radius: 50%; background: var(--green); animation: battery-down 1.7s infinite linear; }
 .battery-path.discharging b { top: 2px; bottom: auto; transform: rotate(225deg); }
@@ -173,12 +173,12 @@ h1, h2 { margin: 0; color: var(--ink); font-size: 18px; line-height: 1.15; lette
 .battery-current { display: flex; flex-direction: column; align-items: end; text-align: right; }
 .battery-current strong { font-size: 16px; line-height: 1; }
 .battery-current > span { margin-top: 4px; padding: 2px 6px; border-radius: 99px; background: var(--green-soft); color: var(--green); font-size: 10.5px; font-weight: 700; }
-.battery-current > span.discharge { color: #9b630f; background: var(--amber-soft); }
+.battery-current > span.discharge { color: var(--color-amber-ink); background: var(--amber-soft); }
 .flow-insights { display: grid; grid-template-columns: minmax(0, 1.5fr) .7fr .8fr; gap: 7px; margin-top: 8px; }
 .flow-insights > div { min-height: 47px; min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 7px 9px; border: 1px solid var(--border); border-radius: 10px; background: var(--color-surface); }
 .flow-insights small { overflow: hidden; color: var(--quiet); font-size: 10px; font-weight: 700; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; }
 .flow-insights strong { margin-top: 2px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.flow-insights .energy-balance { flex-direction: row; align-items: center; justify-content: flex-start; gap: 7px; background: var(--green-soft); border-color: #cce5da; }
+.flow-insights .energy-balance { flex-direction: row; align-items: center; justify-content: flex-start; gap: 7px; background: var(--green-soft); border-color: var(--color-green-soft-border); }
 .energy-balance > span:last-child { min-width: 0; display: flex; flex-direction: column; }
 .energy-balance strong { color: var(--green); }
 .balance-icon { width: 27px; height: 27px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 8px; background: var(--color-surface); color: var(--green); }
@@ -212,7 +212,7 @@ h1, h2 { margin: 0; color: var(--ink); font-size: 18px; line-height: 1.15; lette
 .tile-icon.green { color: var(--green); background: var(--green-soft); }
 .tile-icon.blue { color: var(--blue); background: var(--blue-soft); }
 .tile-icon.amber { color: var(--amber); background: var(--amber-soft); }
-.tile-icon.slate { color: #61756c; background: var(--color-border); }
+.tile-icon.slate { color: var(--muted); background: var(--color-border); }
 .summary-card > strong { display: block; margin-top: 11px; font-size: 27px; line-height: 1; letter-spacing: -.05em; }
 .summary-card > strong small { color: var(--quiet); font-size: 12px; font-weight: 600; letter-spacing: 0; }
 .load-bar { height: 4px; margin-top: 10px; overflow: hidden; border-radius: 4px; background: var(--color-surface-sunken); }
@@ -236,7 +236,7 @@ h1, h2 { margin: 0; color: var(--ink); font-size: 18px; line-height: 1.15; lette
 .legend i { width: 6px; height: 6px; border-radius: 50%; }
 .solar-key { background: var(--amber); }
 .load-key { background: var(--green); }
-.battery-key { background: #5a86ab; }
+.battery-key { background: var(--chart-battery); }
 .zoom-reset { padding: 4px 9px; border: 1px solid var(--border); border-radius: 99px; background: var(--surface-subtle); color: var(--muted); font-size: 11.5px; font-weight: 700; cursor: pointer; }
 .chart-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
 .chart-mode, .chart-zoom { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-subtle); }
@@ -255,31 +255,18 @@ h1, h2 { margin: 0; color: var(--ink); font-size: 18px; line-height: 1.15; lette
 .chart-empty[hidden] { display: none; }
 .chart-empty strong { color: var(--muted); font-size: 12px; }
 .chart-empty span { margin-top: 3px; font-size: 11.5px; }
-.chart-hint { position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); padding: 3px 9px; border-radius: 99px; background: rgba(19,33,28,.6); color: #fff; font-size: 10.5px; font-weight: 600; pointer-events: none; transition: opacity .3s ease; }
-.chart-hint.dismissed { opacity: 0; }
-.chart-tooltip {
-  min-width: 98px;
-  position: absolute;
-  z-index: 4;
-  top: 9px;
-  transform: translateX(-50%);
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px 8px;
-  padding: 7px 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: 9px;
-  background: rgba(255,255,255,.96);
-  box-shadow: 0 7px 20px rgba(25,56,44,.12);
-  color: var(--muted);
-  font-size: 11.5px;
-  pointer-events: none;
-  backdrop-filter: blur(10px);
-}
-.chart-tooltip[hidden] { display: none; }
-.chart-tooltip strong { grid-column: 1 / -1; color: var(--ink); font-size: 11.5px; }
-.chart-tooltip span { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-.chart-tooltip i { width: 5px; height: 5px; border-radius: 50%; }
+/* The inspected reading lives in a strip above the plot, never over it. A
+   floating tooltip sat on top of the peaks -- the part of the chart being
+   inspected -- and on a phone there is nowhere else for it to go. */
+.chart-readout { min-height: 26px; display: flex; align-items: center; gap: 12px; margin-top: 8px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.chart-hint { color: var(--quiet); font-size: 11.5px; font-weight: 600; }
+.chart-hint[hidden] { display: none; }
+.chart-reading { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.chart-reading[hidden] { display: none; }
+.chart-reading strong { color: var(--ink); font-size: 12px; }
+.chart-reading span { display: inline-flex; align-items: center; gap: 5px; color: var(--ink); font-weight: 650; white-space: nowrap; }
+.chart-reading span[hidden] { display: none; }
+.chart-reading i { width: 6px; height: 6px; border-radius: 50%; }
 .trend-stats { display: grid; grid-template-columns: repeat(4, 1fr); padding-top: 10px; border-top: 1px solid var(--border); }
 .trend-stats > div { display: flex; flex-direction: column; align-items: center; gap: 2px; border-right: 1px solid var(--border); }
 .trend-stats > div:last-child { border: 0; }
@@ -324,13 +311,13 @@ code { display: block; overflow: hidden; color: var(--quiet); font: 9px ui-monos
 .all-data-body p { margin: 0; padding: 14px; color: var(--quiet); font-size: 11.5px; }
 .data-group + .data-group { border-top: 1px solid var(--border); }
 .data-group h3 { margin: 0; padding: 9px 10px 5px; color: var(--green); font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; }
-.data-row { min-height: 31px; display: grid; grid-template-columns: minmax(100px, .9fr) minmax(0, 1.1fr); align-items: center; gap: 8px; padding: 5px 10px; border-top: 1px solid rgba(220,229,224,.7); }
+.data-row { min-height: 31px; display: grid; grid-template-columns: minmax(100px, .9fr) minmax(0, 1.1fr); align-items: center; gap: 8px; padding: 5px 10px; border-top: 1px solid var(--border); }
 .data-row > span { min-width: 0; display: flex; align-items: center; gap: 5px; overflow: hidden; color: var(--muted); font-size: 11.5px; }
 .data-row > span > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .data-row strong { overflow-wrap: anywhere; color: var(--ink); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
 .confidence { flex: 0 0 auto; padding: 2px 5px; border-radius: 4px; font-size: 9.5px; font-style: normal; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
 .confidence.confirmed { color: var(--green); background: var(--green-soft); }
-.confidence.experimental { color: #936111; background: var(--amber-soft); }
+.confidence.experimental { color: var(--color-amber-ink); background: var(--amber-soft); }
 
 .config-note { margin: 10px 0 0; color: var(--quiet); font-size: 11.5px; }
 .config-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--border); }
@@ -349,7 +336,7 @@ code { display: block; overflow: hidden; color: var(--quiet); font: 9px ui-monos
 .pi-note[hidden] { display: none; }
 
 .customize-dialog { width: min(calc(100% - 24px), 430px); padding: 0; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--color-surface); color: var(--ink); box-shadow: 0 28px 80px rgba(20,45,35,.22); }
-.customize-dialog::backdrop { background: rgba(27,43,37,.35); backdrop-filter: blur(3px); }
+.customize-dialog::backdrop { background: var(--color-scrim); backdrop-filter: blur(3px); }
 .customize-dialog form { padding: 18px; }
 .dialog-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .dialog-close { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-subtle); color: var(--muted); cursor: pointer; }
@@ -364,7 +351,7 @@ code { display: block; overflow: hidden; color: var(--quiet); font: 9px ui-monos
 .card-control button svg { width: 14px; height: 14px; }
 .visibility-toggle { position: relative; width: 34px; height: 20px; }
 .visibility-toggle input { position: absolute; opacity: 0; }
-.visibility-toggle i { position: absolute; inset: 0; border-radius: 99px; background: #cfd9d4; transition: background .2s; }
+.visibility-toggle i { position: absolute; inset: 0; border-radius: 99px; background: var(--border-strong); transition: background .2s; }
 .visibility-toggle i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-surface); box-shadow: 0 1px 4px rgba(0,0,0,.16); transition: transform .2s; }
 .visibility-toggle input:checked + i { background: var(--green); }
 .visibility-toggle input:checked + i::after { transform: translateX(14px); }
@@ -402,9 +389,13 @@ code { display: block; overflow: hidden; color: var(--quiet); font: 9px ui-monos
   padding: 4px;
   border: 1px solid var(--border-strong);
   border-radius: 17px;
-  background: rgba(255,255,255,.95);
-  box-shadow: 0 14px 38px rgba(25,56,44,.16);
-  backdrop-filter: blur(18px);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+  /* Its own compositing layer, and no backdrop blur: a fixed element that
+     blurs what is behind it is repositioned only after a scroll settles on
+     iOS, so the bar visibly lagged and drifted mid-page while scrolling. */
+  transform: translateZ(0);
+  will-change: transform;
 }
 .bottom-nav a { min-height: 50px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 12px; color: var(--quiet); font-size: 10.5px; font-weight: 650; }
 .bottom-nav a.active { color: var(--green); background: var(--green-soft); }
@@ -412,7 +403,7 @@ code { display: block; overflow: hidden; color: var(--quiet); font: 9px ui-monos
 
 @media (min-width: 700px) {
   body { padding-bottom: 34px; }
-  .app-bar { min-height: 72px; border-bottom: 1px solid rgba(199,213,206,.6); }
+  .app-bar { min-height: 72px; border-bottom: 1px solid var(--border); }
   .settings-link { display: grid; }
   main { grid-template-columns: minmax(0, 1.35fr) minmax(310px, .65fr); gap: 12px; padding-top: 24px; }
   .alert { grid-column: 1 / -1; }
@@ -465,9 +456,6 @@ code { display: block; overflow: hidden; color: var(--quiet); font: 9px ui-monos
   .y-scale-control span { font-size: 12px; }
   .y-scale-control select { min-height: 42px; font-size: 16px; }
   .chart-wrap, #power-chart, #power-chart-overlay { height: 310px; }
-  .chart-tooltip { min-width: 190px; left: 50% !important; padding: 10px 11px; font-size: 12px; }
-  .chart-tooltip strong { font-size: 12px; }
-  .chart-hint { bottom: 8px; width: max-content; max-width: calc(100% - 20px); padding: 5px 10px; font-size: 11.5px; text-align: center; }
   .trend-stats span { font-size: 11.5px; }
   .trend-stats strong { font-size: 14px; }
   .chart-data summary strong { font-size: 13px; }

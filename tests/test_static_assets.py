@@ -28,7 +28,7 @@ def find_node() -> str | None:
     local = Path(os.path.expanduser("~/.local/node/bin/node"))
     return str(local) if local.exists() else None
 
-SCRIPTS = ("chart-core.js", "app.js", "estimate.js", "metric-picker.js", "admin.js")
+SCRIPTS = ("theme.js", "chart-core.js", "app.js", "estimate.js", "metric-picker.js", "admin.js")
 
 # Pages and the scripts they must load in order. ChartCore is an IIFE assigned
 # to a const, so a consumer loaded first sees a ReferenceError.
@@ -36,6 +36,10 @@ LOAD_ORDER = {
     "index.html": ["chart-core.js", "app.js"],
     "estimate.html": ["chart-core.js", "estimate.js"],
 }
+
+# Pages whose colour scheme theme.js decides. It must run before the page's
+# own stylesheets so the first paint is already in the right scheme.
+THEMED_PAGES = ("index.html", "estimate.html")
 
 PAIRS = {"{": "}", "(": ")", "[": "]"}
 
@@ -131,6 +135,26 @@ class StaticAssetTests(unittest.TestCase):
             self.assertEqual(
                 positions, sorted(positions),
                 f"{page} loads {scripts} out of order; ChartCore must come first",
+            )
+
+    def test_theme_script_runs_in_head_before_the_page_styles(self):
+        for page in THEMED_PAGES:
+            markup = (TEMPLATES / page).read_text(encoding="utf-8")
+            head = markup.split("</head>", 1)[0]
+            script = head.find("/static/theme.js")
+            self.assertNotEqual(script, -1, f"{page} does not load theme.js in <head>")
+            for sheet in ("style.css", "dashboard.css", "estimate.css"):
+                position = head.find(f"/static/{sheet}")
+                if position != -1:
+                    self.assertLess(script, position, f"{page}: theme.js must precede {sheet}")
+
+    def test_dark_scheme_is_keyed_on_the_theme_attribute_only(self):
+        # theme.js stamps data-theme on <html>; a stylesheet that also keys
+        # on prefers-color-scheme would override the viewer's explicit choice.
+        for sheet in STATIC.glob("*.css"):
+            self.assertNotIn(
+                "prefers-color-scheme", sheet.read_text(encoding="utf-8"),
+                f"{sheet.name} bypasses the theme toggle with a media query",
             )
 
     def test_no_retired_assets_are_still_referenced(self):

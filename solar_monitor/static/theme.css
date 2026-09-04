@@ -1,12 +1,18 @@
-/* Shared design tokens for the public dashboard (style.css) and the admin
-   portal (admin.css). Both stylesheets alias their own local variable names
-   to these so the palette, elevation, and radius scale have one source of
-   truth instead of two copies that can silently drift apart. */
+/* Shared design tokens for the public dashboard (style.css), the solar
+   potential page (estimate.css) and the admin portal (admin.css). Each
+   stylesheet aliases its own local variable names to these so the palette,
+   elevation, and radius scale have one source of truth instead of copies
+   that can silently drift apart.
+
+   The scheme is chosen by theme.js, which stamps data-theme="light|dark" on
+   <html> from the device's own preference or the viewer's saved choice. Only
+   the tokens change between the two; every rule that consumes them follows. */
 :root {
   color-scheme: light;
   --color-canvas: #f4f7f5;
   --color-surface: #fff;
   --color-surface-subtle: #f7faf8;
+  --color-surface-sunken: #f0f4f2;
   --color-border: #dce5e0;
   --color-border-strong: #c7d5ce;
   --color-ink: #13211c;
@@ -15,17 +21,36 @@
   --color-green: #087d55;
   --color-green-2: #24a775;
   --color-green-soft: #e6f5ee;
+  --color-green-soft-border: #b9ddcd;
   --color-amber: #c9780a;
   --color-amber-soft: #fff3dc;
+  --color-amber-soft-border: #eeddbb;
+  --color-amber-ink: #765119;
   --color-blue: #286da8;
   --color-blue-soft: #eaf2fa;
   --color-red: #c13b3b;
   --color-red-soft: #fff0ef;
-  --color-surface-sunken: #f0f4f2;
-  --color-amber-soft-border: #eeddbb;
-  --color-amber-ink: #765119;
   --color-red-soft-border: #ecc6c4;
   --color-focus: #0b6b48;
+  --color-scrim: rgba(20, 35, 29, .32);
+
+  /* The charts draw on canvas and cannot inherit CSS, so they read these at
+     paint time. Anything that must differ on a dark ground is restated in
+     the dark block; the series hues carry across as they are. */
+  --chart-grid: var(--color-border);
+  --chart-grid-strong: var(--color-border-strong);
+  --chart-axis: var(--color-quiet);
+  --chart-axis-strong: var(--color-muted);
+  --chart-solar: var(--color-amber);
+  --chart-solar-fill: rgba(201, 120, 10, .18);
+  --chart-load: var(--color-green);
+  --chart-load-fill: rgba(8, 125, 85, .07);
+  --chart-battery: #477da6;
+  --chart-crosshair: rgba(20, 35, 29, .3);
+  --chart-dot-edge: var(--color-surface);
+  --chart-shortfall: rgba(201, 120, 10, .16);
+  --chart-bar-soft: rgba(201, 120, 10, .28);
+  --chart-captured-fill: rgba(8, 125, 85, .2);
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -52,38 +77,64 @@
   outline-offset: -2px;
 }
 
-/* Dark palette. Only the tokens change; every rule that consumes them follows.
-   Surfaces lift as they come forward rather than darkening, which is what
-   keeps depth readable without shadows on a dark ground. Accent colours are
-   lightened to hold their contrast against it. */
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --color-canvas: #0e1613;
-    --color-surface: #16211d;
-    --color-surface-subtle: #1b2823;
-    --color-surface-sunken: #121b18;
-    --color-border: #26332d;
-    --color-border-strong: #33443c;
-    --color-ink: #e8f0ec;
-    --color-muted: #a3b3ab;
-    --color-quiet: #8b9c94;      /* 6.6:1 on the dark surface */
-    --color-green: #3fbc8a;
-    --color-green-2: #57d3a1;
-    --color-green-soft: #16302a;
-    --color-amber: #e8973a;
-    --color-amber-soft: #2e2314;
-    --color-amber-soft-border: #4a3a1d;
-    --color-amber-ink: #f0c48a;
-    --color-blue: #6aa9e0;
-    --color-blue-soft: #16242f;
-    --color-red: #e97a75;
-    --color-red-soft: #2c1a1a;
-    --color-red-soft-border: #4a2b2a;
-    --color-focus: #5fd8a4;
+/* Dark palette. Surfaces lift as they come forward rather than darkening,
+   which is what keeps depth readable without shadows on a dark ground.
+   Accent colours are lightened to hold their contrast against it. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-canvas: #0e1613;
+  --color-surface: #16211d;
+  --color-surface-subtle: #1b2823;
+  --color-surface-sunken: #121b18;
+  --color-border: #26332d;
+  --color-border-strong: #33443c;
+  --color-ink: #e8f0ec;
+  --color-muted: #a3b3ab;
+  --color-quiet: #8b9c94;      /* 6.6:1 on the dark surface */
+  --color-green: #3fbc8a;
+  --color-green-2: #57d3a1;
+  --color-green-soft: #16302a;
+  --color-green-soft-border: #2a5443;
+  --color-amber: #e8973a;
+  --color-amber-soft: #2e2314;
+  --color-amber-soft-border: #4a3a1d;
+  --color-amber-ink: #f0c48a;
+  --color-blue: #6aa9e0;
+  --color-blue-soft: #16242f;
+  --color-red: #e97a75;
+  --color-red-soft: #2c1a1a;
+  --color-red-soft-border: #4a2b2a;
+  --color-focus: #5fd8a4;
+  --color-scrim: rgba(0, 0, 0, .55);
 
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, .35);
-    --shadow-md: 0 6px 22px rgba(0, 0, 0, .4);
-    --shadow-lg: 0 18px 50px rgba(0, 0, 0, .5);
-  }
+  --chart-solar-fill: rgba(232, 151, 58, .2);
+  --chart-load-fill: rgba(63, 188, 138, .08);
+  --chart-battery: #7fb0d8;
+  --chart-crosshair: rgba(232, 240, 236, .38);
+  --chart-shortfall: rgba(232, 151, 58, .18);
+  --chart-bar-soft: rgba(232, 151, 58, .26);
+  --chart-captured-fill: rgba(63, 188, 138, .18);
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, .35);
+  --shadow-md: 0 6px 22px rgba(0, 0, 0, .4);
+  --shadow-lg: 0 18px 50px rgba(0, 0, 0, .5);
 }
+
+/* Header control that flips the scheme; the icon shows the scheme it would
+   switch *to*, which is the convention people expect from a toggle. */
+.theme-toggle {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.theme-toggle svg { width: 17px; height: 17px; }
+.theme-toggle .icon-sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+:root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }

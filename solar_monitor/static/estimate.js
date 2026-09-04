@@ -226,9 +226,11 @@ function renderAccuracy(rows) {
   const off = Math.abs(1 - accuracy.ratio) * 100;
   const direction = accuracy.ratio < 1 ? 'above' : 'below';
   node.hidden = false;
-  node.textContent = off < 1
-    ? `Checked against today: while the battery could still accept charge, the model matched measured output almost exactly (${accuracy.samples} readings).`
-    : `Checked against today: while the battery could still accept charge, the model ran ${off.toFixed(0)}% ${direction} measured output across ${accuracy.samples} readings. The larger midday gap is the battery refusing charge, not the model drifting.`;
+  // The line is an envelope of demonstrated output, so sitting a little
+  // above the average unconstrained reading is by design, not drift.
+  node.textContent = off < 3
+    ? `Checked against today: while the battery could still accept charge, the line matched measured output within ${Math.max(1, off).toFixed(0)}% across ${accuracy.samples} readings.`
+    : `Checked against today: while the battery could still accept charge, the line ran ${off.toFixed(0)}% ${direction} measured output across ${accuracy.samples} readings. The larger midday gap is the battery refusing charge, not the model drifting.`;
 }
 
 function setLiveState(sample) {
@@ -357,9 +359,10 @@ function drawPotentialChart() {
   // A restrained green area makes actual energy readable without competing
   // with the model line.
   if (history.length > 1) {
+    const capturedFill = ChartCore.cssValue('--chart-captured-fill', 'rgba(8,125,85,.2)');
     const gradient = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
-    gradient.addColorStop(0, 'rgba(8,125,85,.20)');
-    gradient.addColorStop(1, 'rgba(8,125,85,.015)');
+    gradient.addColorStop(0, capturedFill);
+    gradient.addColorStop(1, ChartCore.fadeOut(capturedFill));
     ctx.beginPath();
     history.forEach((row, index) => index ? ctx.lineTo(x(timeOf(row)), y(number(row.pv_watts) || 0)) : ctx.moveTo(x(timeOf(row)), y(number(row.pv_watts) || 0)));
     ctx.lineTo(x(timeOf(history.at(-1))), y(0)); ctx.lineTo(x(timeOf(history[0])), y(0)); ctx.closePath();
@@ -389,7 +392,7 @@ function drawPotentialChart() {
         run.forEach((p, i) => i ? ctx.lineTo(x(p.time), y(p.modelled)) : ctx.moveTo(x(p.time), y(p.modelled)));
         for (let i = run.length - 1; i >= 0; i -= 1) ctx.lineTo(x(run[i].time), y(run[i].captured));
         ctx.closePath();
-        ctx.fillStyle = 'rgba(201, 120, 10, .16)';
+        ctx.fillStyle = ChartCore.cssValue('--chart-shortfall', 'rgba(201, 120, 10, .16)');
         ctx.fill();
       }
       run = [];
@@ -422,7 +425,9 @@ function drawPotentialChart() {
   state.chartGeometry = {from, to, x, y, pad, width, height};
 }
 
-function showPotentialTooltip(event) {
+// The reading goes in the strip above the plot rather than a tooltip over
+// it, so the curves stay visible while they are being inspected.
+function showPotentialReading(event) {
   if (!state.chartRows.length || !state.chartGeometry) return;
   const canvas = $('#potential-chart');
   const rect = canvas.getBoundingClientRect();
@@ -431,11 +436,33 @@ function showPotentialTooltip(event) {
   const target = state.chartGeometry.from + ratio * (state.chartGeometry.to - state.chartGeometry.from);
   const point = state.chartRows.reduce((best, row) => Math.abs(timeOf(row) - target) < Math.abs(timeOf(best) - target) ? row : best);
   const actual = interpolate(state.history, timeOf(point), 'pv_watts');
-  const tooltip = $('#potential-tooltip');
-  tooltip.innerHTML = `<strong>${new Date(point.timestamp).toLocaleString([], {weekday:'short', hour:'numeric', minute:'2-digit'})}</strong><span>Potential · ${watts(point.estimated_watts)}</span><span>Captured · ${actual === null ? '—' : watts(actual)}</span>${point.forecast ? '<span>Weather forecast</span>' : ''}`;
-  tooltip.hidden = false;
-  const tooltipWidth = 142;
-  tooltip.style.left = `${clamp(localX - tooltipWidth / 2, 4, rect.width - tooltipWidth - 4)}px`;
+  const when = new Date(point.timestamp).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'});
+  $('#potential-reading').innerHTML = `<strong>${when}</strong>`
+    + `<span><i class="potential-key"></i>${watts(point.estimated_watts)}</span>`
+    + `<span><i class="captured-key"></i>${actual === null ? '—' : watts(actual)}</span>`
+    + (point.forecast ? '<em>forecast</em>' : '');
+  $('#potential-reading').hidden = false;
+  $('#potential-hint').hidden = true;
+}
+
+function hidePotentialReading() {
+  $('#potential-reading').hidden = true;
+  $('#potential-hint').hidden = false;
+}
+
+/* What the line's height is based on. Shown under the chart so the reader
+   knows whether they are looking at the array's own record or a default. */
+function renderCalibration(calibration) {
+  const node = $('#calibration-note');
+  if (!node) return;
+  if (!calibration || calibration.source !== 'learned') {
+    node.textContent = calibration
+      ? `Default efficiency ${Number(calibration.fallback_ratio).toFixed(2)} until a week of readings exists`
+      : '';
+    return;
+  }
+  const dayWord = calibration.days === 1 ? 'day' : 'days';
+  node.textContent = `Efficiency learned from ${calibration.samples.toLocaleString()} unconstrained readings over ${calibration.days} ${dayWord} · peak ${Number(calibration.peak_factor).toFixed(2)}`;
 }
 
 function drawOpportunityChart() {
@@ -450,13 +477,15 @@ function drawOpportunityChart() {
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   const max = Math.max(.25, ...rows.map(row => row.high + row.low));
-  ctx.font = '8px Inter, -apple-system, sans-serif';
+  const grid = ChartCore.cssValue('--chart-grid', '#e1e9e5');
+  const axis = ChartCore.cssValue('--chart-axis', '#6b7a73');
+  ctx.font = `9px ${ChartCore.FONT_STACK}`;
   ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
   for (let index = 0; index <= 2; index += 1) {
     const value = max * index / 2;
-    const yy = pad.top + plotH - (value / max) * plotH;
-    ctx.strokeStyle = '#e1e9e5'; ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(width - pad.right, yy); ctx.stroke();
-    ctx.fillStyle = '#8a9992'; ctx.fillText(value.toFixed(1), pad.left - 5, yy);
+    const yy = ChartCore.crisp(pad.top + plotH - (value / max) * plotH);
+    ctx.strokeStyle = grid; ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(width - pad.right, yy); ctx.stroke();
+    ctx.fillStyle = axis; ctx.fillText(value.toFixed(1), pad.left - 5, yy);
   }
   const slot = plotW / Math.max(rows.length, 1);
   const barW = Math.max(3, Math.min(15, slot * .56));
@@ -469,7 +498,7 @@ function drawOpportunityChart() {
     ctx.fillStyle = ChartCore.cssValue('--color-amber', '#c9780a');
     ctx.fillRect(center - barW / 2, pad.top + plotH - highH, barW, highH);
     if (index === 0 || index === rows.length - 1 || index === Math.floor(rows.length / 2)) {
-      ctx.fillStyle = '#8a9992'; ctx.textAlign = index === 0 ? 'left' : index === rows.length - 1 ? 'right' : 'center';
+      ctx.fillStyle = axis; ctx.textAlign = index === 0 ? 'left' : index === rows.length - 1 ? 'right' : 'center';
       ctx.fillText(new Date(row.timestamp).toLocaleTimeString([], {hour:'numeric'}), center, height - 8);
     }
   });
@@ -524,6 +553,7 @@ async function refresh() {
     state.history = (await historyResponse.json()).sort((a, b) => timeOf(a) - timeOf(b));
     state.estimate = await estimateResponse.json();
     applySystemFacts(state.estimate);
+    renderCalibration(state.estimate.calibration);
     state.model = (state.estimate.points || []).sort((a, b) => timeOf(a) - timeOf(b));
     const configured = Boolean(state.estimate.configured);
     $('#estimator-offline').hidden = configured;
@@ -570,11 +600,16 @@ document.querySelectorAll('[data-preset]').forEach(button => {
 });
 
 const chart = $('#potential-chart');
-chart.addEventListener('pointerdown', showPotentialTooltip);
+chart.addEventListener('pointerdown', showPotentialReading);
 chart.addEventListener('pointermove', event => {
-  if (event.pointerType === 'mouse' || event.buttons) showPotentialTooltip(event);
+  if (event.pointerType === 'mouse' || event.buttons) showPotentialReading(event);
 });
-chart.addEventListener('pointerleave', () => { $('#potential-tooltip').hidden = true; });
+// A finger lifting leaves the reading in place to be read; a mouse leaving
+// the plot clears it.
+chart.addEventListener('pointerleave', event => { if (event.pointerType === 'mouse') hidePotentialReading(); });
+
+$('#theme-toggle')?.addEventListener('click', () => window.SolarTheme?.toggle());
+document.addEventListener('themechange', () => { drawPotentialChart(); drawOpportunityChart(); });
 
 let resizeTimer;
 window.addEventListener('resize', () => {
