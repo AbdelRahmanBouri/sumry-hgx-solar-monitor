@@ -89,9 +89,10 @@ def create_app(
         # gable collects within 1-2% of a flat array of the same size no
         # matter the pitch or which way the ridge runs. The exact tilt here
         # is therefore a low-stakes assumption (a typical 3:12 tiny-home
-        # pitch); the performance ratio is what actually sets the level, and
-        # 0.74 is what this system's own production implies against its known
-        # 2,640 W nameplate.
+        # pitch). The level of the line is learned from the array's own
+        # unconstrained output (solar_estimate.learn_efficiency); the
+        # performance ratio here is only the fallback until a week of
+        # readings exists, and 0.77 is roughly what this array delivers.
         #
         # Do not be tempted to "fit" a steep single plane to the logged data:
         # battery-full curtailment removes every midday sample, leaving only
@@ -144,6 +145,24 @@ def create_app(
         # that an unconnected BTS input is a measured battery temperature.
         hidden = {"battery_temperature", "bts_temperature"}
         return {key: value for key, value in sample.items() if key not in hidden}
+
+    # Learning the efficiency curve reads a week of samples, so it is redone
+    # at most every 15 minutes per array configuration rather than per page
+    # load. Keyed on the geometry so an admin edit takes effect immediately.
+    efficiency_cache: dict = {"key": None, "at": 0.0, "value": None}
+
+    def learned_efficiency(lat, lon, capacity_watts, tilt, azimuth, dual_slope, now_utc):
+        key = (lat, lon, capacity_watts, tilt, azimuth, dual_slope)
+        if efficiency_cache["key"] == key and time.monotonic() - efficiency_cache["at"] < 900:
+            return efficiency_cache["value"]
+        since = now_utc - timedelta(days=solar_estimate.LEARNING_DAYS)
+        samples = database.history(since.isoformat(), max_points=6000)
+        learned = solar_estimate.learn_efficiency(
+            samples, lat, lon, capacity_watts, tilt, azimuth, dual_slope,
+            cloud_by_hour=solar_estimate.fetch_cloud_cover(lat, lon),
+        )
+        efficiency_cache.update(key=key, at=time.monotonic(), value=learned)
+        return learned
 
     @app.get("/")
     def dashboard():
@@ -253,16 +272,33 @@ def create_app(
         hours = _bounded_int("hours", 24, 1, 48)
         now_utc = datetime.now(timezone.utc)
         window = (now_utc - timedelta(hours=hours), now_utc + FORECAST_PREVIEW)
+
+        # The level of the line is learned from the array's own unconstrained
+        # output rather than hand-set. The learned factors already contain
+        # whatever the straddling strings cost, so the live line applies the
+        # geometry only; the configured ratio (with the full physics) is the
+        # fallback until enough readings exist.
+        learned = learned_efficiency(
+            lat, lon, capacity_watts, tilt_degrees, azimuth_degrees, dual_slope, now_utc
+        )
         points, weather_source = solar_estimate.estimate_series(
             lat, lon, capacity_watts, performance_ratio, *window,
             tilt_degrees=tilt_degrees, azimuth_degrees=azimuth_degrees,
-            dual_slope=dual_slope, split_strings=split_strings,
+            dual_slope=dual_slope, split_strings=split_strings and not learned,
+            efficiency=learned["bands"] if learned else None,
         )
+        calibration = {
+            "source": "learned" if learned else "setting",
+            "fallback_ratio": performance_ratio,
+            "learning_days": solar_estimate.LEARNING_DAYS,
+            **(learned or {"samples": 0, "days": 0, "bands": {}, "peak_factor": None}),
+        }
 
         # What the same panels would collect after the two losses that cost
         # nothing but labour to undo: re-landing each string on one face, and
-        # then moving the shaded half onto the sunny slope. Both are modelled
-        # over the identical window so the comparison is like for like.
+        # then moving the shaded half onto the sunny slope. The gains are
+        # physics ratios over the identical window, applied to the live line
+        # so "as built" always equals what the chart shows.
         def window_kwh(series):
             if len(series) < 2:
                 return 0.0
@@ -272,27 +308,28 @@ def create_app(
             ).total_seconds() / 3600
             return sum(point["estimated_watts"] for point in series) * step_hours / 1000
 
-        scenarios = {"as_built_kwh": round(window_kwh(points), 2)}
+        as_built = window_kwh(points)
+        scenarios = {"as_built_kwh": round(as_built, 2)}
         if dual_slope and tilt_degrees is not None and azimuth_degrees is not None:
-            per_face, _ = solar_estimate.estimate_series(
-                lat, lon, capacity_watts, performance_ratio, *window,
-                tilt_degrees=tilt_degrees, azimuth_degrees=azimuth_degrees,
-                dual_slope=True, split_strings=False,
-            )
-            one_plane, _ = solar_estimate.estimate_series(
-                lat, lon, capacity_watts, performance_ratio, *window,
-                tilt_degrees=tilt_degrees, azimuth_degrees=azimuth_degrees,
-                dual_slope=False, split_strings=False,
-            )
+            def physics_kwh(**geometry):
+                series, _ = solar_estimate.estimate_series(
+                    lat, lon, capacity_watts, performance_ratio, *window,
+                    tilt_degrees=tilt_degrees, azimuth_degrees=azimuth_degrees, **geometry,
+                )
+                return window_kwh(series)
+            baseline = physics_kwh(dual_slope=True, split_strings=split_strings) or 1.0
+            per_face = physics_kwh(dual_slope=True, split_strings=False) / baseline
+            one_plane = physics_kwh(dual_slope=False, split_strings=False) / baseline
             scenarios.update({
-                "strings_per_face_kwh": round(window_kwh(per_face), 2),
-                "all_one_slope_kwh": round(window_kwh(one_plane), 2),
+                "strings_per_face_kwh": round(as_built * per_face, 2),
+                "all_one_slope_kwh": round(as_built * one_plane, 2),
             })
         return jsonify({
             "configured": True,
             "location": {"latitude": lat, "longitude": lon},
             "capacity_watts": capacity_watts,
-            "performance_ratio": performance_ratio,
+            "performance_ratio": learned["peak_factor"] if learned else performance_ratio,
+            "calibration": calibration,
             "array": {
                 "module": "SunPower SPR-E20-330-COM",
                 "module_count": 8,

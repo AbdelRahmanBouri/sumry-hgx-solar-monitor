@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from solar_monitor import solar_estimate
@@ -184,6 +184,96 @@ class PlaneOfArrayTests(unittest.TestCase):
                 tilt_degrees=45, azimuth_degrees=185,
             )
         self.assertLessEqual(points[0]["estimated_watts"], 2640 * 1.05)
+
+
+class LearnedEfficiencyTests(unittest.TestCase):
+    LAT, LON = 34.0522, -118.2437
+    GEOMETRY = dict(tilt_degrees=14, azimuth_degrees=185, dual_slope=True)
+
+    def synthetic_day(self, day, factor, volts=25.5, amps=30.0, every_minutes=2):
+        """A day of readings from an array delivering `factor` of the clear-sky
+        model: 13:00 to 23:00 UTC is dawn to dusk at the site."""
+        samples = []
+        when = datetime(2026, 9, day, 13, 0, tzinfo=timezone.utc)
+        end = when.replace(hour=23)
+        while when < end:
+            elevation, azimuth = solar_estimate.solar_position(self.LAT, self.LON, when)
+            plane = solar_estimate.array_irradiance(
+                elevation, azimuth, solar_estimate.clear_sky_ghi(elevation), 14, 185, True,
+            )
+            samples.append({
+                "captured_at": when.isoformat(),
+                "pv_watts": round(2640 * plane / 1000 * factor, 1),
+                "battery_voltage": volts,
+                "battery_current": amps,
+            })
+            when += timedelta(minutes=every_minutes)
+        return samples
+
+    def test_recovers_the_factor_the_readings_were_made_with(self):
+        learned = solar_estimate.learn_efficiency(
+            self.synthetic_day(3, 0.85), self.LAT, self.LON, 2640, **self.GEOMETRY,
+        )
+        self.assertIsNotNone(learned)
+        for band, value in learned["bands"].items():
+            self.assertAlmostEqual(value, 0.85, delta=0.01, msg=f"band {band}")
+        self.assertEqual(learned["days"], 1)
+        self.assertGreater(learned["samples"], solar_estimate.MIN_TOTAL_SAMPLES)
+
+    def test_throttled_readings_are_ignored(self):
+        # A full bank holding at float takes a trickle no matter what the
+        # panels could make; those readings would drag the curve down.
+        free = self.synthetic_day(3, 0.85)
+        throttled = self.synthetic_day(4, 0.35, volts=27.0, amps=2.0)
+        learned = solar_estimate.learn_efficiency(
+            free + throttled, self.LAT, self.LON, 2640, **self.GEOMETRY,
+        )
+        for value in learned["bands"].values():
+            self.assertAlmostEqual(value, 0.85, delta=0.01)
+
+    def test_a_heavy_load_below_the_plateau_still_counts(self):
+        # Little current reaching the battery because the home is using the
+        # solar is not the charger throttling; only holding-plus-trickle is.
+        learned = solar_estimate.learn_efficiency(
+            self.synthetic_day(3, 0.85, volts=25.0, amps=1.0),
+            self.LAT, self.LON, 2640, **self.GEOMETRY,
+        )
+        self.assertIsNotNone(learned)
+
+    def test_passing_cloud_does_not_lower_the_envelope(self):
+        clear = self.synthetic_day(3, 0.85)
+        # A quarter of the readings at half output, as a cloud would leave them.
+        for index, sample in enumerate(clear):
+            if index % 4 == 0:
+                sample["pv_watts"] = round(sample["pv_watts"] * 0.5, 1)
+        learned = solar_estimate.learn_efficiency(clear, self.LAT, self.LON, 2640, **self.GEOMETRY)
+        for value in learned["bands"].values():
+            self.assertAlmostEqual(value, 0.85, delta=0.01)
+
+    def test_too_little_data_means_no_curve(self):
+        few = self.synthetic_day(3, 0.85)[:10]
+        self.assertIsNone(solar_estimate.learn_efficiency(few, self.LAT, self.LON, 2640, **self.GEOMETRY))
+        self.assertIsNone(solar_estimate.learn_efficiency([], self.LAT, self.LON, 2640, **self.GEOMETRY))
+
+    def test_efficiency_interpolates_between_bands_and_holds_beyond_them(self):
+        bands = {"10": 0.7, "20": 0.8, "30": 0.9}
+        self.assertEqual(solar_estimate.efficiency_at(bands, 2), 0.7)
+        self.assertAlmostEqual(solar_estimate.efficiency_at(bands, 20), 0.75)
+        self.assertEqual(solar_estimate.efficiency_at(bands, 60), 0.9)
+        self.assertEqual(solar_estimate.efficiency_at({}, 45), 1.0)
+
+    def test_a_learned_curve_sets_the_level_of_the_series(self):
+        when = datetime(2026, 9, 3, 19, 26, tzinfo=timezone.utc)
+        with patch.object(solar_estimate, "fetch_cloud_cover", return_value=None):
+            def watts(**kw):
+                points, _ = solar_estimate.estimate_series(
+                    self.LAT, self.LON, 2640, 0.5, when, when, step_minutes=10,
+                    tilt_degrees=14, azimuth_degrees=185, dual_slope=True, **kw,
+                )
+                return points[0]["estimated_watts"]
+            flat_ratio = watts()
+            learned = watts(efficiency={"50": 1.0})
+        self.assertAlmostEqual(learned, flat_ratio * 2, delta=1)
 
 
 class EstimateSeriesTests(unittest.TestCase):

@@ -22,8 +22,27 @@ import urllib.request
 WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 WEATHER_TIMEOUT_SECONDS = 8
 WEATHER_CACHE_SECONDS = 1800  # Cloud-cover forecasts only update hourly upstream.
+WEATHER_PAST_DAYS = 7  # Long enough to cover the efficiency-learning window.
 SOLAR_CONSTANT = 1361.0  # W/m^2, extraterrestrial irradiance.
 GROUND_ALBEDO = 0.25  # Dry desert dirt and gravel around this installation.
+
+# Learned efficiency. The clear-sky model gives the *shape* of a day; how much
+# of that shape a real array delivers depends on heat, glass reflection at low
+# sun, haze, neighbouring roofs on the horizon and the wiring -- none of which
+# a single hand-set "performance ratio" can capture, because they vary with
+# the height of the sun. So the level is learned instead: for each band of sun
+# elevation, the share of the clear-sky model the array actually produced
+# while nothing was holding it back.
+EFFICIENCY_BAND_DEGREES = 10
+LEARNING_DAYS = 7
+MIN_BAND_SAMPLES = 20
+MIN_TOTAL_SAMPLES = 60
+ENVELOPE_PERCENTILE = 0.90
+MIN_MODEL_FRACTION = 0.08  # Ignore readings where the model itself is near zero.
+# The bank holds at 27.0 V float / 28.2 V absorption. Below the lower plateau
+# the charger is in bulk, passing on everything the panels make, so those
+# readings show the array's true capability.
+HOLDING_VOLTS = 26.9
 
 _weather_cache: dict[str, tuple[float, dict[str, float] | None]] = {}
 
@@ -207,7 +226,7 @@ def fetch_cloud_cover(lat: float, lon: float, *, force: bool = False) -> dict[st
         "latitude": f"{lat:.4f}",
         "longitude": f"{lon:.4f}",
         "hourly": "cloud_cover",
-        "past_days": "2",
+        "past_days": str(WEATHER_PAST_DAYS),
         "forecast_days": "3",
         "timezone": "UTC",
     }
@@ -229,6 +248,147 @@ def _hour_bucket(when: datetime) -> str:
     return when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:00")
 
 
+def array_irradiance(
+    elevation_deg: float,
+    azimuth_deg: float,
+    ghi: float,
+    tilt_degrees: float | None,
+    azimuth_degrees: float | None,
+    dual_slope: bool = False,
+    split_strings: bool = False,
+) -> float:
+    """Irradiance the array collects per m^2, W/m^2, from horizontal GHI.
+
+    With no tilt or azimuth the array is treated as flat. `dual_slope` splits
+    it evenly over both faces of a pitched roof -- `azimuth_degrees` and its
+    opposite -- which is how a flush-mounted gable installation sits. The
+    two faces largely cancel, so a symmetric gable collects within a couple
+    of percent of a flat array whatever the pitch.
+
+    `split_strings` says each series string straddles both faces rather than
+    living on one, and applies the resulting mismatch loss.
+    """
+    if tilt_degrees is None or azimuth_degrees is None:
+        return ghi
+    front = plane_of_array_irradiance(elevation_deg, azimuth_deg, ghi, tilt_degrees, azimuth_degrees)
+    if not dual_slope:
+        return front
+    back = plane_of_array_irradiance(
+        elevation_deg, azimuth_deg, ghi, tilt_degrees, (azimuth_degrees + 180) % 360
+    )
+    combined = (front + back) / 2
+    if split_strings:
+        combined *= series_mismatch_factor(min(front, back), max(front, back))
+    return combined
+
+
+def _band_of(elevation_deg: float) -> int:
+    return int(max(0.0, elevation_deg) // EFFICIENCY_BAND_DEGREES) * EFFICIENCY_BAND_DEGREES
+
+
+def efficiency_at(bands: dict[str, float], elevation_deg: float) -> float:
+    """The learned factor for a sun height, interpolated between band centres
+    and held flat beyond the outermost bands."""
+    if not bands:
+        return 1.0
+    centres = sorted((int(key) + EFFICIENCY_BAND_DEGREES / 2, value) for key, value in bands.items())
+    if elevation_deg <= centres[0][0]:
+        return centres[0][1]
+    if elevation_deg >= centres[-1][0]:
+        return centres[-1][1]
+    for (low_deg, low_value), (high_deg, high_value) in zip(centres, centres[1:]):
+        if low_deg <= elevation_deg <= high_deg:
+            weight = (elevation_deg - low_deg) / (high_deg - low_deg)
+            return low_value + (high_value - low_value) * weight
+    return centres[-1][1]
+
+
+def _percentile(values: list[float], fraction: float) -> float:
+    ordered = sorted(values)
+    position = fraction * (len(ordered) - 1)
+    low = int(position)
+    high = min(low + 1, len(ordered) - 1)
+    return ordered[low] + (ordered[high] - ordered[low]) * (position - low)
+
+
+def learn_efficiency(
+    samples: list[dict],
+    lat: float,
+    lon: float,
+    capacity_watts: float,
+    tilt_degrees: float | None = None,
+    azimuth_degrees: float | None = None,
+    dual_slope: bool = False,
+    cloud_by_hour: dict[str, float] | None = None,
+) -> dict | None:
+    """Learn, per band of sun elevation, what share of the clear-sky model
+    this array delivers when nothing is throttling it.
+
+    Only readings taken while the battery was below its holding voltage
+    count: once the bank holds a plateau the charger throttles, and those
+    readings say nothing about the panels. Within a band the
+    factor is a high percentile of the observed ratios rather than the mean,
+    so the line is an envelope of demonstrated output -- passing clouds and
+    the odd jittery reading fall below it instead of dragging it down.
+
+    Returns None when there is not yet enough unconstrained data; the caller
+    then falls back to its configured performance ratio.
+    """
+    if capacity_watts <= 0:
+        return None
+    ratios_by_band: dict[int, list[float]] = {}
+    days: set[str] = set()
+    for sample in samples:
+        try:
+            when = datetime.fromisoformat(sample["captured_at"])
+            pv = float(sample["pv_watts"])
+            volts = float(sample["battery_voltage"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        # Below the plateau the charger is in bulk and tracking the panels'
+        # maximum power, whatever the current: little of it reaching the
+        # battery just means the home is using the solar. At or above it the
+        # charger regulates voltage instead, and even a bank still taking
+        # 15 A in absorption is being throttled -- those readings sat 12%
+        # under the free ones when they were let in.
+        if volts >= HOLDING_VOLTS:
+            continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        elevation, azimuth = solar_position(lat, lon, when)
+        if elevation < 3:
+            continue
+        cloud_percent = (cloud_by_hour or {}).get(_hour_bucket(when))
+        attenuation = cloud_attenuation(cloud_percent) if cloud_percent is not None else 1.0
+        plane = array_irradiance(
+            elevation, azimuth, clear_sky_ghi(elevation) * attenuation,
+            tilt_degrees, azimuth_degrees, dual_slope,
+        )
+        modelled = capacity_watts * plane / 1000
+        if modelled < capacity_watts * MIN_MODEL_FRACTION:
+            continue
+        ratio = pv / modelled
+        if not 0 < ratio < 1.3:
+            continue
+        ratios_by_band.setdefault(_band_of(elevation), []).append(ratio)
+        days.add(when.astimezone(timezone.utc).strftime("%Y-%m-%d"))
+
+    observed = {
+        band: round(min(1.1, max(0.3, _percentile(ratios, ENVELOPE_PERCENTILE))), 3)
+        for band, ratios in ratios_by_band.items()
+        if len(ratios) >= MIN_BAND_SAMPLES
+    }
+    total = sum(len(ratios) for band, ratios in ratios_by_band.items() if band in observed)
+    if not observed or total < MIN_TOTAL_SAMPLES:
+        return None
+    return {
+        "bands": {str(band): value for band, value in sorted(observed.items())},
+        "samples": total,
+        "days": len(days),
+        "peak_factor": max(observed.values()),
+    }
+
+
 def estimate_series(
     lat: float,
     lon: float,
@@ -241,23 +401,16 @@ def estimate_series(
     azimuth_degrees: float | None = None,
     dual_slope: bool = False,
     split_strings: bool = False,
+    efficiency: dict[str, float] | None = None,
 ) -> tuple[list[dict], str]:
     """Modelled output in watts from `start` to `end` (inclusive-ish).
 
-    With `tilt_degrees` and `azimuth_degrees` set, irradiance is transposed
-    onto the array's own plane; without them the model stays on the
-    horizontal plane.
+    Geometry (`tilt_degrees`, `azimuth_degrees`, `dual_slope`,
+    `split_strings`) is described under `array_irradiance`.
 
-    `dual_slope` splits the array evenly over both faces of a pitched roof --
-    `azimuth_degrees` and its opposite -- which is how a flush-mounted gable
-    installation actually sits. Note that the two faces largely cancel: a
-    symmetric gable collects within a couple of percent of a flat array of
-    the same size, whatever the pitch.
-
-    `split_strings` says each series string straddles both faces rather than
-    living on one. That is a real and seasonal loss, because series modules
-    share a current and the shaded ones set it -- unlike parallel strings,
-    which barely interact.
+    The level comes from `efficiency` -- learned per sun-elevation band by
+    `learn_efficiency` -- when given, and otherwise from the flat
+    `performance_ratio`.
 
     Returns (points, weather_source) where weather_source is "open-meteo"
     when live cloud data was used, otherwise "clear-sky-only".
@@ -265,7 +418,7 @@ def estimate_series(
     cloud_by_hour = fetch_cloud_cover(lat, lon)
     weather_source = "open-meteo" if cloud_by_hour else "clear-sky-only"
     now = datetime.now(timezone.utc)
-    tilted = tilt_degrees is not None and azimuth_degrees is not None
+    ceiling = capacity_watts * 1.05
 
     points: list[dict] = []
     step = timedelta(minutes=max(1, step_minutes))
@@ -275,43 +428,25 @@ def estimate_series(
         clear_sky = clear_sky_ghi(elevation)
         cloud_percent = (cloud_by_hour or {}).get(_hour_bucket(cursor))
         attenuation = cloud_attenuation(cloud_percent) if cloud_percent is not None else 1.0
-        ghi = clear_sky * attenuation
+        factor = efficiency_at(efficiency, elevation) if efficiency else performance_ratio
 
-        if tilted:
-            # Attenuate first, then transpose: thicker cloud lowers the
-            # clearness index, which Erbs turns into a larger diffuse share,
-            # so an overcast sky correctly stops caring about panel angle.
-            def collect(horizontal: float) -> float:
-                front = plane_of_array_irradiance(
-                    elevation, azimuth, horizontal, tilt_degrees, azimuth_degrees
-                )
-                if not dual_slope:
-                    return front
-                back = plane_of_array_irradiance(
-                    elevation, azimuth, horizontal, tilt_degrees, (azimuth_degrees + 180) % 360
-                )
-                combined = (front + back) / 2
-                if split_strings:
-                    combined *= series_mismatch_factor(min(front, back), max(front, back))
-                return combined
+        # Attenuate first, then transpose: thicker cloud lowers the clearness
+        # index, which Erbs turns into a larger diffuse share, so an overcast
+        # sky correctly stops caring about panel angle.
+        def watts(horizontal: float) -> float:
+            plane = array_irradiance(
+                elevation, azimuth, horizontal, tilt_degrees, azimuth_degrees,
+                dual_slope, split_strings,
+            )
+            return round(max(0.0, min(ceiling, capacity_watts * (plane / 1000) * factor)), 1)
 
-            plane = collect(ghi)
-            plane_clear = collect(clear_sky)
-        else:
-            plane, plane_clear = ghi, clear_sky
-
-        estimated_watts = min(
-            capacity_watts * 1.05, capacity_watts * (plane / 1000) * performance_ratio
-        )
         points.append({
             "timestamp": cursor.isoformat(),
             "elevation_deg": round(elevation, 2),
             "azimuth_deg": round(azimuth, 2),
             "cloud_cover_percent": cloud_percent,
-            "clear_sky_watts": round(
-                min(capacity_watts * 1.05, capacity_watts * (plane_clear / 1000) * performance_ratio), 1
-            ),
-            "estimated_watts": round(max(0.0, estimated_watts), 1),
+            "clear_sky_watts": watts(clear_sky),
+            "estimated_watts": watts(clear_sky * attenuation),
             "forecast": cursor > now,
         })
         cursor += step

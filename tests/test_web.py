@@ -230,6 +230,11 @@ class WebTests(unittest.TestCase):
         self.assertEqual(payload["array"]["wiring"], "4S2P")
         self.assertEqual(payload["array"]["module_count"], 8)
         self.assertEqual(payload["system"]["configured_charge_limit_amps"], 80)
+        # An empty database has nothing to learn from, so the configured
+        # ratio applies and the response says so.
+        self.assertEqual(payload["calibration"]["source"], "setting")
+        self.assertEqual(payload["calibration"]["fallback_ratio"], 0.8)
+        self.assertEqual(payload["performance_ratio"], 0.8)
 
     def test_estimate_previews_the_hours_ahead_for_any_lookback(self):
         token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
