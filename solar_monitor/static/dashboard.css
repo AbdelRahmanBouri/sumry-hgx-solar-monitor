@@ -105,10 +105,10 @@ main { gap: 12px; }
 .flow-name { grid-column: 2; grid-row: 1; }
 .flow-end > strong,
 .flow-meta { grid-column: 1 / -1; }
-.flow-name { font-size: 11px; font-weight: 700; }
+.flow-name { font-size: 12px; font-weight: 700; }
 .flow-end strong { margin-top: 4px; font-size: clamp(27px, 8vw, 35px); }
 .flow-end strong small { font-size: 12px; }
-.flow-meta { margin-top: 6px; font-size: 11px; }
+.flow-meta { margin-top: 6px; font-size: 12px; }
 .inverter { gap: 7px; }
 .inverter > span {
   width: 46px;
@@ -117,7 +117,7 @@ main { gap: 12px; }
   background: linear-gradient(145deg, #e9f8f1, #dff3e9);
   box-shadow: inset 0 0 0 1px rgba(8,127,91,.22), 0 0 0 6px rgba(231,246,239,.7);
 }
-.inverter small { font-size: 10px; }
+.inverter small { font-size: 11.5px; }
 .flow-connector {
   height: 2px;
   border-radius: 99px;
@@ -138,7 +138,7 @@ main { gap: 12px; }
 .battery-path::before { height: 22px; }
 .battery-row {
   min-height: 72px;
-  grid-template-columns: 30px minmax(58px, .75fr) minmax(82px, 1fr) auto;
+  grid-template-columns: 30px minmax(74px, .8fr) minmax(70px, 1fr) auto;
   gap: 7px;
   padding: 11px 12px;
   border-color: rgba(8,127,91,.16);
@@ -148,11 +148,14 @@ main { gap: 12px; }
 }
 .battery-icon { grid-column: 1; }
 .battery-copy { grid-column: 2; }
-.battery-copy > span { font-size: 11px; }
+.battery-copy > span { font-size: 12px; }
 .battery-copy strong { font-size: 25px; }
+/* A reading and its unit are one token and must never be split across lines;
+   the larger type made "24.7 V" wide enough to wrap without this. */
+.battery-copy strong, .battery-current strong, .flow-end > strong { white-space: nowrap; }
 .battery-current { grid-column: 4; }
 .battery-current strong { font-size: 17px; }
-.battery-current > span { margin-top: 5px; padding: 3px 8px; font-size: 10px; }
+.battery-current > span { margin-top: 5px; padding: 3px 8px; font-size: 11.5px; }
 .battery-estimates {
   grid-column: 3;
   grid-row: 1;
@@ -175,7 +178,7 @@ main { gap: 12px; }
 .battery-estimates > span + span { padding-left: 9px; padding-right: 0; }
 .battery-estimates small {
   overflow: visible;
-  font-size: 8px;
+  font-size: 10px;
   line-height: 1.25;
   letter-spacing: .035em;
   white-space: normal;
@@ -203,7 +206,7 @@ main { gap: 12px; }
 .today-card h2 { font-size: 19px; }
 .today-stats { margin-top: 14px; }
 .today-stats > span { padding-inline: 12px; }
-.today-stats small { overflow: visible; font-size: 9px; line-height: 1.25; white-space: normal; }
+.today-stats small { overflow: visible; font-size: 10.5px; line-height: 1.25; white-space: normal; }
 .today-stats strong { margin-top: 2px; font-size: 14px; white-space: nowrap; }
 
 .readings-heading { min-height: 44px; align-items: center; padding-inline: 3px; }
@@ -214,27 +217,27 @@ main { gap: 12px; }
   border-color: var(--hairline);
   border-radius: 12px;
   color: var(--muted-soft);
-  font-size: 11px;
+  font-size: 12px;
   box-shadow: 0 5px 18px rgba(21,45,35,.05);
 }
 .summary-grid,
 .extra-metrics-grid { gap: 10px; }
 .summary-card { min-height: 139px; padding: 15px; overflow: hidden; }
-.summary-title { font-size: 11px; }
+.summary-title { font-size: 12px; }
 .tile-icon { width: 32px; height: 32px; border-radius: 10px; }
 .tile-icon svg { width: 16px; height: 16px; }
 .summary-card > strong { margin-top: 13px; font-size: 30px; }
 .card-readouts { gap: 8px; }
-.card-readouts small { font-size: 8.5px; }
-.card-readouts b { font-size: 10px; }
+.card-readouts small { font-size: 10px; }
+.card-readouts b { font-size: 11.5px; }
 
 .trend-card { padding: 19px 18px 15px; scroll-margin-top: 78px; overflow: hidden; }
 .trend-heading { align-items: flex-end; }
 .trend-heading h2 { font-size: 22px; }
 .trend-heading.compact { align-items: center; justify-content: flex-start; }
-.trend-subtitle { margin: 5px 0 0; color: var(--muted-soft); font-size: 11px; }
+.trend-subtitle { margin: 5px 0 0; color: var(--muted-soft); font-size: 12px; }
 .range-control { border-color: transparent; border-radius: 12px; background: #f0f4f2; }
-.range-control button { min-width: 39px; height: 32px; border-radius: 9px; font-size: 10px; }
+.range-control button { min-width: 39px; height: 32px; border-radius: 9px; font-size: 11.5px; }
 .range-control button.active {
   background: #dff2e9;
   color: var(--accent-strong);
@@ -255,7 +258,7 @@ main { gap: 12px; }
   padding-inline: 7px;
   border-color: transparent;
   background: transparent;
-  font-size: 11px;
+  font-size: 12px;
 }
 .legend-toggle.active {
   border-color: transparent;
@@ -289,7 +292,7 @@ main { gap: 12px; }
   border-color: transparent;
   background: #f0f4f2;
 }
-.y-scale-control span { font-size: 10px; }
+.y-scale-control span { font-size: 11.5px; }
 .y-scale-control select {
   min-width: 102px;
   min-height: 36px;
@@ -312,7 +315,7 @@ main { gap: 12px; }
   border-radius: 0;
   background: transparent;
   color: var(--muted-soft);
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 650;
   text-align: center;
 }
@@ -326,7 +329,7 @@ main { gap: 12px; }
   gap: 7px;
   list-style: none;
   color: var(--muted-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   cursor: pointer;
 }
@@ -341,11 +344,11 @@ main { gap: 12px; }
   border-color: rgba(35,67,54,.15);
   border-radius: 12px;
   box-shadow: 0 10px 30px rgba(21,45,35,.14);
-  font-size: 11px;
+  font-size: 12px;
 }
-.chart-tooltip strong { font-size: 11px; }
+.chart-tooltip strong { font-size: 12px; }
 .trend-stats { padding-top: 12px; }
-.trend-stats span { font-size: 8px; }
+.trend-stats span { font-size: 10px; }
 .trend-stats strong { font-size: 13px; }
 .chart-data summary { min-height: 58px; }
 
@@ -360,13 +363,13 @@ main { gap: 12px; }
 .extra-metrics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .extra-metrics-grid:empty { display: none; }
 .extra-metric { min-height: 120px; padding: 15px; position: relative; }
-.extra-metric > span { display: block; padding-right: 30px; color: var(--muted-soft); font-size: 11px; font-weight: 700; }
+.extra-metric > span { display: block; padding-right: 30px; color: var(--muted-soft); font-size: 12px; font-weight: 700; }
 .extra-metric > strong { display: block; margin-top: 21px; font-size: 29px; line-height: 1; letter-spacing: -.04em; }
 .extra-metric > strong small { color: var(--quiet); font-size: 13px; font-weight: 600; letter-spacing: 0; }
 .extra-metric > button { width: 44px; height: 44px; position: absolute; top: 2px; right: 2px; padding: 0; border: 0; background: transparent; color: var(--quiet); font-size: 22px; cursor: pointer; }
 .preference-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .preference-title > strong { font-size: 13px; }
-.clear-data-cards { min-height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: white; color: var(--muted); font-size: 11px; font-weight: 700; }
+.clear-data-cards { min-height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: white; color: var(--muted); font-size: 12px; font-weight: 700; }
 .metric-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 310px; overflow: auto; }
 .metric-choice { min-height: 50px; display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-subtle); color: var(--muted); font-size: 12px; font-weight: 650; }
 .metric-choice input { width: 21px; height: 21px; flex: 0 0 auto; accent-color: var(--green); }
@@ -385,7 +388,7 @@ main { gap: 12px; }
   box-shadow: 0 16px 44px rgba(21,45,35,.17), inset 0 1px 0 rgba(255,255,255,.9);
   backdrop-filter: blur(24px) saturate(150%);
 }
-.bottom-nav a { min-height: 52px; border-radius: 18px; font-size: 10px; }
+.bottom-nav a { min-height: 52px; border-radius: 18px; font-size: 11.5px; }
 .bottom-nav a.active { background: #e3f3eb; color: var(--accent-strong); }
 
 .metric-updated { animation: value-settle .42s ease-out; }
@@ -413,7 +416,7 @@ main { gap: 12px; }
   main { width: calc(100% - 24px); }
   .header-reading { min-width: 63px; }
   .header-reading + .header-reading { margin-left: 9px; padding-left: 9px; }
-  .header-reading > span { font-size: 9px; }
+  .header-reading > span { font-size: 10.5px; }
   .header-reading strong { font-size: 22px; }
   .app-actions { gap: 6px; }
   .connection { min-height: 42px; padding-inline: 10px; }
@@ -446,7 +449,7 @@ main { gap: 12px; }
   .chart-mode button { min-height: 40px; flex: 1; padding-inline: 8px; }
   .chart-zoom { display: none; }
   .y-scale-control { grid-column: 2; grid-row: 1; width: 100%; padding-left: 10px; }
-  .y-scale-control span { font-size: 10px; }
+  .y-scale-control span { font-size: 11.5px; }
   .y-scale-control select { min-width: 0; width: auto; min-height: 38px; flex: 1; padding-left: 6px; font-size: 14px; }
   .chart-wrap,
   #power-chart,
@@ -468,7 +471,7 @@ main { gap: 12px; }
   .connection small { display: none; }
   .flow-card { padding-inline: 14px; }
   .flow-top { grid-template-columns: minmax(70px,1fr) 14px 48px 14px minmax(70px,1fr); }
-  .battery-estimates small { font-size: 8.5px; }
+  .battery-estimates small { font-size: 10px; }
   .summary-card { padding-inline: 13px; }
   .trend-card { padding-inline: 14px; }
   .chart-controls { grid-template-columns: minmax(124px, .9fr) minmax(140px, 1.1fr); }
@@ -497,7 +500,7 @@ main { gap: 12px; }
   main { width: min(calc(100% - 56px), 1380px); }
   .app-bar { min-height: 82px; }
   .header-reading { min-width: 108px; }
-  .header-reading > span { font-size: 10px; }
+  .header-reading > span { font-size: 11.5px; }
   .header-reading strong { font-size: 27px; }
   .connection { min-height: 42px; padding-inline: 14px; font-size: 12px; }
   .pull-now,
@@ -536,13 +539,13 @@ main { gap: 12px; }
   .battery-copy > span { font-size: 12px; }
   .battery-copy strong { font-size: 34px; }
   .battery-current strong { font-size: 23px; }
-  .battery-estimates small { font-size: 9px; }
+  .battery-estimates small { font-size: 10.5px; }
   .battery-estimates strong { font-size: 15px; }
 
   .today-stats { flex: 1; grid-template-columns: 1fr; margin-top: 18px; }
   .today-stats > span { justify-content: center; padding: 14px 0; border-right: 0; border-bottom: 1px solid var(--hairline); }
   .today-stats > span:last-child { border-bottom: 0; }
-  .today-stats small { font-size: 10px; }
+  .today-stats small { font-size: 11.5px; }
   .today-stats strong { font-size: 23px; }
 
   .readings-heading { min-height: 48px; }
@@ -556,7 +559,7 @@ main { gap: 12px; }
 
   .trend-card { padding: 28px 30px 22px; }
   .trend-heading h2 { font-size: 28px; }
-  .range-control button { min-width: 56px; height: 36px; font-size: 11px; }
+  .range-control button { min-width: 56px; height: 36px; font-size: 12px; }
   .legend-toggle,
   .zoom-reset { min-height: 34px; font-size: 12px; }
   .chart-wrap,

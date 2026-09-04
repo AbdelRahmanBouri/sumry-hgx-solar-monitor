@@ -12,8 +12,8 @@
   <link rel="manifest" href="/static/solar-dashboard.webmanifest?v=1">
   <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/theme.css?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=10">
-  <link rel="stylesheet" href="/static/dashboard.css?v=3">
+  <link rel="stylesheet" href="/static/style.css?v=11">
+  <link rel="stylesheet" href="/static/dashboard.css?v=5">
 </head>
 <body>
   <header class="app-bar">
@@ -114,14 +114,14 @@
       <article class="summary-card card" data-card-id="output">
         <div class="summary-title"><span>Output</span><span class="tile-icon blue"><svg viewBox="0 0 24 24"><path d="M3 12c2.5-7 5.5 7 9 0s6.5 7 9 0"/></svg></span></div>
         <strong><span data-metric="output_voltage">—</span><small> V</small></strong>
-        <div class="card-readouts"><span><small>Frequency</small><b><span data-metric="output_frequency">—</span> Hz</b></span><span><small>Current</small><b><span data-metric="output_current">—</span> A</b></span></div>
+        <div class="card-readouts"><span><small>Freq</small><b><span data-metric="output_frequency">—</span> Hz</b></span><span><small>Amps</small><b><span data-metric="output_current">—</span> A</b></span></div>
       </article>
 
       <article class="summary-card card" data-card-id="temperature">
         <div class="summary-title"><span>Power stage</span><span class="tile-icon amber"><svg viewBox="0 0 24 24"><path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0Z"/></svg></span></div>
         <strong><span id="power-temperature">—</span><small> °C</small></strong>
         <canvas class="sparkline" id="temperature-sparkline" height="28" aria-hidden="true"></canvas>
-        <div class="card-readouts three"><span><small>Sensor 2</small><b><span data-metric="ntc2_temperature">—</span>°</b></span><span><small>Sensor 3</small><b><span data-metric="ntc3_temperature">—</span>°</b></span><span><small>Sensor 4</small><b><span data-metric="ntc4_temperature">—</span>°</b></span></div>
+        <div class="card-readouts three"><span><small>NTC 2</small><b><span data-metric="ntc2_temperature">—</span>°</b></span><span><small>NTC 3</small><b><span data-metric="ntc3_temperature">—</span>°</b></span><span><small>NTC 4</small><b><span data-metric="ntc4_temperature">—</span>°</b></span></div>
       </article>
 
       <article class="summary-card card" data-card-id="cooling">
@@ -134,7 +134,7 @@
       <article class="summary-card card" data-card-id="grid">
         <div class="summary-title"><span>Grid &amp; bus</span><span class="tile-icon slate"><svg viewBox="0 0 24 24"><path d="M4 21V9l8-6 8 6v12M9 21v-6h6v6"/></svg></span></div>
         <strong><span data-metric="grid_voltage">—</span><small> V</small></strong>
-        <div class="card-readouts three"><span><small>Frequency</small><b><span data-metric="grid_frequency">—</span> Hz</b></span><span><small>Current</small><b><span data-metric="grid_current">—</span> A</b></span><span><small>Bus</small><b><span data-metric="bus_voltage">—</span> V</b></span></div>
+        <div class="card-readouts three"><span><small>Freq</small><b><span data-metric="grid_frequency">—</span> Hz</b></span><span><small>Amps</small><b><span data-metric="grid_current">—</span> A</b></span><span><small>Bus</small><b><span data-metric="bus_voltage">—</span> V</b></span></div>
       </article>
     </section>
     <section class="extra-metrics-grid" id="extra-metrics-grid" aria-label="Added data cards"></section>
