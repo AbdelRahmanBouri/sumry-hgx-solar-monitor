@@ -315,7 +315,7 @@ function updateEnergyInsights(sample) {
 
 const CONFIG_LABELS = {
   output_source_priority: 'Output priority', maximum_charge_current_a: 'Max charge current',
-  ac_input_range: 'AC input range', power_saving: 'Power saving', battery_type: 'Battery type',
+  ac_input_range: 'AC input range', power_saving: 'Power saving', unknown_flag_byte8_bits34: 'Unidentified flag (b8.3-4)',
   overload_auto_restart: 'Overload auto-restart', overtemperature_auto_restart: 'Overtemp auto-restart',
   output_voltage_v: 'Output voltage', output_frequency_mode: 'Frequency mode',
   output_frequency_hz: 'Output frequency', grid_export_enabled: 'Grid export',

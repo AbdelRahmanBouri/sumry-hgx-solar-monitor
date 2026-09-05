@@ -57,7 +57,7 @@ class ConfigurationWriteTests(unittest.TestCase):
         self.assertTrue(decoded.valid, decoded.note)
         self.assertEqual(decoded.metrics["bulk_charge_voltage_v"], 28.2)
         self.assertEqual(decoded.metrics["float_charge_voltage_v"], 27.0)
-        self.assertEqual(decoded.metrics["battery_type"], "AGM")
+        self.assertEqual(decoded.metrics["unknown_flag_byte8_bits34"], 0)
         self.assertFalse(decoded.metrics["overload_auto_restart"])
 
     def test_write_frame_changes_only_the_requested_bytes(self):
@@ -74,7 +74,7 @@ class ConfigurationWriteTests(unittest.TestCase):
 
     def test_the_inverter_would_read_the_new_values_back(self):
         changes = {
-            "battery_type": "User-defined", "bulk_charge_voltage_v": 29.2,
+            "unknown_flag_byte8_bits34": "2", "bulk_charge_voltage_v": 29.2,
             "float_charge_voltage_v": 27.2, "charge_cutoff_current_a": 2,
             "low_battery_cutoff_v": 22.0, "overload_auto_restart": True,
             "equalization_enabled": 1, "equalization_voltage_v": 29.5,
@@ -82,7 +82,7 @@ class ConfigurationWriteTests(unittest.TestCase):
         frame = self.protocol.build_config_write(REAL_CONFIG_REPLY, changes)
         decoded = self.protocol.decode(as_reply(frame))
         self.assertTrue(decoded.valid, decoded.note)
-        self.assertEqual(decoded.metrics["battery_type"], "User-defined")
+        self.assertEqual(decoded.metrics["unknown_flag_byte8_bits34"], 2)
         self.assertEqual(decoded.metrics["bulk_charge_voltage_v"], 29.2)
         self.assertEqual(decoded.metrics["float_charge_voltage_v"], 27.2)
         self.assertEqual(decoded.metrics["charge_cutoff_current_a"], 2.0)
@@ -100,7 +100,7 @@ class ConfigurationWriteTests(unittest.TestCase):
         for changes in (
             {"bulk_charge_voltage_v": 29.3}, {"bulk_charge_voltage_v": 23.9},
             {"low_battery_cutoff_v": 19.5}, {"charge_cutoff_current_a": 1},
-            {"equalization_voltage_v": 30}, {"battery_type": "Lithium"},
+            {"equalization_voltage_v": 30}, {"battery_type": "AGM"},  # no longer writable
             {"output_voltage_v": 110}, {"inverter_power_limit_w": 6000},
             {"bulk_charge_voltage_v": "high"}, {},
         ):

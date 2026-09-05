@@ -47,10 +47,21 @@ class WritableField:
     choices: tuple[str, ...] = ()  # bit fields with named values
 
 
+# Fields whose byte mapping is confirmed against the inverter itself, either
+# by the front panel or by observed behaviour. `battery_type` is deliberately
+# absent: on 2026-09-05 the panel (menu 05) read AGM while this table's bits
+# decoded "User-defined", proving bit 4 of byte 8 is something else. Writing
+# it set an unidentified flag. Nothing goes back in here without a panel
+# reading or a behavioural test to back it.
 WRITABLE_FIELDS: dict[str, WritableField] = {
-    "battery_type": WritableField(
-        "bits", 8, shift=3, mask=0x03,
-        choices=("AGM", "Flooded", "User-defined", "Lithium/BMS library"),
+    # Byte 8 bits 3-4. The community struct labels these `battery_type`, and
+    # this project believed that until 2026-09-05, when the inverter's own
+    # panel (menu 05) read AGM while these bits decoded "User-defined". The
+    # mapping is disproven for this firmware. They stay writable ONLY so the
+    # value written on 2026-09-04 can be restored to 0; they must not be used
+    # to select a battery type until the real register is identified.
+    "unknown_flag_byte8_bits34": WritableField(
+        "bits", 8, shift=3, mask=0x03, choices=("0", "1", "2", "3"),
     ),
     "bulk_charge_voltage_v": WritableField("u16", 48, 100, 24.0, 29.2),
     "float_charge_voltage_v": WritableField("u16", 52, 100, 24.0, 29.2),
@@ -67,6 +78,7 @@ WRITABLE_FIELDS: dict[str, WritableField] = {
     "equalization_timeout_min": WritableField("u16", 94, 1, 5, 900),
     "equalization_interval_days": WritableField("u16", 96, 1, 0, 90),
 }
+
 
 
 def _writable_masks() -> dict[int, int]:
@@ -279,14 +291,15 @@ class Sumry8851ProbeProtocol(ReadOnlyProtocol):
             return DecodeResult({}, False, "Unexpected HGX configuration response header")
 
         flag0, flag1, flag2, flag3 = frame[8:12]
-        battery_types = ("AGM", "Flooded", "User-defined", "Lithium/BMS library")
         charge_priorities = ("PV & Grid", "PV then Grid", "PV only", "Unknown")
         settings = {
             "output_source_priority": ("PV > Grid > Battery", "PV > Battery > Grid")[(flag1 >> 2) & 1],
             "maximum_charge_current_a": _u16(frame, 58) / 10,
             "ac_input_range": ("UPS", "APL")[(flag0 >> 5) & 1],
             "power_saving": bool((flag2 >> 4) & 1),
-            "battery_type": battery_types[(flag0 >> 3) & 0x03],
+            # NOT battery_type: see the note on WRITABLE_FIELDS. Reported raw
+            # so a wrong label is never shown as fact.
+            "unknown_flag_byte8_bits34": (flag0 >> 3) & 0x03,
             "overload_auto_restart": bool((flag3 >> 1) & 1),
             "overtemperature_auto_restart": bool((flag3 >> 6) & 1),
             "output_voltage_v": _u16(frame, 14) / 10,
@@ -315,4 +328,8 @@ class Sumry8851ProbeProtocol(ReadOnlyProtocol):
             "equalization_interval_days": _u16(frame, 96),
             "inverter_power_limit_w": _u16(frame, 12),
         }
-        return DecodeResult(settings, True, "CRC-validated HGX 0x8851 v2 current configuration")
+        return DecodeResult(
+            settings, True,
+            "CRC-validated HGX 0x8851 v2 current configuration; battery type is not "
+            "decoded (byte 8 bits 3-4 disproven against panel menu 05 on 2026-09-05)",
+        )

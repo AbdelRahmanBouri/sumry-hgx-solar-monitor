@@ -58,7 +58,7 @@ class DecodeTests(unittest.TestCase):
         frame[-2:] = _crc16_modbus(frame[:-2]).to_bytes(2, "little")
         result = self.protocol.decode(bytes(frame))
         self.assertTrue(result.valid)
-        self.assertEqual(result.metrics["battery_type"], "AGM")
+        self.assertEqual(result.metrics["unknown_flag_byte8_bits34"], 0)
         self.assertEqual(result.metrics["bulk_charge_voltage_v"], 28.2)
         self.assertEqual(result.metrics["maximum_charge_current_a"], 60)
 

@@ -107,7 +107,7 @@ class CollectorResilienceTests(unittest.TestCase):
         with patch.object(collector_module, "exchange", fake_exchange), \
              patch.object(collector_module, "write_exchange", fake_write):
             result = collector.apply_config(
-                {"bulk_charge_voltage_v": 29.2, "battery_type": "User-defined", "overload_auto_restart": True},
+                {"bulk_charge_voltage_v": 29.2, "overload_auto_restart": True},
                 settle_seconds=0,
             )
 
@@ -115,7 +115,6 @@ class CollectorResilienceTests(unittest.TestCase):
         self.assertTrue(result["verified"], result["mismatches"])
         self.assertEqual(result["before"]["bulk_charge_voltage_v"], 28.2)
         self.assertEqual(result["after"]["bulk_charge_voltage_v"], 29.2)
-        self.assertEqual(result["after"]["battery_type"], "User-defined")
         self.assertTrue(result["after"]["overload_auto_restart"])
         # Both reads and the write are on record, and the read-back is a snapshot.
         self.assertEqual([f["query_name"] for f in self.database.raw_frames],

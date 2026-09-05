@@ -95,7 +95,8 @@ overview().catch(()=>location.href='/admin/login');
 // the write is confirmed only by what the inverter reports afterwards.
 const inverterState = {current: null, fields: {}, pending: null};
 const INVERTER_LABELS = {
-  battery_type: 'Battery type', maximum_charge_current_a: 'Maximum charge current',
+  unknown_flag_byte8_bits34: 'Unidentified flag (byte 8 bits 3-4)',
+  maximum_charge_current_a: 'Maximum charge current',
   bulk_charge_voltage_v: 'Bulk / absorption voltage', float_charge_voltage_v: 'Float voltage',
   charge_cutoff_current_a: 'Charge cut-off current', low_battery_cutoff_v: 'Low-battery cut-off',
   overload_auto_restart: 'Overload auto-restart', overtemperature_auto_restart: 'Over-temperature auto-restart',
@@ -149,7 +150,7 @@ function renderInverterSnapshots(snapshots) {
   if (!snapshots.length) { body.innerHTML = '<tr><td colspan="8">No configuration snapshots yet.</td></tr>'; return; }
   body.innerHTML = snapshots.map(snap => {
     const s = snap.settings;
-    return `<tr><td>${formatTimestamp(snap.captured_at)}</td><td>${esc(s.battery_type)}</td><td>${esc(s.bulk_charge_voltage_v)} V</td><td>${esc(s.float_charge_voltage_v)} V</td><td>${esc(s.charge_cutoff_current_a)} A</td><td>${esc(s.low_battery_cutoff_v)} V</td><td>${s.equalization_enabled ? `${esc(s.equalization_voltage_v)} V` : 'Off'}</td><td><button type="button" class="secondary" data-restore="${snap.id}">Restore</button></td></tr>`;
+    return `<tr><td>${formatTimestamp(snap.captured_at)}</td><td>${esc(s.unknown_flag_byte8_bits34)}</td><td>${esc(s.bulk_charge_voltage_v)} V</td><td>${esc(s.float_charge_voltage_v)} V</td><td>${esc(s.charge_cutoff_current_a)} A</td><td>${esc(s.low_battery_cutoff_v)} V</td><td>${s.equalization_enabled ? `${esc(s.equalization_voltage_v)} V` : 'Off'}</td><td><button type="button" class="secondary" data-restore="${snap.id}">Restore</button></td></tr>`;
   }).join('');
   body.querySelectorAll('[data-restore]').forEach(button => {
     button.onclick = async () => {
@@ -204,7 +205,6 @@ $('#inverter-reload').onclick = () => { $('#inverter-review').hidden = true; loa
 // 29.2 V ceiling), 13.6 V float, absorption held until 2 A, and a 22 V floor.
 $('#inverter-preset-odyssey').onclick = () => {
   const set = (name, value) => { const f = $(`#inverter-form [name="${name}"]`); if (f) f.value = String(value); };
-  set('battery_type', 'User-defined');
   set('bulk_charge_voltage_v', 29.2);
   set('float_charge_voltage_v', 27.2);
   set('charge_cutoff_current_a', 2);
@@ -225,13 +225,12 @@ $('#inverter-form').addEventListener('submit', event => {
   });
   const note = $('#inverter-review-note');
   note.textContent = '';
-  // Bulk and float are only honoured with the User-defined type; writing them
-  // under the AGM preset would appear to work and change nothing.
+  // Bulk and float are only honoured when the inverter is on its User-defined
+  // battery type, which can only be selected on the panel (menu 05) -- the
+  // protocol bits that appeared to set it were disproven on 2026-09-05.
   const wantsVoltages = 'bulk_charge_voltage_v' in changes || 'float_charge_voltage_v' in changes;
-  const resultingType = changes.battery_type ?? current.battery_type;
-  if (wantsVoltages && resultingType !== 'User-defined') {
-    changes.battery_type = 'User-defined';
-    note.textContent = 'Battery type is switched to User-defined so the charge voltages take effect.';
+  if (wantsVoltages) {
+    note.textContent = 'Charge voltages are only accepted while the panel (menu 05) shows User-defined.';
   }
   if (!Object.keys(changes).length) {
     $('#inverter-review').hidden = true;

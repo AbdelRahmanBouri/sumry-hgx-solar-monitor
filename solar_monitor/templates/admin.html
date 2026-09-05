@@ -112,9 +112,8 @@
         </article>
 
         <article class="panel">
-          <div class="panel-head"><div><h2>Battery charging &amp; behaviour</h2><p class="muted" id="inverter-current-stamp">Waiting for a configuration snapshot…</p></div><div><button type="button" class="secondary" id="inverter-preset-odyssey">Odyssey AGM preset</button><button type="button" class="secondary" id="inverter-reload">Reload</button></div></div>
+          <div class="panel-head"><div><h2>Battery charging &amp; behaviour</h2><p class="muted" style="color:var(--amber)">Battery type must be set on the inverter's own panel (menu 05). The protocol bits believed to hold it were disproven on 2026-09-05 and are no longer writable here.</p><p class="muted" id="inverter-current-stamp">Waiting for a configuration snapshot…</p></div><div><button type="button" class="secondary" id="inverter-preset-odyssey">Odyssey AGM preset</button><button type="button" class="secondary" id="inverter-reload">Reload</button></div></div>
           <form id="inverter-form" class="settings inverter-settings">
-            <label>Battery type<select name="battery_type"><option>AGM</option><option>Flooded</option><option>User-defined</option><option>Lithium/BMS library</option></select></label>
             <label>Maximum charge current<div><input name="maximum_charge_current_a" type="number" step="1" min="10" max="130" inputmode="decimal"><small>A · PV and grid combined</small></div></label>
             <label>Bulk / absorption voltage<div><input name="bulk_charge_voltage_v" type="number" step="0.1" min="24" max="29.2" inputmode="decimal"><small>V · only honoured with the User-defined type</small></div></label>
             <label>Float voltage<div><input name="float_charge_voltage_v" type="number" step="0.1" min="24" max="29.2" inputmode="decimal"><small>V · only honoured with the User-defined type</small></div></label>
