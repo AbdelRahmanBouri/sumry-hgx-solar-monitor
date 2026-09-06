@@ -4,6 +4,8 @@ from unittest.mock import patch
 from solar_monitor import collector as collector_module
 from solar_monitor.collector import Collector, start_collector
 from solar_monitor.config import SerialConfig
+from pathlib import Path
+
 from solar_monitor.serial_io import Exchange
 
 from tests.test_safety import REAL_CONFIG_REPLY, as_reply
@@ -165,3 +167,82 @@ class CollectorResilienceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FailureVisibilityTests(unittest.TestCase):
+    """A dead serial adapter must be visible to anything watching.
+
+    On 2026-09-05 the adapter stalled for 425 consecutive polls and the
+    collector still reported failures=0, because only unhandled exceptions
+    were counted. Nothing could ever have alarmed on it.
+    """
+
+    def setUp(self):
+        self.database = FakeDatabase()
+        self.collector = Collector(SerialConfig(port="auto"), self.database)
+        self.collector._port = lambda: "/dev/fake"
+
+    def _failing(self, *_a, **_k):
+        return Exchange("2026-09-05T12:00:00+00:00", "/dev/fake", 9600, "q", b"", b"", 5, "[Errno 5] I/O error")
+
+    def test_failed_exchanges_are_counted_and_streaked(self):
+        with patch.object(collector_module, "exchange", self._failing):
+            for _ in range(3):
+                self.collector.collect_once()
+        state = self.collector.state()
+        self.assertGreaterEqual(state["failures"], 3)
+        self.assertGreaterEqual(state["consecutive_failures"], 3)
+        self.assertEqual(state["failing_since"], "2026-09-05T12:00:00+00:00")
+
+    def test_a_success_clears_the_streak(self):
+        from tests.test_safety import REAL_CONFIG_REPLY
+        with patch.object(collector_module, "exchange", self._failing):
+            self.collector.collect_once()
+        # The first poll runs two queries (status and config), so two failures.
+        self.assertGreater(self.collector.state()["consecutive_failures"], 0)
+
+        def ok(*_a, **_k):
+            return Exchange("2026-09-05T12:01:00+00:00", "/dev/fake", 9600, "q", b"", REAL_CONFIG_REPLY, 5)
+
+        with patch.object(collector_module, "exchange", ok):
+            self.collector.collect_once()
+        self.assertEqual(self.collector.state()["consecutive_failures"], 0)
+        self.assertIsNone(self.collector.state()["failing_since"])
+
+
+class ClockGuardTests(unittest.TestCase):
+    """A Pi has no RTC: after a cold boot it restores a stale clock until NTP
+    syncs. That put two real readings ~10 hours in the past on 2026-09-05,
+    showing 599 W of sun at midnight."""
+
+    def setUp(self):
+        self.database = FakeDatabase()
+        self.collector = Collector(SerialConfig(port="auto"), self.database)
+        self.collector._port = lambda: "/dev/fake"
+
+    def test_a_reading_stamped_before_one_already_stored_is_discarded(self):
+        from tests.test_safety import REAL_CONFIG_REPLY
+        self.collector._newest_stored = "2026-09-05T18:00:00+00:00"
+
+        def stale(*_a, **_k):
+            return Exchange("2026-09-05T07:18:27+00:00", "/dev/fake", 9600,
+                            "current_settings_0200", b"", REAL_CONFIG_REPLY, 5)
+
+        with patch.object(collector_module, "_SYNC_FLAG", Path("/nonexistent/flag")), \
+             patch.object(collector_module, "exchange", stale):
+            self.collector.collect_once()
+        self.assertEqual(self.database.configs, [], "a backwards-stamped reading must not be stored")
+        self.assertTrue(self.database.raw_frames, "the raw frame is still kept for diagnosis")
+
+    def test_a_forward_reading_is_stored_normally(self):
+        from tests.test_safety import REAL_CONFIG_REPLY
+        self.collector._newest_stored = "2026-09-05T07:00:00+00:00"
+
+        def fresh(*_a, **_k):
+            return Exchange("2026-09-05T18:00:00+00:00", "/dev/fake", 9600,
+                            "current_settings_0200", b"", REAL_CONFIG_REPLY, 5)
+
+        with patch.object(collector_module, "_SYNC_FLAG", Path("/nonexistent/flag")), \
+             patch.object(collector_module, "exchange", fresh):
+            self.collector.collect_once()
+        self.assertEqual(len(self.database.configs), 1)

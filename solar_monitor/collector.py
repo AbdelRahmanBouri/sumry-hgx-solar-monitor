@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import logging
+from pathlib import Path
 import threading
 import time
 
@@ -13,6 +14,9 @@ from .serial_io import discover_usb_serial_ports, escaped_ascii, exchange, write
 
 
 LOG = logging.getLogger(__name__)
+
+# systemd-timesyncd creates this once the clock has been set from the network.
+_SYNC_FLAG = Path("/run/systemd/timesync/synchronized")
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -59,9 +63,16 @@ class Collector:
         self.last_port: str | None = None
         self.polls = 0
         self.failures = 0
+        # A failed exchange is a failure. Counting only unhandled exceptions
+        # meant 425 consecutive dead polls reported failures=0 on 2026-09-05,
+        # so nothing could ever alarm on a serial adapter that had stopped
+        # answering. The streak is what a watchdog actually needs.
+        self.consecutive_failures = 0
+        self.failing_since: str | None = None
         self.last_maintenance_at: str | None = None
         self.last_maintenance_result: dict | None = None
         self._maintenance_monotonic = 0.0
+        self._newest_stored: str | None = None
 
     @property
     def interval_seconds(self) -> int:
@@ -83,6 +94,8 @@ class Collector:
             "last_port": self.last_port,
             "polls": self.polls,
             "failures": self.failures,
+            "consecutive_failures": self.consecutive_failures,
+            "failing_since": self.failing_since,
             "last_maintenance_at": self.last_maintenance_at,
             "last_maintenance_result": self.last_maintenance_result,
             "interval_seconds": self.interval_seconds,
@@ -214,6 +227,19 @@ class Collector:
             outcomes.append({"id": request["id"], "status": status, "result": result})
         return outcomes
 
+    def _timestamp_is_trustworthy(self, timestamp: str) -> bool:
+        """A Raspberry Pi has no RTC: on a cold boot it restores a stale clock
+        until NTP syncs. On 2026-09-05 that put two real readings nearly ten
+        hours in the past, showing 599 W of sun at midnight. Two cheap guards:
+        the system's own sync flag, and never accepting a reading stamped
+        before one already stored."""
+        if _SYNC_FLAG.parent.exists() and not _SYNC_FLAG.exists():
+            return False
+        if self._newest_stored is None:
+            latest = getattr(self.database, "latest_sample", lambda: None)()
+            self._newest_stored = (latest or {}).get("captured_at") or ""
+        return timestamp >= self._newest_stored
+
     def _record(self, result, decoded) -> None:
         self.database.save_raw_frame({
             "captured_at": result.timestamp, "port": result.port, "baudrate": result.baudrate,
@@ -261,15 +287,30 @@ class Collector:
             "decode_note": decoded.note,
             "error": result.error,
         })
-        if decoded.metrics and query.name == "current_settings_0200":
+        if decoded.metrics and not self._timestamp_is_trustworthy(result.timestamp):
+            LOG.warning(
+                "Discarding a reading stamped %s: the clock is not yet trustworthy",
+                result.timestamp,
+            )
+        elif decoded.metrics and query.name == "current_settings_0200":
             self.database.save_inverter_config(result.timestamp, decoded.metrics)
+            self._newest_stored = max(self._newest_stored or "", result.timestamp)
         elif decoded.metrics:
             self.database.save_sample(result.timestamp, decoded.metrics)
+            self._newest_stored = max(self._newest_stored or "", result.timestamp)
         if result.error:
             self.last_error = result.error
-            LOG.warning("Serial exchange failed on %s: %s", port, result.error)
+            self.failures += 1
+            self.consecutive_failures += 1
+            self.failing_since = self.failing_since or result.timestamp
+            LOG.warning(
+                "Serial exchange failed on %s (%d in a row since %s): %s",
+                port, self.consecutive_failures, self.failing_since, result.error,
+            )
         else:
             self.last_error = None
+            self.consecutive_failures = 0
+            self.failing_since = None
             self.last_success_at = result.timestamp
             LOG.info(
                 "Captured %d bytes from %s (%s)",
