@@ -397,8 +397,21 @@ def create_app(
         since = datetime.now(timezone.utc) - timedelta(days=14)
         samples = database.history(since.isoformat(), max_points=8000)
         local_offset = datetime.now().astimezone().utcoffset() or timedelta(0)
+        try:
+            cutoff = float((config.get("settings") or {}).get("low_battery_cutoff_v") or 21.0)
+        except (TypeError, ValueError):
+            cutoff = 21.0
+        latest = database.latest_sample() or {}
+        # With no utility wired in, the transfer-to-grid threshold cannot act
+        # and the low-voltage cutoff is a hard stop with nothing to fall back
+        # to. That is what made 2026-09-05 a shutdown rather than a transfer.
+        grid_available = bool((latest.get("grid_voltage") or 0) > 80)
+        state = battery_model.count_charge(samples, nominal, bulk_setpoint_v=bulk)
         payload = {
-            "state": battery_model.count_charge(samples, nominal, bulk_setpoint_v=bulk),
+            "state": state,
+            "runtime": battery_model.runtime_to_cutoff(samples, state, cutoff, grid_available),
+            "cutoff_volts": cutoff,
+            "grid_available": grid_available,
             "days": battery_model.daily_health(samples, bulk, int(local_offset.total_seconds() // 60))[-14:],
             "nominal_ah": nominal,
             "bulk_setpoint_v": bulk,

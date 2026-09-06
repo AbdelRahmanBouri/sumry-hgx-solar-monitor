@@ -1405,6 +1405,31 @@ function renderBatteryHealth() {
   set('#health-ah', today ? `${today.ah_in.toFixed(0)} in · ${today.ah_out.toFixed(0)} out` : '— in · — out');
   set('#health-full', `last full ${formatHoursAgo(state.last_full_at)}`);
 
+  // Time to the inverter's low-voltage cutoff. On the night of 2026-09-05 the
+  // battery tile read a comfortable 82% while the bank had about five hours
+  // left at a 24 A draw; the inverter shut down on fault 04 shortly after
+  // midnight. Percentage was true and useless. This is the number that matters.
+  const runtime = batteryState.runtime;
+  const tile = document.querySelector('#health-runtime-tile');
+  if (tile) {
+    if (!runtime) {
+      set('#health-runtime', '—');
+      set('#health-runtime-note', 'needs a charge count first');
+      tile.classList.remove('is-urgent', 'is-warn');
+    } else if (runtime.charging) {
+      set('#health-runtime', 'Charging');
+      set('#health-runtime-note', `cutoff ${runtime.cutoff_volts.toFixed(1)} V`);
+      tile.classList.remove('is-urgent', 'is-warn');
+    } else {
+      const h = runtime.hours;
+      set('#health-runtime', h >= 24 ? '>24 h' : h >= 1 ? `${Math.floor(h)}h ${Math.round((h % 1) * 60)}m` : `${Math.round(h * 60)} min`);
+      set('#health-runtime-note', `${runtime.draw_amps.toFixed(0)} A draw · ${runtime.usable_ah.toFixed(0)} Ah to ${runtime.cutoff_volts.toFixed(1)} V`
+        + (runtime.grid_available ? ' · grid available' : ' · no grid to fall back on'));
+      tile.classList.toggle('is-urgent', h < 2);
+      tile.classList.toggle('is-warn', h >= 2 && h < 5);
+    }
+  }
+
   const series = days.map(day => day.predawn_volts);
   drawSparkline(document.querySelector('#predawn-sparkline'), series);
   const first = withPredawn[0];

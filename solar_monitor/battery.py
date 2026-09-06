@@ -257,6 +257,65 @@ def count_charge(
     return state
 
 
+def runtime_to_cutoff(
+    samples: list[dict],
+    state: dict,
+    cutoff_volts: float,
+    grid_available: bool = False,
+    window_minutes: int = 20,
+) -> dict | None:
+    """How long until the inverter's low-voltage cutoff shuts the output down.
+
+    Written after 2026-09-05, when a 578 W overnight load emptied a bank of
+    roughly 120 Ah and the inverter shut down on fault 04. At 19:05 that
+    night the dashboard showed "82%", which was true and useless: what
+    mattered was that the bank had about two hours left. This is that
+    number.
+
+    It counts charge, not volts, because terminal voltage under a 24 A load
+    says almost nothing about what is left. The floor is the cutoff, not
+    empty: on this system the inverter stops at `cutoff_volts` and, with no
+    utility connected, that is a hard stop with nothing to fall back to.
+    """
+    if not samples or state.get("soc") is None:
+        return None
+    recent = samples[-1]
+    amps = _number(recent.get("battery_current"))
+    volts = _number(recent.get("battery_voltage"))
+    if amps is None or volts is None:
+        return None
+
+    # Average the recent draw so a single spike does not swing the estimate.
+    cutoff_time = _when(recent) - timedelta(minutes=window_minutes)
+    window = [s for s in samples if _when(s) >= cutoff_time
+              and _number(s.get("battery_current")) is not None]
+    draw = -sum(_number(s["battery_current"]) for s in window) / len(window) if window else -amps
+
+    capacity = float(state.get("capacity_ah") or 0)
+    soc = float(state["soc"])
+    # Charge above the cutoff, not above empty. The cutoff maps to a state of
+    # charge through the resting curve; below it the inverter is off anyway.
+    floor_soc = soc_from_rest_voltage(cutoff_volts)
+    usable_ah = max(0.0, capacity * (soc - floor_soc) / 100)
+
+    result = {
+        "draw_amps": round(draw, 1),
+        "capacity_ah": round(capacity, 1),
+        "soc": round(soc, 1),
+        "cutoff_volts": cutoff_volts,
+        "cutoff_soc": round(floor_soc, 1),
+        "usable_ah": round(usable_ah, 1),
+        "grid_available": grid_available,
+        "charging": draw <= 0.5,
+    }
+    if draw <= 0.5:
+        result["hours"] = None
+        return result
+    result["hours"] = round(usable_ah / draw, 2)
+    result["empty_at"] = (_when(recent) + timedelta(hours=usable_ah / draw)).isoformat()
+    return result
+
+
 def _local_day(stamp: datetime, offset: timedelta) -> str:
     return (stamp + offset).strftime("%Y-%m-%d")
 

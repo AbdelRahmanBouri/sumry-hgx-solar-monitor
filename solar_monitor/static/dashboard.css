@@ -571,3 +571,10 @@ main { gap: 12px; }
   .battery-path i { animation: none; }
   .metric-updated { animation: none; }
 }
+
+/* Time-to-cutoff. Warns amber under five hours and red under two, because a
+   percentage that looks healthy is exactly what hid the 2026-09-05 shutdown. */
+.health-runtime.is-warn { border-color: var(--color-amber-soft-border); background: var(--color-amber-soft); }
+.health-runtime.is-warn strong { color: var(--color-amber); }
+.health-runtime.is-urgent { border-color: var(--color-red-soft-border); background: var(--color-red-soft); }
+.health-runtime.is-urgent strong { color: var(--color-red); }

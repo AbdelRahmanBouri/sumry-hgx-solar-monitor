@@ -252,3 +252,54 @@ class DailyHealthTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RuntimeToCutoffTests(unittest.TestCase):
+    """The number that would have caught the 2026-09-05 shutdown.
+
+    That night the battery tile read a comfortable 82% while the bank had
+    hours, not days. The percentage was true and useless.
+    """
+
+    def test_it_predicts_the_night_of_the_fault(self):
+        # Conditions logged at 19:05 local, the last reading before the
+        # blackout: 24.61 V, 24 A out, 555 W load, bank counted at 82%.
+        samples = [{"captured_at": "2026-09-05T02:05:03+00:00",
+                    "battery_voltage": 24.61, "battery_current": -24.0}]
+        result = battery.runtime_to_cutoff(samples, {"soc": 82.0, "capacity_ah": 148.0}, 22.0)
+        self.assertIsNotNone(result)
+        self.assertFalse(result["charging"])
+        self.assertAlmostEqual(result["draw_amps"], 24.0, delta=0.1)
+        # The Pi was still alive at 00:02:37 and had lost power by 09:59, so
+        # the true shutdown was shortly after midnight. Anything in that
+        # region is a useful warning; five hours from 19:05 lands there.
+        self.assertTrue(4.0 <= result["hours"] <= 6.0, f"got {result['hours']} h")
+        self.assertTrue(result["empty_at"].startswith("2026-09-05T07"), result["empty_at"])
+
+    def test_charging_reports_no_countdown(self):
+        samples = [{"captured_at": "2026-09-05T18:00:00+00:00",
+                    "battery_voltage": 28.18, "battery_current": 12.0}]
+        result = battery.runtime_to_cutoff(samples, {"soc": 95.0, "capacity_ah": 148.0}, 22.0)
+        self.assertTrue(result["charging"])
+        self.assertIsNone(result["hours"])
+
+    def test_a_light_load_gives_a_long_runtime(self):
+        samples = [{"captured_at": "2026-09-05T18:00:00+00:00",
+                    "battery_voltage": 25.4, "battery_current": -2.8}]
+        result = battery.runtime_to_cutoff(samples, {"soc": 90.0, "capacity_ah": 148.0}, 22.0)
+        self.assertGreater(result["hours"], 24, "72 W overnight is what this bank can actually do")
+
+    def test_it_averages_the_draw_over_a_window(self):
+        # One spike must not swing the estimate.
+        base = "2026-09-05T18:%02d:00+00:00"
+        samples = [{"captured_at": base % m, "battery_voltage": 25.0, "battery_current": -10.0}
+                   for m in range(0, 18, 2)]
+        samples.append({"captured_at": base % 18, "battery_voltage": 25.0, "battery_current": -60.0})
+        result = battery.runtime_to_cutoff(samples, {"soc": 80.0, "capacity_ah": 148.0}, 22.0)
+        self.assertLess(result["draw_amps"], 20, "a single spike must not dominate")
+
+    def test_no_charge_count_means_no_estimate(self):
+        samples = [{"captured_at": "2026-09-05T18:00:00+00:00",
+                    "battery_voltage": 25.0, "battery_current": -10.0}]
+        self.assertIsNone(battery.runtime_to_cutoff(samples, {"soc": None}, 22.0))
+        self.assertIsNone(battery.runtime_to_cutoff([], {"soc": 80.0, "capacity_ah": 148.0}, 22.0))
