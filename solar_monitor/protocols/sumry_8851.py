@@ -255,7 +255,17 @@ class Sumry8851ProbeProtocol(ReadOnlyProtocol):
             "ac_load_watts": _u16(frame, 62),
             "ac_load_current": _u16(frame, 68) / 100,
             "grid_voltage": _u16(frame, 74) / 10,
-            "grid_current": _u16(frame, 76) / 100,
+            # NOT grid_current: offset 76 is deliberately absent. The community
+            # struct labels it utility current, and this project published it
+            # until 2026-09-16, when 4,489 grid-present frames disproved it. It
+            # read exactly 0.00 through two nights while the utility carried
+            # 200-400 W of load on its own (battery flat, PV zero), and rose to
+            # 0.4-0.9 A at midday when the panels were carrying everything and
+            # the utility was delivering nothing. Against the power balance it
+            # correlates -0.48; against PV watts, +0.69. Whatever it counts, it
+            # is not utility current, and no other u16 in the frame tracks
+            # utility throughput. Utility use is derived instead -- see
+            # solar_monitor/utility.py.
             "grid_frequency": _u16(frame, 78) / 100,
             "battery_voltage": _u16(frame, 86) / 100,
             "battery_current": _s16(frame, 88) / 10,
@@ -279,6 +289,7 @@ class Sumry8851ProbeProtocol(ReadOnlyProtocol):
             note=(
                 "CRC-validated HGX 0x8851 v2 status frame; BTS is stored as an input value "
                 "but is not a confirmed battery temperature without a connected probe; "
+                "utility current is not decoded (offset 76 disproven 2026-09-16); "
                 "operating_state/faults byte(s) not yet identified"
             ),
         )

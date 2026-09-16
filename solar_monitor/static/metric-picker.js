@@ -5,7 +5,7 @@ const availableMetrics = {
   battery_voltage: ['Battery voltage', 'V'], battery_current: ['Battery current', 'A'],
   ac_load_watts: ['Load power', 'W'], ac_load_va: ['Apparent load', 'VA'], ac_load_current: ['Load current', 'A'],
   output_voltage: ['Output voltage', 'V'], output_frequency: ['Output frequency', 'Hz'], output_current: ['Output current', 'A'],
-  grid_voltage: ['Grid voltage', 'V'], grid_frequency: ['Grid frequency', 'Hz'], grid_current: ['Grid current', 'A'],
+  grid_voltage: ['Grid voltage', 'V'], grid_frequency: ['Grid frequency', 'Hz'],
   bus_voltage: ['DC bus voltage', 'V'], inverter_va: ['Inverter output', 'VA'],
   ntc2_temperature: ['Temperature sensor 2', '°C'], ntc3_temperature: ['Temperature sensor 3', '°C'],
   ntc4_temperature: ['Temperature sensor 4', '°C'], fan1_percent: ['Fan 1', '%'], fan2_percent: ['Fan 2', '%'],

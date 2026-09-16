@@ -26,6 +26,7 @@ from . import battery as battery_model
 from . import change_policy
 from . import propose
 from . import solar_estimate
+from . import utility as utility_model
 
 MANUAL_REFRESH_COOLDOWN_SECONDS = 5.0
 FORECAST_PREVIEW = timedelta(hours=6)
@@ -149,8 +150,22 @@ def create_app(
         # This installation has neither a BMS nor a battery-temperature probe.
         # Keep legacy/raw channels in SQLite for diagnostics, but never imply
         # that an unconnected BTS input is a measured battery temperature.
-        hidden = {"battery_temperature", "bts_temperature"}
+        # `grid_current` is here for the same reason: rows written before
+        # 2026-09-16 carry offset 76 under that name, and it was never utility
+        # current. The column stays for diagnostics; it must not be served.
+        hidden = {"battery_temperature", "bts_temperature", "grid_current"}
         return {key: value for key, value in sample.items() if key not in hidden}
+
+    def live_sample(sample):
+        """The latest reading plus what the inverter does not report directly.
+
+        Only the live endpoints pay for this. History rows stay lean -- a
+        derived field on every one of 1,500 rows is bulk the charts never read.
+        """
+        public = public_sample(sample)
+        if public is None:
+            return None
+        return {**public, "utility": utility_model.utility_state(public)}
 
     # Learning the efficiency curve reads a week of samples, so it is redone
     # at most every 15 minutes per array configuration rather than per page
@@ -187,7 +202,7 @@ def create_app(
             else {"running": False, "reason": "collector is disabled"}
         )
         return jsonify({
-            "sample": public_sample(database.latest_sample()),
+            "sample": live_sample(database.latest_sample()),
             "inverter_config": database.latest_inverter_config(),
             "diagnostic": database.latest_diagnostic(),
             "collector": collector_state,
@@ -209,7 +224,7 @@ def create_app(
         last_manual_refresh["at"] = time.monotonic()
         collector.collect_once()
         return jsonify({
-            "sample": public_sample(database.latest_sample()),
+            "sample": live_sample(database.latest_sample()),
             "inverter_config": database.latest_inverter_config(),
             "diagnostic": database.latest_diagnostic(),
             "collector": collector.state(),
@@ -405,7 +420,7 @@ def create_app(
         # With no utility wired in, the transfer-to-grid threshold cannot act
         # and the low-voltage cutoff is a hard stop with nothing to fall back
         # to. That is what made 2026-09-05 a shutdown rather than a transfer.
-        grid_available = bool((latest.get("grid_voltage") or 0) > 80)
+        grid_available = utility_model.utility_state(latest)["present"]
         state = battery_model.count_charge(samples, nominal, bulk_setpoint_v=bulk)
         payload = {
             "state": state,

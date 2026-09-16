@@ -33,6 +33,10 @@ class DecodeTests(unittest.TestCase):
         self.assertEqual(result.metrics["ntc4_temperature"], 30)
         self.assertEqual(result.metrics["bts_temperature"], 25)
         self.assertNotIn("battery_temperature", result.metrics)
+        # Offset 76 was published as utility current until 2026-09-16 and is
+        # disproven: it tracks PV, not the utility. Nothing may decode it
+        # under that name again without a reading that backs it up.
+        self.assertNotIn("grid_current", result.metrics)
 
     def test_capture_2_decodes_and_validates_crc(self):
         result = self.protocol.decode(CAPTURE_2)

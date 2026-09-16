@@ -90,7 +90,10 @@ SAMPLE_METRIC_COLUMNS = {
     "battery_voltage", "battery_current",
     "ac_load_watts", "ac_load_va", "ac_load_current",
     "output_voltage", "output_frequency", "output_current",
-    "grid_voltage", "grid_frequency", "grid_current",
+    "grid_voltage", "grid_frequency",
+    # No "grid_current": offset 76 carried that name until 2026-09-16 and was
+    # disproven against two weeks of readings. The column stays in the schema
+    # for the rows already written, but nothing may fill it again.
     "inverter_va", "bus_voltage",
     "fan1_percent", "fan2_percent",
     "temperature_1", "temperature_2", "temperature_3",

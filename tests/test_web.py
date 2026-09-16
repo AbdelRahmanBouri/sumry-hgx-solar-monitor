@@ -28,6 +28,47 @@ class WebTests(unittest.TestCase):
         self.assertIsNone(payload["sample"])
         self.assertTrue(payload["read_only"])
 
+    def test_status_derives_utility_use_from_the_transfer_relay(self):
+        # A night-time bypass reading: mains present, the inverter's own
+        # output collapsed, and the load still served.
+        self.db.save_sample("2026-09-16T04:00:00+00:00", {
+            "grid_voltage": 121.6, "grid_frequency": 59.97,
+            "output_voltage": 121.2, "output_current": 0.08,
+            "ac_load_watts": 370.0, "pv_watts": 0.0,
+            "battery_voltage": 25.72, "battery_current": 0.10,
+        })
+        sample = self.client.get("/api/status").json["sample"]
+        self.assertEqual(sample["utility"]["state"], "carrying")
+        self.assertTrue(sample["utility"]["carrying_load"])
+
+    def test_legacy_grid_current_is_never_served_again(self):
+        # Rows written before 2026-09-16 carry offset 76 under this name. The
+        # column keeps them for diagnostics; no endpoint may hand them out.
+        self.db.save_sample("2026-09-16T04:00:00+00:00", {
+            "grid_voltage": 121.6, "ac_load_watts": 370.0,
+        })
+        with self.db.connect() as connection:
+            connection.execute("UPDATE samples SET grid_current = 0.9")
+            self.assertEqual(
+                connection.execute("SELECT grid_current FROM samples").fetchone()[0], 0.9
+            )
+
+        self.assertNotIn("grid_current", self.client.get("/api/status").json["sample"])
+        rows = self.client.get("/api/history?hours=9999").json
+        self.assertEqual(len(rows), 1)
+        self.assertNotIn("grid_current", rows[0])
+        # The derived verdict belongs to the live endpoints; adding it to
+        # every history row is bulk the charts never read.
+        self.assertNotIn("utility", rows[0])
+
+    def test_a_decoder_can_no_longer_write_grid_current(self):
+        self.db.save_sample("2026-09-16T05:00:00+00:00", {
+            "grid_voltage": 121.6, "grid_current": 0.9,
+        })
+        with self.db.connect() as connection:
+            stored = connection.execute("SELECT grid_current FROM samples").fetchone()[0]
+        self.assertIsNone(stored)
+
     def test_dashboard_renders(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)

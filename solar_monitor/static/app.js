@@ -13,6 +13,8 @@ const batteryPath = document.querySelector('#battery-path');
 const loadBar = document.querySelector('#load-bar');
 const loadPercent = document.querySelector('#load-percent');
 const rawResponse = document.querySelector('#raw-response');
+const utilityState = document.querySelector('#utility-state');
+const utilityAmps = document.querySelector('#utility-amps');
 const chartCanvas = document.querySelector('#power-chart');
 const overlayCanvas = document.querySelector('#power-chart-overlay');
 const chartWrap = chartCanvas.parentElement;
@@ -371,6 +373,31 @@ function updateStatusData(sample, diagnostic) {
     const value = sample[node.dataset.metric];
     node.textContent = format(value);
   });
+
+  // The inverter reports no usable utility current, so "is the house on
+  // mains" is derived server-side from the transfer relay and the power
+  // balance. See solar_monitor/utility.py.
+  const utility = sample.utility;
+  const carrying = utility?.state === 'carrying';
+  const absent = !utility || utility.state === 'absent';
+  if (utilityState) {
+    const watts = number(utility?.watts);
+    utilityState.textContent = absent ? 'Absent'
+      : carrying ? (watts ? `${Math.round(watts)} W` : 'In use')
+      : utility.state === 'standby' ? 'Standby'
+      : 'Present';
+    utilityState.classList.toggle('utility-live', carrying);
+    utilityState.classList.toggle('utility-absent', absent);
+  }
+  if (utilityAmps) {
+    // Derived from the power balance, not metered -- a lower bound. Shown
+    // only while mains is actually delivering, so it never reads as a live
+    // measurement of a line that is sitting idle.
+    const amps = number(utility?.amps);
+    utilityAmps.textContent = absent ? '0 A' : (carrying && amps ? `≈ ${amps.toFixed(1)} A` : '—');
+    utilityAmps.classList.toggle('utility-live', carrying);
+    utilityAmps.classList.toggle('utility-absent', absent);
+  }
 
   document.querySelectorAll('[data-metric="operating_state"]').forEach(node => {
     if (!sample.operating_state) node.textContent = 'Not decoded';
@@ -1567,6 +1594,19 @@ function readableLabel(key) {
 
 function readableValue(key, value) {
   if (value === null || value === undefined || value === '') return 'Not available';
+  // Derived rather than read off the wire, so it arrives as a small object
+  // instead of a number. Spell the verdict out here.
+  if (key === 'utility') {
+    const watts = number(value.watts);
+    if (!value.present) return 'Not present';
+    if (value.state === 'carrying') {
+      const amps = number(value.amps);
+      if (!watts) return 'Carrying the load';
+      return `Carrying the load · ${Math.round(watts)} W${amps ? ` (≈ ${amps.toFixed(1)} A)` : ''}`;
+    }
+    if (value.state === 'standby') return 'Present, not in use';
+    return 'Present, load too small to attribute';
+  }
   if (key.endsWith('_at')) {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();

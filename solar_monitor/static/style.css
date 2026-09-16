@@ -225,6 +225,10 @@ h1, h2 { margin: 0; color: var(--ink); font-size: 18px; line-height: 1.15; lette
    reader less than a two-line label. */
 .card-readouts small { color: var(--quiet); font-size: 11.5px; font-weight: 650; line-height: 1.25; text-transform: uppercase; overflow-wrap: anywhere; }
 .card-readouts b { overflow: hidden; color: var(--muted); font-size: 11.5px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+/* Utility carrying the house is the one readout worth colouring: it is the
+   difference between running on mains and running the bank down. */
+.card-readouts b .utility-live { color: var(--green); }
+.card-readouts b .utility-absent { color: var(--quiet); }
 
 .trend-card { padding: 16px 14px 13px; scroll-margin-top: 76px; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .range-control { display: flex; flex-wrap: wrap; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-subtle); }
