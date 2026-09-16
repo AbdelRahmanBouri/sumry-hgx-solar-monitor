@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 import tempfile
 import unittest
 from pathlib import Path
@@ -5,6 +6,12 @@ from unittest.mock import patch
 
 from solar_monitor.db import Database
 from solar_monitor.web import create_app
+
+
+def hours_ago(hours: float) -> str:
+    # The history endpoints window on "now", so fixtures have to be stamped
+    # relative to it. Hardcoded dates quietly stop being inside the window.
+    return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 
 
 class WebTests(unittest.TestCase):
@@ -134,16 +141,26 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.client.get("/admin/setup?token=wrong").status_code, 404)
 
     def test_history_accepts_hours_param_and_bounds_it(self):
-        self.db.save_sample("2026-09-01T00:00:00+00:00", {"pv_watts": 100})
-        self.db.save_sample("2026-09-03T00:00:00+00:00", {"pv_watts": 200})
+        # Both samples sit outside a one-hour window and inside the 30-day
+        # ceiling that hours=9999 is clamped down to.
+        self.db.save_sample(hours_ago(48), {"pv_watts": 100})
+        self.db.save_sample(hours_ago(2), {"pv_watts": 200})
         recent = self.client.get("/api/history?hours=1").json
         self.assertEqual(len(recent), 0)
         longer = self.client.get("/api/history?hours=9999").json
         self.assertEqual(len(longer), 2)
 
     def test_history_daily_and_faults_endpoints(self):
-        self.db.save_sample("2026-09-02T12:00:00+00:00", {"pv_watts": 100, "faults": "Overload"})
-        self.db.save_sample("2026-09-02T13:00:00+00:00", {"pv_watts": 300, "faults": "None"})
+        # Midday yesterday: comfortably inside the seven-day window, and far
+        # enough from midnight that both samples share one UTC calendar day,
+        # which is what daily_summary groups on.
+        midday = (datetime.now(timezone.utc) - timedelta(days=1)).replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
+        self.db.save_sample(midday.isoformat(), {"pv_watts": 100, "faults": "Overload"})
+        self.db.save_sample(
+            (midday + timedelta(hours=1)).isoformat(), {"pv_watts": 300, "faults": "None"}
+        )
         daily = self.client.get("/api/history/daily?days=7").json
         self.assertEqual(len(daily), 1)
         self.assertEqual(daily[0]["avg_pv_watts"], 200)
