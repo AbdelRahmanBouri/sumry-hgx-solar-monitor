@@ -244,6 +244,20 @@ function setConnection(state, text) {
   connectionLabel.textContent = text;
 }
 
+// A reading is live only while it is younger than a few poll intervals. The
+// last frame keeps its bytes however long ago it was captured, so its
+// presence says nothing about whether the collector is still running.
+function connectionState(data) {
+  if (data.diagnostic?.error) return ['error', 'Serial issue'];
+  const collector = data.collector || {};
+  const stamps = [data.sample?.captured_at, collector.last_success_at]
+    .map(value => new Date(value || NaN).getTime())
+    .filter(Number.isFinite);
+  if (!stamps.length) return ['waiting', 'Waiting'];
+  const allowance = Math.max(150, 3 * (number(collector.interval_seconds) || 0)) * 1000;
+  return Date.now() - Math.max(...stamps) <= allowance ? ['online', 'Live'] : ['error', 'Stale'];
+}
+
 function updateAlert(sample, diagnostic) {
   if (diagnostic?.error) {
     alertBanner.hidden = false;
@@ -458,10 +472,7 @@ async function refreshStatus() {
     const sample = data.sample || {};
     const diagnostic = data.diagnostic;
     updateStatusData(sample, diagnostic);
-
-    if (diagnostic?.error) setConnection('error', 'Serial issue');
-    else if (diagnostic?.response_hex) setConnection('online', 'Live');
-    else setConnection('waiting', 'Waiting');
+    setConnection(...connectionState(data));
 
     const capturedAt = sample.captured_at || diagnostic?.captured_at;
     updatedLabel.dataset.time = capturedAt || '';
@@ -497,8 +508,7 @@ async function pullNow() {
     latestPayload = data;
     const sample = data.sample || {};
     updateStatusData(sample, data.diagnostic);
-    if (data.diagnostic?.error) setConnection('error', 'Serial issue');
-    else if (data.diagnostic?.response_hex) setConnection('online', 'Live');
+    setConnection(...connectionState(data));
     const capturedAt = sample.captured_at || data.diagnostic?.captured_at;
     updatedLabel.dataset.time = capturedAt || '';
     updatedLabel.textContent = relativeTime(capturedAt);
