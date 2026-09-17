@@ -29,7 +29,7 @@ class SolarPositionTests(unittest.TestCase):
         # 17:30 PDT is 00:30 UTC on the following date. This specifically
         # guards the true-solar-time midnight wrap used by azimuth.
         when = datetime(2026, 9, 4, 0, 30, tzinfo=timezone.utc)
-        elevation, azimuth = solar_estimate.solar_position(34.0522, -118.2437, when)
+        elevation, azimuth = solar_estimate.solar_position(34.05, -118.24, when)
         self.assertGreater(elevation, 0)
         self.assertTrue(180 < azimuth < 300)
 
@@ -70,7 +70,7 @@ class CloudAttenuationTests(unittest.TestCase):
 
 
 class PlaneOfArrayTests(unittest.TestCase):
-    LAT, LON = 34.0522, -118.2437
+    LAT, LON = 34.05, -118.24
 
     def test_diffuse_fraction_moves_the_right_way(self):
         overcast = solar_estimate.erbs_diffuse_fraction(0.1)
@@ -187,7 +187,7 @@ class PlaneOfArrayTests(unittest.TestCase):
 
 
 class LearnedEfficiencyTests(unittest.TestCase):
-    LAT, LON = 34.0522, -118.2437
+    LAT, LON = 34.05, -118.24
     GEOMETRY = dict(tilt_degrees=14, azimuth_degrees=185, dual_slope=True)
 
     def synthetic_day(self, day, factor, volts=25.5, amps=30.0, every_minutes=2):

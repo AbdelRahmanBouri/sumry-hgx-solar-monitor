@@ -5,3 +5,6 @@ instance/
 *.log
 
 .register-probe-mark
+
+# The live instance's own settings and site profile; copy config.example.toml.
+config.toml

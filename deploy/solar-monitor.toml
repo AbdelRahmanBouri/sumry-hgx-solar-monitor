@@ -11,3 +11,33 @@ port = 5000
 
 [storage]
 database = "/var/lib/solar-monitor/solar-monitor.sqlite3"
+
+# Site profile: where this installation is and what hardware it runs. These
+# facts belong to one house rather than to the software, so they live in this
+# file and never in source. With the table absent the estimator stays off
+# until an admin sets a location and array capacity under Admin -> Solar
+# estimate, and the potential page shows "Not set" for the hardware. The
+# values seed the settings table on start; an admin's later edits win.
+#
+# [site]
+# latitude = 34.0522
+# longitude = -118.2437
+# array_capacity_watts = 2300      # the panels' combined DC nameplate
+# performance_ratio = 0.8          # fallback efficiency until a week of readings exists
+# tilt_degrees = 20                # from horizontal; 0 = flat
+# azimuth_degrees = 180            # true bearing the panels face; 180 = due south
+# dual_slope = false               # true when the array is split evenly across both roof faces
+# split_strings = false            # true when each series string spans both faces
+# array_description = "10 x Example 230 W modules, 5S2P"
+# module_count = 10
+# module_watts = 230
+# wiring = "5S2P"
+# vmp_volts = 150.0
+# voc_volts = 180.0
+# imp_amps = 15.0
+# isc_amps = 16.0
+# inverter_model = "Example 3 kW 24 V hybrid inverter"
+# charge_limit_amps = 60           # the inverter's configured maximum charge current
+# battery_description = "4 x Example 100 Ah AGM, 2S2P"
+# battery_nominal_volts = 24
+# battery_capacity_ah = 200        # the bank's nameplate; the charge counter measures the real figure

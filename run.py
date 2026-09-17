@@ -26,7 +26,7 @@ def main() -> None:
     collector = None
     if not args.no_collector:
         collector, _ = start_collector(config.serial, database)
-    app = create_app(database, config.serial, collector)
+    app = create_app(database, config.serial, collector, site=config.site)
     host = args.host or config.web.host
     port = args.port or config.web.port
     if args.dev:

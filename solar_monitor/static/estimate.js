@@ -8,6 +8,13 @@ const watts = value => `${Math.round(number(value) || 0).toLocaleString()} W`;
 const kwh = value => `${(number(value) || 0).toFixed(2)} kWh`;
 const timeOf = row => new Date(row.captured_at || row.timestamp).getTime();
 
+// Slider ceilings until /api/estimate supplies the array nameplate and the
+// inverter's charge limit. Both belong to the site profile, so the page
+// itself knows nothing about the hardware.
+const FALLBACK_ARRAY_WATTS = 5000;
+const FALLBACK_CHARGE_LIMIT_AMPS = 100;
+const SITE_HINT = "set in the config file's [site] table";
+
 const state = {
   hours: 24,
   history: [],
@@ -16,22 +23,25 @@ const state = {
   estimate: null,
   chartRows: [],
   hourlyOpportunity: [],
-  // Defaults only until /api/estimate answers; the admin can change the
-  // array capacity, so nothing here may be baked into the page.
-  capacityWatts: 2640,
-  chargeLimitAmps: 80,
+  // Null until /api/estimate answers, and null again if it stops reporting
+  // them; the admin can change the capacity, so nothing is baked in here.
+  capacityWatts: null,
+  chargeLimitAmps: null,
 };
+
+const arrayCeiling = () => state.capacityWatts || FALLBACK_ARRAY_WATTS;
+const chargeCeiling = () => state.chargeLimitAmps || FALLBACK_CHARGE_LIMIT_AMPS;
 
 function applySystemFacts(estimate) {
   const capacity = number(estimate?.capacity_watts);
   const chargeLimit = number(estimate?.system?.configured_charge_limit_amps);
-  if (capacity && capacity > 0) state.capacityWatts = capacity;
-  if (chargeLimit && chargeLimit > 0) state.chargeLimitAmps = chargeLimit;
+  state.capacityWatts = capacity && capacity > 0 ? capacity : null;
+  state.chargeLimitAmps = chargeLimit && chargeLimit > 0 ? chargeLimit : null;
 
   const solarSlider = $('#available-solar');
-  solarSlider.max = String(Math.round(state.capacityWatts));
-  if (number(solarSlider.value) > state.capacityWatts) solarSlider.value = String(Math.round(state.capacityWatts));
-  $('#charge-acceptance').max = String(Math.round(state.chargeLimitAmps));
+  solarSlider.max = String(Math.round(arrayCeiling()));
+  if (number(solarSlider.value) > arrayCeiling()) solarSlider.value = String(Math.round(arrayCeiling()));
+  $('#charge-acceptance').max = String(Math.round(chargeCeiling()));
 
   const compass = deg => {
     const points = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
@@ -52,15 +62,56 @@ function applySystemFacts(estimate) {
       ? array.stringing.charAt(0).toUpperCase() + array.stringing.slice(1)
       : '—';
   }
+  const kw = state.capacityWatts
+    ? (state.capacityWatts / 1000).toFixed(2).replace(/\.?0+$/, '')
+    : null;
+  renderHardware(array, estimate?.system || {}, kw);
   renderScenarios(estimate?.scenarios);
 
-  const kw = (state.capacityWatts / 1000).toFixed(2).replace(/\.?0+$/, '');
-  const nameplate = `${Math.round(state.capacityWatts).toLocaleString()} W`;
-  document.querySelectorAll('[data-array-kw]').forEach(node => { node.textContent = kw; });
+  const nameplate = state.capacityWatts ? `${Math.round(state.capacityWatts).toLocaleString()} W` : '—';
+  document.querySelectorAll('[data-array-headline]').forEach(node => {
+    node.textContent = kw ? `YOUR ${kw} kW ARRAY` : 'YOUR ARRAY';
+  });
   document.querySelectorAll('[data-array-watts]').forEach(node => { node.textContent = nameplate; });
   document.querySelectorAll('[data-charge-limit]').forEach(node => {
-    node.textContent = `${Math.round(state.chargeLimitAmps)} A`;
+    node.textContent = state.chargeLimitAmps ? `${Math.round(state.chargeLimitAmps)} A` : '—';
   });
+}
+
+// The spec grid shows what the site profile names and "Not set" for what it
+// leaves out. Every hardware fact arrives from /api/estimate; none is in
+// the page.
+function renderHardware(array, system, kw) {
+  const text = (id, value) => {
+    const node = document.getElementById(id);
+    if (node) node.textContent = value;
+  };
+  const figure = (value, unit) => number(value) == null ? null : `${number(value)} ${unit}`;
+  const listed = parts => parts.filter(Boolean).join(' · ') || '—';
+
+  const moduleCount = number(array.module_count);
+  const moduleWatts = number(array.module_watts);
+  const modules = moduleCount && moduleWatts ? `${moduleCount} × ${moduleWatts} W` : null;
+  text('spec-modules', array.description || modules || 'Not set');
+  text('spec-modules-detail',
+    array.description || modules ? (array.description && modules ? modules : '—') : SITE_HINT);
+
+  const wiring = listed([array.wiring, kw ? `${kw} kW` : null]);
+  text('spec-wiring', wiring === '—' ? 'Not set' : wiring);
+  text('spec-wiring-detail', listed([
+    figure(array.vmp_volts, 'Vmp'), figure(array.voc_volts, 'Voc'),
+    figure(array.imp_amps, 'A Imp'), figure(array.isc_amps, 'A Isc'),
+  ]));
+
+  text('spec-inverter', system.inverter || 'Not set');
+  text('spec-inverter-detail', listed([figure(system.configured_charge_limit_amps, 'A charge limit')]));
+
+  text('spec-battery', system.battery_bank || 'Not set');
+  const capacity = number(system.battery_capacity_ah);
+  text('spec-battery-detail', listed([
+    figure(system.battery_nominal_volts, 'V'),
+    capacity ? `about ${Math.round(capacity)} Ah` : null,
+  ]));
 }
 
 function renderScenarios(scenarios) {
@@ -535,9 +586,9 @@ function useLiveValues() {
   const sample = state.status?.sample;
   const potential = interpolate(state.model, Date.now(), 'estimated_watts');
   if (!sample || potential === null) return;
-  $('#available-solar').value = clamp(Math.round(potential / 10) * 10, 0, state.capacityWatts);
+  $('#available-solar').value = clamp(Math.round(potential / 10) * 10, 0, arrayCeiling());
   $('#home-load').value = clamp(Math.round((number(sample.ac_load_watts) || 0) / 25) * 25, 0, 4000);
-  $('#charge-acceptance').value = clamp(Math.max(0, Math.round(number(sample.battery_current) || 0)), 0, state.chargeLimitAmps);
+  $('#charge-acceptance').value = clamp(Math.max(0, Math.round(number(sample.battery_current) || 0)), 0, chargeCeiling());
   calculate();
 }
 
@@ -595,7 +646,7 @@ document.querySelectorAll('[data-preset]').forEach(button => {
   button.addEventListener('click', () => {
     $('#available-solar').dataset.touched = 'true';
     if (button.dataset.preset === 'full') $('#charge-acceptance').value = 0;
-    if (button.dataset.preset === 'max') $('#charge-acceptance').value = state.chargeLimitAmps;
+    if (button.dataset.preset === 'max') $('#charge-acceptance').value = chargeCeiling();
     if (button.dataset.preset === 'quiet') $('#home-load').value = 100;
     calculate();
   });

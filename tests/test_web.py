@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from solar_monitor.config import SiteConfig
 from solar_monitor.db import Database
 from solar_monitor.web import create_app
 
@@ -12,6 +13,21 @@ def hours_ago(hours: float) -> str:
     # The history endpoints window on "now", so fixtures have to be stamped
     # relative to it. Hardcoded dates quietly stop being inside the window.
     return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+
+
+# A made-up installation. The seeding tests need a profile to seed, and the
+# real one belongs in the live config file, never in the repository.
+SITE = SiteConfig(
+    latitude=34.0522, longitude=-118.2437, array_capacity_watts=2300,
+    performance_ratio=0.8, tilt_degrees=20, azimuth_degrees=180,
+    dual_slope=True, split_strings=True,
+    array_description="10 x Example 230 W modules, 5S2P",
+    module_count=10, module_watts=230, wiring="5S2P",
+    vmp_volts=150.0, voc_volts=180.0, imp_amps=15.0, isc_amps=16.0,
+    inverter_model="Example 3 kW 24 V hybrid inverter", charge_limit_amps=60,
+    battery_description="4 x Example 100 Ah AGM, 2S2P",
+    battery_nominal_volts=24, battery_capacity_ah=200,
+)
 
 
 class WebTests(unittest.TestCase):
@@ -360,19 +376,63 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(response.json["ok"])
 
-    def test_site_location_defaults_are_seeded(self):
-        settings = self.db.get_settings()
-        self.assertTrue(float(settings["estimator_latitude"]))
-        self.assertTrue(float(settings["estimator_longitude"]))
-        self.assertGreater(float(settings["estimator_capacity_watts"]), 0)
+    def site_client(self):
+        # A second app over the same database. The setup-token file is
+        # reused, so login works against either client.
+        return create_app(self.db, site=SITE).test_client()
 
-    def test_blank_estimator_settings_are_backfilled_on_start(self):
+    def login(self, client):
+        token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
+        client.post(
+            f"/admin/setup?token={token}",
+            data={"token": token, "username": "admin", "password": "correct-horse-1",
+                  "confirmation": "correct-horse-1"},
+        )
+
+    def test_the_site_profile_seeds_the_estimator_and_battery_settings(self):
+        self.site_client()
+        settings = self.db.get_settings()
+        self.assertEqual(settings["estimator_latitude"], "34.0522")
+        self.assertEqual(settings["estimator_longitude"], "-118.2437")
+        self.assertEqual(settings["estimator_capacity_watts"], "2300")
+        self.assertEqual(settings["estimator_performance_ratio"], "0.8")
+        self.assertEqual(settings["estimator_tilt_degrees"], "20")
+        self.assertEqual(settings["estimator_azimuth_degrees"], "180")
+        self.assertEqual(settings["estimator_dual_slope"], "true")
+        self.assertEqual(settings["estimator_split_strings"], "true")
+        self.assertEqual(settings["battery_capacity_ah"], "200")
+
+    def test_no_site_profile_seeds_nothing_site_specific(self):
+        # setUp built the app without a site; the non-site defaults still land.
+        settings = self.db.get_settings()
+        self.assertEqual(settings["history_max_points"], "1500")
+        self.assertEqual(settings["writes_enabled"], "false")
+        self.assertEqual([key for key in settings if key.startswith("estimator_")], [])
+        self.assertNotIn("battery_capacity_ah", settings)
+        payload = self.client.get("/api/estimate").json
+        self.assertFalse(payload["configured"])
+        self.assertEqual(payload["points"], [])
+
+    def test_an_admin_edit_outlives_the_site_profile_on_restart(self):
+        self.site_client()
+        self.db.set_settings({"estimator_capacity_watts": "2000"}, "now")
+        self.site_client()
+        self.assertEqual(self.db.get_settings()["estimator_capacity_watts"], "2000")
+
+    def test_blank_estimator_settings_are_backfilled_from_the_site_profile(self):
         # An earlier release seeded these as empty strings.
+        self.db.set_settings({"estimator_latitude": "", "estimator_capacity_watts": ""}, "now")
+        self.site_client()
+        settings = self.db.get_settings()
+        self.assertEqual(settings["estimator_latitude"], "34.0522")
+        self.assertEqual(settings["estimator_capacity_watts"], "2300")
+
+    def test_blank_estimator_settings_stay_blank_without_a_site_profile(self):
         self.db.set_settings({"estimator_latitude": "", "estimator_capacity_watts": ""}, "now")
         create_app(self.db)
         settings = self.db.get_settings()
-        self.assertTrue(float(settings["estimator_latitude"]))
-        self.assertGreater(float(settings["estimator_capacity_watts"]), 0)
+        self.assertEqual(settings["estimator_latitude"], "")
+        self.assertEqual(settings["estimator_capacity_watts"], "")
 
     def test_a_cleared_capacity_switches_the_estimator_off(self):
         token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
@@ -406,14 +466,30 @@ class WebTests(unittest.TestCase):
         self.assertEqual(payload["weather_source"], "clear-sky-only")
         self.assertTrue(payload["points"])
         self.assertIn("estimated_watts", payload["points"][0])
-        self.assertEqual(payload["array"]["wiring"], "4S2P")
-        self.assertEqual(payload["array"]["module_count"], 8)
-        self.assertEqual(payload["system"]["configured_charge_limit_amps"], 80)
+        # The estimator runs on the admin's own geometry, but hardware facts
+        # come only from a site profile. Without one they must read as unknown
+        # rather than as some other installation's panels.
+        self.assertIsNone(payload["array"]["wiring"])
+        self.assertIsNone(payload["array"]["module_count"])
+        self.assertIsNone(payload["system"]["configured_charge_limit_amps"])
+        self.assertIsNone(payload["system"]["inverter"])
         # An empty database has nothing to learn from, so the configured
         # ratio applies and the response says so.
         self.assertEqual(payload["calibration"]["source"], "setting")
         self.assertEqual(payload["calibration"]["fallback_ratio"], 0.8)
         self.assertEqual(payload["performance_ratio"], 0.8)
+
+    def test_a_site_profile_supplies_the_hardware_the_estimate_reports(self):
+        client = self.site_client()
+        with patch("solar_monitor.solar_estimate.fetch_cloud_cover", return_value=None):
+            payload = client.get("/api/estimate?hours=6").json
+        self.assertTrue(payload["configured"])
+        self.assertEqual(payload["array"]["wiring"], "5S2P")
+        self.assertEqual(payload["array"]["module_count"], 10)
+        self.assertEqual(payload["array"]["description"], "10 x Example 230 W modules, 5S2P")
+        self.assertEqual(payload["system"]["inverter"], "Example 3 kW 24 V hybrid inverter")
+        self.assertEqual(payload["system"]["configured_charge_limit_amps"], 60)
+        self.assertEqual(payload["system"]["battery_capacity_ah"], 200)
 
     def test_estimate_previews_the_hours_ahead_for_any_lookback(self):
         token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")

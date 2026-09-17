@@ -17,7 +17,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from . import privileged, system_info
 from .collector import Collector
-from .config import SerialConfig
+from .config import SerialConfig, SiteConfig
 from .db import Database
 from .protocols import create_protocol
 from .security import load_or_create_secret
@@ -36,6 +36,8 @@ def create_app(
     database: Database,
     serial_config: SerialConfig | None = None,
     collector: Collector | None = None,
+    *,
+    site: SiteConfig | None = None,
 ) -> Flask:
     app = Flask(__name__)
     app.config["DATABASE"] = database
@@ -60,71 +62,53 @@ def create_app(
         "raw_success_days": "7",
         "raw_diagnostic_days": "90",
         "history_max_points": "1500",
-        # This installation's site and confirmed array nameplate. There are
-        # eight SunPower SPR-E20-330-COM modules wired 4S2P: 2.64 kW DC,
-        # 218.8 Vmp, 259.6 Voc and 12.08 A Imp.
-        #
-        # The panels are flush-mounted on both slopes of the tiny home's
-        # pitched roof, four per slope. That placement comes from the owner,
-        # not from the wiring: 4S2P describes how the modules are connected
-        # and says nothing about where they sit. `dual_slope` models the split.
-        #
-        # The slopes face north and south (azimuth 5 and 185), read off the
-        # roofline rather than the logged data: the site photos looking north
-        # (camera heading 0.6 deg true) show the home's wide south face under
-        # a horizontal eave, with only a decorative pediment over the door.
-        # A gable end would read as one full triangle across that face; a
-        # level eave means the ridge runs east-west behind it, so the roof
-        # falls toward and away from the camera. The site grid agrees -- the
-        # block walls run north-south and the street runs east-west along the
-        # south edge of the north-up satellite view.
-        #
-        # Consequence worth remembering: four of the eight modules face north.
-        #
-        # And the strings straddle the ridge -- each 4-module series string
-        # carries two modules on each face, rather than one string per face.
-        # Series modules must share a current, so the shaded pair pins what
-        # the sunlit pair may deliver: a few percent in summer, but around a
-        # third at the winter solstice. `split_strings` models that. Re-landing
-        # the strings one-per-face is a wiring change, not a hardware one, and
-        # would remove the loss outright.
-        #
-        # Two faces pointing opposite ways very nearly cancel, so a symmetric
-        # gable collects within 1-2% of a flat array of the same size no
-        # matter the pitch or which way the ridge runs. The exact tilt here
-        # is therefore a low-stakes assumption (a typical 3:12 tiny-home
-        # pitch). The level of the line is learned from the array's own
-        # unconstrained output (solar_estimate.learn_efficiency); the
-        # performance ratio here is only the fallback until a week of
-        # readings exists, and 0.77 is roughly what this array delivers.
-        #
-        # Do not be tempted to "fit" a steep single plane to the logged data:
-        # battery-full curtailment removes every midday sample, leaving only
-        # morning and evening, and low-sun-only data always prefers a steep
-        # tilt. That artefact is what these values replace.
-        "estimator_latitude": "34.0522",
-        "estimator_longitude": "-118.2437",
-        "estimator_capacity_watts": "2640",
-        "estimator_performance_ratio": "0.74",
-        "estimator_tilt_degrees": "14",
-        "estimator_azimuth_degrees": "185",
-        "estimator_dual_slope": "true",
-        "estimator_split_strings": "true",
-        # Nameplate of the bank (4 x Odyssey ODX-AGM31, 2S2P). The counter
-        # replaces it with a measured figure once a full-to-rest cycle shows one.
-        "battery_capacity_ah": "196",
     }
+    # The site profile seeds the estimator and the battery nameplate. Only the
+    # config file knows them, so with no profile nothing site-specific is
+    # written and the estimator stays off until an admin fills in the form.
+    # The settings table is the working copy: an admin's edit outlives the
+    # file's value on every later start.
+    site_settings: dict[str, str] = {}
+    if site is not None:
+        site_settings = {
+            key: str(value)
+            for key, value in {
+                "estimator_latitude": site.latitude,
+                "estimator_longitude": site.longitude,
+                "estimator_capacity_watts": site.array_capacity_watts,
+                "estimator_performance_ratio": site.performance_ratio,
+                "estimator_tilt_degrees": site.tilt_degrees,
+                "estimator_azimuth_degrees": site.azimuth_degrees,
+                "battery_capacity_ah": site.battery_capacity_ah,
+            }.items()
+            if value is not None
+        }
+        # An unset flag means a single plane with whole strings, which is
+        # also what the estimator assumes when the key is absent.
+        site_settings["estimator_dual_slope"] = "true" if site.dual_slope else "false"
+        site_settings["estimator_split_strings"] = "true" if site.split_strings else "false"
+    defaults.update(site_settings)
     existing = database.get_settings()
     missing = {key: value for key, value in defaults.items() if key not in existing}
     # An earlier release stored the estimator keys as empty strings, so a blank
     # value is also backfilled -- an admin who clears a field on purpose can
     # still leave the estimator switched off by zeroing the array capacity.
     missing.update({
-        key: value for key, value in defaults.items()
+        key: value for key, value in site_settings.items()
         if key.startswith("estimator_") and value and not existing.get(key, "").strip()
     })
     if missing:
         database.set_settings(missing, now())
+    profile = site or SiteConfig()
+
+    def battery_capacity_ah(settings: dict[str, str]) -> float | None:
+        """The bank's nameplate: the admin's setting, else the site profile,
+        else unknown. Never a number the installation did not supply."""
+        try:
+            stored = float(settings.get("battery_capacity_ah") or 0)
+        except ValueError:
+            stored = 0.0
+        return stored if stored > 0 else profile.battery_capacity_ah
     if collector is not None:
         try:
             collector.set_poll_seconds(int(database.get_settings().get("poll_seconds", "30")))
@@ -359,15 +343,17 @@ def create_app(
             "capacity_watts": capacity_watts,
             "performance_ratio": learned["peak_factor"] if learned else performance_ratio,
             "calibration": calibration,
+            # Hardware facts come from the site profile and are null when it
+            # does not name them; the geometry is the admin's live setting.
             "array": {
-                "module": "SunPower SPR-E20-330-COM",
-                "module_count": 8,
-                "module_watts": 330,
-                "wiring": "4S2P",
-                "vmp_volts": 218.8,
-                "voc_volts": 259.6,
-                "imp_amps": 12.08,
-                "isc_amps": 13.04,
+                "description": profile.array_description,
+                "module_count": profile.module_count,
+                "module_watts": profile.module_watts,
+                "wiring": profile.wiring,
+                "vmp_volts": profile.vmp_volts,
+                "voc_volts": profile.voc_volts,
+                "imp_amps": profile.imp_amps,
+                "isc_amps": profile.isc_amps,
                 "tilt_degrees": tilt_degrees,
                 "azimuth_degrees": azimuth_degrees,
                 "dual_slope": dual_slope,
@@ -379,11 +365,11 @@ def create_app(
                 ),
             },
             "system": {
-                "inverter": "SUMRY HGX 4KW 24V/120V",
-                "battery_bank": "4 x Odyssey ODX-AGM31, 2S2P",
-                "battery_nominal_volts": 24,
-                "battery_capacity_ah": float(settings.get("battery_capacity_ah") or 196),
-                "configured_charge_limit_amps": 80,
+                "inverter": profile.inverter_model,
+                "battery_bank": profile.battery_description,
+                "battery_nominal_volts": profile.battery_nominal_volts,
+                "battery_capacity_ah": battery_capacity_ah(settings),
+                "configured_charge_limit_amps": profile.charge_limit_amps,
             },
             "weather_source": weather_source,
             "scenarios": scenarios,
@@ -400,10 +386,7 @@ def create_app(
         if battery_cache["value"] and time.monotonic() - battery_cache["at"] < 60:
             return jsonify(battery_cache["value"])
         settings = database.get_settings()
-        try:
-            nominal = float(settings.get("battery_capacity_ah") or 196)
-        except ValueError:
-            nominal = 196.0
+        nominal = battery_capacity_ah(settings)
         config = database.latest_inverter_config() or {}
         try:
             bulk = float((config.get("settings") or {}).get("bulk_charge_voltage_v") or 28.2)
@@ -421,7 +404,14 @@ def create_app(
         # and the low-voltage cutoff is a hard stop with nothing to fall back
         # to. That is what made 2026-09-05 a shutdown rather than a transfer.
         grid_available = utility_model.utility_state(latest)["present"]
-        state = battery_model.count_charge(samples, nominal, bulk_setpoint_v=bulk)
+        if nominal is None:
+            # With no nameplate there is nothing to count against. An empty
+            # series makes count_charge return its "unavailable" state without
+            # arithmetic on the capacity, so the payload keeps its shape and
+            # the capacity is honestly null rather than invented.
+            state = battery_model.count_charge([], nominal, bulk_setpoint_v=bulk)
+        else:
+            state = battery_model.count_charge(samples, nominal, bulk_setpoint_v=bulk)
         payload = {
             "state": state,
             "runtime": battery_model.runtime_to_cutoff(samples, state, cutoff, grid_available),
