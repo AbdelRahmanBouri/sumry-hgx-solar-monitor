@@ -209,6 +209,30 @@ class FailureVisibilityTests(unittest.TestCase):
         self.assertEqual(self.collector.state()["consecutive_failures"], 0)
         self.assertIsNone(self.collector.state()["failing_since"])
 
+    def test_last_success_age_counts_from_the_last_answer(self):
+        from tests.test_safety import REAL_CONFIG_REPLY
+        self.assertIsNone(self.collector.state()["last_success_age_seconds"])
+        with patch.object(collector_module, "exchange", self._failing):
+            self.collector.collect_once()
+        self.assertIsNone(self.collector.state()["last_success_age_seconds"],
+                          "a link that has never answered has no age to report")
+
+        def ok(*_a, **_k):
+            return Exchange("2026-09-05T12:01:00+00:00", "/dev/fake", 9600, "q", b"", REAL_CONFIG_REPLY, 5)
+
+        with patch.object(collector_module.time, "monotonic", return_value=1000.0), \
+             patch.object(collector_module, "exchange", ok):
+            self.collector.collect_once()
+        with patch.object(collector_module.time, "monotonic", return_value=1000.5):
+            self.assertAlmostEqual(self.collector.state()["last_success_age_seconds"], 0.5)
+
+        # Later failures do not touch it: the age keeps growing from the
+        # last answer, which is what a watchdog needs to see.
+        with patch.object(collector_module.time, "monotonic", return_value=1400.0), \
+             patch.object(collector_module, "exchange", self._failing):
+            self.collector.collect_once()
+            self.assertAlmostEqual(self.collector.state()["last_success_age_seconds"], 400.0)
+
 
 class ClockGuardTests(unittest.TestCase):
     """A Pi has no RTC: after a cold boot it restores a stale clock until NTP

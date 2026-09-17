@@ -452,13 +452,23 @@ def create_app(
             if collector is not None
             else {"running": False, "reason": "collector is disabled"}
         )
-        return jsonify({
-            "ok": collector is None or collector_state["running"],
-            "read_only": True,
+        # A web-only instance is healthy by itself. One with a collector is
+        # healthy only while the serial link answers: the last successful
+        # exchange must be younger than three poll intervals (150 s at
+        # least), so a poller that is alive but failing every cycle is down.
+        stale_after = max(3 * int(collector_state.get("interval_seconds") or 0), 150)
+        age = collector_state.get("last_success_age_seconds")
+        running = bool(collector_state.get("running"))
+        ok = collector is None or (running and age is not None and age < stale_after)
+        payload = {
+            "ok": ok,
+            "read_only": database.get_settings().get("writes_enabled") != "true",
             "collector_enabled": collector is not None,
-            "collector_running": collector_state["running"],
+            "collector_running": running,
+            "stale_after_seconds": stale_after if collector is not None else None,
             "collector": collector_state,
-        })
+        }
+        return jsonify(payload), (200 if ok else 503)
 
     @app.route("/admin/setup", methods=["GET", "POST"])
     def admin_setup():
@@ -627,7 +637,7 @@ def create_app(
     @app.get("/api/admin/frames")
     @login_required
     def admin_frames():
-        limit = min(max(int(request.args.get("limit", 100)), 1), 500)
+        limit = _bounded_int("limit", 100, 1, 500)
         return jsonify(database.raw_frames(limit))
 
     @app.post("/api/admin/data/cleanup")

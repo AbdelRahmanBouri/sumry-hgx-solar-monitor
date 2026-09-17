@@ -69,6 +69,9 @@ class Collector:
         # answering. The streak is what a watchdog actually needs.
         self.consecutive_failures = 0
         self.failing_since: str | None = None
+        # Measured on the monotonic clock so an NTP step cannot age or
+        # rejuvenate the last success.
+        self._last_success_monotonic: float | None = None
         self.last_maintenance_at: str | None = None
         self.last_maintenance_result: dict | None = None
         self._maintenance_monotonic = 0.0
@@ -84,12 +87,19 @@ class Collector:
         self._interval_seconds = seconds
         self.settings_event.set()
 
+    def last_success_age_seconds(self) -> float | None:
+        """Seconds since the serial link last answered, or None if it never has."""
+        if self._last_success_monotonic is None:
+            return None
+        return max(0.0, time.monotonic() - self._last_success_monotonic)
+
     def state(self) -> dict:
         return {
             "running": bool(self.thread and self.thread.is_alive()),
             "started_at": self.started_at,
             "last_poll_at": self.last_poll_at,
             "last_success_at": self.last_success_at,
+            "last_success_age_seconds": self.last_success_age_seconds(),
             "last_error": self.last_error,
             "last_port": self.last_port,
             "polls": self.polls,
@@ -312,6 +322,7 @@ class Collector:
             self.consecutive_failures = 0
             self.failing_since = None
             self.last_success_at = result.timestamp
+            self._last_success_monotonic = time.monotonic()
             LOG.info(
                 "Captured %d bytes from %s (%s)",
                 len(result.response), port,

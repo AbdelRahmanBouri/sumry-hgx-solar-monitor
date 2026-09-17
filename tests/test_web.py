@@ -24,11 +24,71 @@ class WebTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_health_is_read_only(self):
-        payload = self.client.get("/health").json
+        response = self.client.get("/health")
+        payload = response.json
+        self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["ok"])
         self.assertTrue(payload["read_only"])
         self.assertFalse(payload["collector_enabled"])
         self.assertFalse(payload["collector_running"])
+        self.assertIsNone(payload["stale_after_seconds"])
+
+    def test_health_read_only_follows_the_writes_switch(self):
+        self.db.set_settings({"writes_enabled": "true"}, "t")
+        self.assertFalse(self.client.get("/health").json["read_only"])
+        self.db.set_settings({"writes_enabled": "false"}, "t")
+        self.assertTrue(self.client.get("/health").json["read_only"])
+
+    def _health_with(self, running, age, interval=30):
+        class FakeCollector:
+            def state(self):
+                return {"running": running, "interval_seconds": interval,
+                        "last_success_age_seconds": age}
+
+            def set_poll_seconds(self, seconds):
+                pass
+
+        response = create_app(self.db, collector=FakeCollector()).test_client().get("/health")
+        return response.status_code, response.json
+
+    def test_health_reflects_a_working_serial_link(self):
+        status, payload = self._health_with(True, 12.0)
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["collector_running"])
+        self.assertEqual(payload["stale_after_seconds"], 150)
+
+        # Alive but failing every poll: the last success ages past the limit.
+        status, payload = self._health_with(True, 150.0)
+        self.assertEqual(status, 503)
+        self.assertFalse(payload["ok"])
+        self.assertTrue(payload["collector_running"])
+        self.assertEqual(payload["collector"]["last_success_age_seconds"], 150.0)
+
+        # Never answered at all.
+        status, payload = self._health_with(True, None)
+        self.assertEqual(status, 503)
+        self.assertFalse(payload["ok"])
+
+        # Thread dead, however fresh the last success.
+        status, payload = self._health_with(False, 1.0)
+        self.assertEqual(status, 503)
+        self.assertFalse(payload["collector_running"])
+
+    def test_health_stale_limit_is_three_poll_intervals(self):
+        status, payload = self._health_with(True, 300.0, interval=120)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["stale_after_seconds"], 360)
+        status, _ = self._health_with(True, 360.0, interval=120)
+        self.assertEqual(status, 503)
+
+    def test_health_is_503_for_a_real_collector_that_is_not_running(self):
+        from solar_monitor.collector import Collector
+        from solar_monitor.config import SerialConfig
+        collector = Collector(SerialConfig(), self.db)
+        response = create_app(self.db, collector=collector).test_client().get("/health")
+        self.assertEqual(response.status_code, 503)
+        self.assertIsNone(response.json["collector"]["last_success_age_seconds"])
 
     def test_empty_status(self):
         payload = self.client.get("/api/status").json
