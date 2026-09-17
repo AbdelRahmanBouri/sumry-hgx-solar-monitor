@@ -441,11 +441,14 @@ function updateStatusData(sample, diagnostic) {
     utilityState.classList.toggle('utility-absent', absent);
   }
   if (utilityAmps) {
-    // Derived from the power balance, not metered -- a lower bound. Shown
-    // only while mains is actually delivering, so it never reads as a live
-    // measurement of a line that is sitting idle.
+    // Derived from the power balance, not metered -- a lower bound, so it
+    // keeps the ≈. Shown whenever the balance resolves rather than only while
+    // `carrying` is true: that flag is 'unknown' below a 50 W load, which says
+    // nothing about whether mains is delivering. Withholding the figure there
+    // left this card blank while the hero showed the same amps from the same
+    // number. When mains really is idle the balance yields 0 on its own.
     const amps = number(utility?.amps);
-    utilityAmps.textContent = absent ? '0 A' : (carrying && amps ? `≈ ${amps.toFixed(1)} A` : '—');
+    utilityAmps.textContent = absent ? '0 A' : (amps == null ? '—' : `≈ ${amps.toFixed(1)} A`);
     utilityAmps.classList.toggle('utility-live', carrying);
     utilityAmps.classList.toggle('utility-absent', absent);
   }
