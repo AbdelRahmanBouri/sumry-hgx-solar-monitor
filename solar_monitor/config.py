@@ -20,8 +20,18 @@ class SerialConfig:
 
 @dataclass(frozen=True)
 class WebConfig:
+    """How the dashboard is served.
+
+    `expose_network_info` defaults to off because the dashboard needs no
+    login: with it on, anyone who can reach the page learns the hostname,
+    the LAN address and the Wi-Fi SSID. An operator who trusts everyone on
+    their network can turn it back on; the admin portal shows those fields
+    either way, behind a login.
+    """
+
     host: str = "0.0.0.0"
     port: int = 5000
+    expose_network_info: bool = False
 
 
 @dataclass(frozen=True)

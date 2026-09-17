@@ -8,6 +8,10 @@ protocol = "sumry_8851_probe"
 [web]
 host = "0.0.0.0"
 port = 5000
+# The dashboard needs no login. Turning this on adds the hostname, LAN
+# address and Wi-Fi SSID to /api/system, so anyone who can reach the page
+# can read them. The admin portal shows those fields either way.
+# expose_network_info = false
 
 [storage]
 database = "instance/solar-monitor.sqlite3"

@@ -163,19 +163,28 @@ def service_active(name: str) -> bool | None:
     return output.strip() == "active"
 
 
-def public_snapshot() -> dict:
-    return {
+def public_snapshot(include_network: bool = False) -> dict:
+    """System health for the unauthenticated dashboard.
+
+    Network identity is left out unless asked for: this payload is served
+    without a login, and hostname, address and SSID identify the machine
+    rather than describe its health.
+    """
+
+    snapshot = {
         "uptime_seconds": uptime_seconds(),
-        "network": network_info(),
         "cpu_temperature_c": cpu_temperature_c(),
         "throttled": throttled_flags(),
         "eco_mode": governor() == "powersave" if governor() else None,
     }
+    if include_network:
+        snapshot["network"] = network_info()
+    return snapshot
 
 
 def admin_snapshot(service_name: str = "solar-monitor") -> dict:
     return {
-        **public_snapshot(),
+        **public_snapshot(include_network=True),
         "cpu_load_percent": cpu_load_percent(),
         "memory": memory_info(),
         "governor": governor(),

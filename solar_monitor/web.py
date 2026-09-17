@@ -38,6 +38,7 @@ def create_app(
     collector: Collector | None = None,
     *,
     site: SiteConfig | None = None,
+    expose_network_info: bool = False,
 ) -> Flask:
     app = Flask(__name__)
     app.config["DATABASE"] = database
@@ -437,7 +438,7 @@ def create_app(
 
     @app.get("/api/system")
     def system_public():
-        return jsonify(system_info.public_snapshot())
+        return jsonify(system_info.public_snapshot(include_network=expose_network_info))
 
     @app.get("/health")
     def health():

@@ -380,7 +380,20 @@ class WebTests(unittest.TestCase):
     def test_public_system_endpoint_is_available_without_login(self):
         payload = self.client.get("/api/system").json
         self.assertIn("uptime_seconds", payload)
-        self.assertIn("network", payload)
+
+    def test_public_system_endpoint_withholds_network_identity_by_default(self):
+        """The page has no login, so it must not name the machine."""
+        payload = self.client.get("/api/system").json
+        self.assertNotIn("network", payload)
+
+    def test_public_system_endpoint_exposes_network_when_configured(self):
+        client = create_app(self.db, expose_network_info=True).test_client()
+        self.assertIn("network", client.get("/api/system").json)
+
+    def test_admin_system_snapshot_still_carries_network(self):
+        """Withholding it from the public payload must not hide it from admins."""
+        payload = self._admin_client().get("/api/admin/overview").json
+        self.assertIn("network", payload["system"])
 
     def test_admin_system_actions_require_login(self):
         for path in (
