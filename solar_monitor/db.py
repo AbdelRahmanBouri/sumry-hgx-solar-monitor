@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
 import sqlite3
 from typing import Any, Iterator
@@ -111,6 +113,12 @@ class Database:
         with self.connect() as connection:
             connection.executescript(SCHEMA)
             self._migrate(connection)
+        # Write-ahead logging lets the collector's inserts and the web
+        # requests' reads proceed without waiting on each other. The mode is
+        # stored in the file, so setting it once here covers every later
+        # connection; setting it again is a no-op.
+        with self.connect() as connection:
+            connection.execute("PRAGMA journal_mode=WAL")
 
     @staticmethod
     def _migrate(connection: sqlite3.Connection) -> None:
@@ -149,8 +157,12 @@ class Database:
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.path)
+        connection = sqlite3.connect(self.path, timeout=5)
         connection.row_factory = sqlite3.Row
+        # Unlike the journal mode, synchronous is per connection. NORMAL under
+        # WAL still survives a crash of the process; it only skips the fsync on
+        # every commit, which matters for a database on an SD card.
+        connection.execute("PRAGMA synchronous=NORMAL")
         try:
             yield connection
             connection.commit()
@@ -174,7 +186,6 @@ class Database:
             connection.execute(f"INSERT INTO samples ({columns}) VALUES ({placeholders})", values)
 
     def save_inverter_config(self, captured_at: str, settings: dict[str, Any]) -> None:
-        import json
         with self.connect() as connection:
             connection.execute(
                 "INSERT INTO inverter_config_snapshots (captured_at, config_json) VALUES (?, ?)",
@@ -182,7 +193,6 @@ class Database:
             )
 
     def latest_inverter_config(self) -> dict[str, Any] | None:
-        import json
         with self.connect() as connection:
             row = connection.execute(
                 "SELECT captured_at, config_json FROM inverter_config_snapshots "
@@ -193,7 +203,6 @@ class Database:
         return {"captured_at": row["captured_at"], "settings": json.loads(row["config_json"])}
 
     def inverter_config_snapshots(self, limit: int = 20) -> list[dict[str, Any]]:
-        import json
         with self.connect() as connection:
             rows = connection.execute(
                 "SELECT id, captured_at, config_json FROM inverter_config_snapshots "
@@ -205,7 +214,6 @@ class Database:
         ]
 
     def inverter_config_snapshot(self, snapshot_id: int) -> dict[str, Any] | None:
-        import json
         with self.connect() as connection:
             row = connection.execute(
                 "SELECT id, captured_at, config_json FROM inverter_config_snapshots WHERE id = ?",
@@ -224,7 +232,6 @@ class Database:
         self, created_at: str, requested_by: str, reason: str, changes: dict[str, Any],
         status: str = "pending", decided_by: str | None = None, decided_at: str | None = None,
     ) -> int:
-        import json
         with self.connect() as connection:
             cursor = connection.execute(
                 "INSERT INTO inverter_change_requests "
@@ -237,7 +244,6 @@ class Database:
 
     @staticmethod
     def _change_request(row) -> dict[str, Any]:
-        import json
         record = dict(row)
         record["changes"] = json.loads(record.pop("changes_json"))
         result = record.pop("result_json", None)
@@ -284,7 +290,6 @@ class Database:
             return cursor.rowcount > 0
 
     def finish_change_request(self, request_id: int, status: str, applied_at: str, result: dict) -> None:
-        import json
         with self.connect() as connection:
             connection.execute(
                 "UPDATE inverter_change_requests SET status = ?, applied_at = ?, result_json = ? WHERE id = ?",
@@ -365,8 +370,6 @@ class Database:
         reference_time=None,
     ) -> dict[str, int]:
         """Prune bulky protocol captures without deleting decoded samples."""
-        from datetime import datetime, timedelta, timezone
-
         success_days = max(1, int(success_days))
         diagnostic_days = max(success_days, int(diagnostic_days))
         reference_time = reference_time or datetime.now(timezone.utc)
