@@ -15,6 +15,16 @@ const loadPercent = document.querySelector('#load-percent');
 const rawResponse = document.querySelector('#raw-response');
 const utilityState = document.querySelector('#utility-state');
 const utilityAmps = document.querySelector('#utility-amps');
+const flowTop = document.querySelector('.flow-top');
+const utilityEnd = document.querySelector('#utility-end');
+const solarLine = document.querySelector('#solar-line');
+const flowBranch = document.querySelector('#flow-branch');
+const utilityWattsNode = document.querySelector('#utility-watts');
+const utilityVoltsNode = document.querySelector('#utility-volts');
+const utilityHeroAmps = document.querySelector('#utility-hero-amps');
+const utilityFlowState = document.querySelector('#utility-flow-state');
+const headerUtility = document.querySelector('#header-utility');
+const utilityHeaderWatts = document.querySelector('#utility-header-watts');
 const chartCanvas = document.querySelector('#power-chart');
 const overlayCanvas = document.querySelector('#power-chart-overlay');
 const chartWrap = chartCanvas.parentElement;
@@ -396,6 +406,31 @@ function updateStatusData(sample, diagnostic) {
   const utility = sample.utility;
   const carrying = utility?.state === 'carrying';
   const absent = !utility || utility.state === 'absent';
+
+  // The hero shows utility as a source in its own right. Without it the card
+  // cannot explain itself: on a dark, calm night solar reads 0 W while the
+  // house draws power and the battery charges, and only the utility line
+  // accounts for the difference.
+  if (flowTop) flowTop.classList.toggle('with-utility', !absent);
+  [utilityEnd, headerUtility].forEach(node => { if (node) node.hidden = absent; });
+  if (solarLine) solarLine.hidden = !absent;
+  if (flowBranch) flowBranch.hidden = absent;
+  if (!absent) {
+    const utilityWattsValue = number(utility?.watts);
+    const rounded = utilityWattsValue == null ? '—' : String(Math.round(utilityWattsValue));
+    if (utilityWattsNode) utilityWattsNode.textContent = rounded;
+    if (utilityHeaderWatts) utilityHeaderWatts.textContent = rounded;
+    if (utilityVoltsNode) utilityVoltsNode.textContent = format(utility?.volts);
+    if (utilityHeroAmps) utilityHeroAmps.textContent = format(utility?.amps);
+    if (utilityFlowState) {
+      // 'unknown' means the load was too small to tell the relay's position.
+      // Saying nothing beats printing a word that means "we cannot tell".
+      const known = utility.state === 'carrying' || utility.state === 'standby';
+      utilityFlowState.hidden = !known;
+      if (known) utilityFlowState.textContent = carrying ? 'Carrying load' : 'Standby';
+      utilityFlowState.classList.toggle('is-carrying', carrying);
+    }
+  }
   if (utilityState) {
     const watts = number(utility?.watts);
     utilityState.textContent = absent ? 'Absent'

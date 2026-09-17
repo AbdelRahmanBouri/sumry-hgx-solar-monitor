@@ -23,6 +23,10 @@
         <span>Solar</span>
         <strong><span data-metric="pv_watts">—</span><small> W</small></strong>
       </div>
+      <div class="header-reading utility-now" id="header-utility" aria-label="Current utility draw" hidden>
+        <span>Utility</span>
+        <strong><span id="utility-header-watts">—</span><small> W</small></strong>
+      </div>
       <div class="header-reading load-now" aria-label="Current home load">
         <span>Load</span>
         <strong><span data-metric="ac_load_watts">—</span><small> W</small></strong>
@@ -58,7 +62,18 @@
           <span class="flow-meta"><span data-metric="pv_voltage">—</span> V · <span data-metric="pv_current">—</span> A</span>
         </div>
 
-        <div class="flow-connector inbound"><i></i></div>
+        <div class="flow-end utility-end" id="utility-end" hidden>
+          <span class="flow-icon"><svg viewBox="0 0 24 24"><path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0V8ZM12 17v5"/></svg></span>
+          <span class="flow-name">Utility</span>
+          <strong><span id="utility-watts">—</span><small> W</small></strong>
+          <span class="flow-meta"><span id="utility-volts">—</span> V · <span id="utility-hero-amps">—</span> A</span>
+          <span class="flow-state" id="utility-flow-state" hidden>—</span>
+        </div>
+
+        <div class="flow-connector inbound" id="solar-line"><i></i></div>
+        <svg class="flow-branch" id="flow-branch" viewBox="0 0 100 100" preserveAspectRatio="none" hidden aria-hidden="true">
+          <path d="M0 25 H64 M0 75 H64 M64 25 V75 M64 50 H100" vector-effect="non-scaling-stroke"/>
+        </svg>
         <div class="inverter">
           <span><svg viewBox="0 0 24 24"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"/></svg></span>
           <small>Inverter</small>
