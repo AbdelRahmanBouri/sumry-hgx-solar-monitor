@@ -152,11 +152,14 @@ main { gap: 12px; }
 .battery-current { grid-column: 4; }
 .battery-current strong { font-size: 17px; }
 .battery-current > span { margin-top: 5px; padding: 3px 8px; font-size: 11.5px; }
+/* One track per visible tile, side by side; a hidden tile leaves no gap. */
 .battery-estimates {
   grid-column: 3;
   grid-row: 1;
   align-self: stretch;
-  grid-template-columns: 1fr;
+  grid-auto-flow: column;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-columns: minmax(0, 1fr);
   gap: 0;
   padding: 0;
   border: 0;
@@ -177,8 +180,10 @@ main { gap: 12px; }
   font-size: 10px;
   line-height: 1.25;
   letter-spacing: .035em;
-  white-space: normal;
+  white-space: nowrap;
 }
+/* A value is one token: it never wraps and is never cut short with an
+   ellipsis. The tracks are sized so the widest one, "23h 59m", fits. */
 .battery-estimates strong {
   max-width: 100%;
   overflow: visible;
@@ -187,15 +192,18 @@ main { gap: 12px; }
   line-height: 1.2;
   text-align: left;
   text-overflow: clip;
-  white-space: normal;
+  white-space: nowrap;
 }
 .battery-runtime-estimate[hidden] { display: none; }
-/* Track however many tiles are actually visible instead of forcing two, and
-   never let a long value push into the neighbouring column. */
-.battery-estimates { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
 .battery-row > * { min-width: 0; }
-.battery-estimates > span { min-width: 0; }
-.battery-estimates strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Under 480px the voltage and the direction pill leave the middle column
+   about 70-90px, so two tiles side by side get under 40px each: narrower
+   than either label. Stacked, each tile has the whole column. */
+@media (max-width: 479px) {
+  .battery-estimates { grid-auto-flow: row; align-content: center; gap: 4px; }
+  .battery-estimates > span { padding: 0 0 0 8px; }
+  .battery-estimates > span + span { padding-top: 4px; border-top: 1px solid var(--hairline); border-left: 0; }
+}
 
 /* The badge is green while the inverter cannot be written to; once the admin
    portal enables writes it turns amber, because that is now a live control. */
