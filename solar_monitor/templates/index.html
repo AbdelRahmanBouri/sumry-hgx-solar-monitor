@@ -85,8 +85,8 @@
           <span id="battery-direction">Awaiting data</span>
         </div>
         <div class="battery-estimates">
-          <span><small>Charge</small><strong id="battery-soc">—%</strong></span>
-          <span class="battery-runtime-estimate" hidden><small>Runtime</small><strong id="battery-runtime">Set capacity</strong></span>
+          <span><small>Charge</small><strong id="battery-soc">—</strong></span>
+          <span class="battery-runtime-estimate" hidden><small>Runtime</small><strong id="battery-runtime">—</strong></span>
         </div>
       </div>
     </section>
@@ -282,15 +282,6 @@
         <div class="preference-title"><strong>Add data cards</strong><button class="clear-data-cards" id="clear-data-cards" type="button">Clear</button></div>
         <p>Select any decoded measurement to keep visible. These choices are saved on this phone.</p>
         <div class="metric-picker" id="metric-picker"></div>
-      </div>
-      <div class="preference-section">
-        <strong>Battery estimate</strong>
-        <p>Set your battery bank details to estimate charge and runtime.</p>
-        <div class="preference-fields">
-          <label><span>Capacity</span><div><input id="battery-capacity" type="number" min="1" max="2000" step="1" inputmode="decimal" placeholder="e.g. 400"><small>Ah</small></div></label>
-          <label><span>Empty voltage</span><div><input id="battery-empty-voltage" type="number" min="18" max="28" step=".1" inputmode="decimal" value="21"><small>V</small></div></label>
-          <label><span>Full voltage</span><div><input id="battery-full-voltage" type="number" min="24" max="32" step=".1" inputmode="decimal" value="28.8"><small>V</small></div></label>
-        </div>
       </div>
       <div class="preference-section">
         <strong>Appearance</strong>

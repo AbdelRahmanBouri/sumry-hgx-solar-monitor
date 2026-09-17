@@ -461,7 +461,7 @@ main { gap: 12px; }
   .summary-card { padding-inline: 13px; }
   .trend-card { padding-inline: 14px; }
   .chart-controls { grid-template-columns: minmax(124px, .9fr) minmax(140px, 1.1fr); }
-  .metric-picker, .preference-fields { grid-template-columns: 1fr; }
+  .metric-picker { grid-template-columns: 1fr; }
   .customize-dialog form { padding: 16px; }
 }
 

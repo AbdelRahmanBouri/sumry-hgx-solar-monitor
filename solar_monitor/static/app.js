@@ -56,7 +56,6 @@ let yViewWindow = null; // {min, max} in watts, or null for auto-scale
 const Y_AXIS_ZONE_WIDTH = 44; // px from the left edge treated as the "drag the scale" zone
 let renderedChart = null;
 let latestPayload = null;
-let latestStatusSample = {};
 let chartMode = 'inspect';
 
 const cardNames = {
@@ -87,10 +86,15 @@ function loadCardPreferences() {
 
 let cardPreferences = loadCardPreferences();
 
+// Only the keys still in use are read back. Earlier releases stored a
+// battery capacity and an empty/full voltage pair here for a client-side
+// state-of-charge guess; a saved copy may still carry them, and they are
+// ignored rather than resurrected.
 function loadDashboardSettings() {
-  const defaults = {capacityAh: '', emptyVoltage: 21, fullVoltage: 28.8, presentation: false};
+  const defaults = {presentation: false};
   try {
-    return {...defaults, ...JSON.parse(localStorage.getItem(storageKey('settings-v2')) || '{}')};
+    const saved = JSON.parse(localStorage.getItem(storageKey('settings-v2')) || '{}');
+    return {...defaults, presentation: Boolean(saved?.presentation)};
   } catch (_) {
     return defaults;
   }
@@ -284,49 +288,32 @@ function sendNotification(title, body) {
   new Notification(title, {body, icon: '/static/solar-app-icon.svg', tag: 'solar-monitor-alert'});
 }
 
-function batteryStateOfCharge(voltage) {
-  const empty = Number(dashboardSettings.emptyVoltage);
-  const full = Number(dashboardSettings.fullVoltage);
-  if (!Number.isFinite(voltage) || !Number.isFinite(empty) || !Number.isFinite(full) || full <= empty) return null;
-  return Math.max(0, Math.min(100, (voltage - empty) / (full - empty) * 100));
-}
-
+// Time to the low-voltage cutoff, written the same way everywhere it appears
+// so the battery row and the health card can never disagree on screen.
 function formatRuntime(hours) {
-  if (!Number.isFinite(hours) || hours <= 0) return '—';
-  if (hours >= 24) return '>24 h';
-  const whole = Math.floor(hours);
-  const minutes = Math.round((hours - whole) * 60);
-  return whole ? `~${whole}h ${minutes}m` : `~${minutes} min`;
+  if (!Number.isFinite(hours) || hours < 0) return '—';
+  const minutes = Math.round(hours * 60);
+  if (minutes >= 24 * 60) return '>24 h';
+  if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  return `${minutes} min`;
 }
 
-// The server's charge count, when it has one. It replaces the voltage guess
-// on the battery row and the health card, and lends its measured capacity
-// to the runtime estimate.
+// The server's charge count and time to cutoff, from /api/battery. There is
+// one state of charge and one runtime on this page, and both come from here.
 let batteryState = null;
 const countedSoc = () => (batteryState?.state?.method === 'coulomb' ? number(batteryState.state.soc) : null);
 
-function updateEnergyInsights(sample) {
-  const current = number(sample.battery_current);
-  const voltage = number(sample.battery_voltage);
-  const counted = countedSoc();
-  const soc = counted ?? batteryStateOfCharge(voltage);
-  document.querySelector('#battery-soc').textContent = soc === null ? '—%'
-    : counted !== null ? `${Math.round(soc)}%` : `~${Math.round(soc)}%`;
+function updateEnergyInsights() {
+  const soc = countedSoc();
+  document.querySelector('#battery-soc').textContent = soc === null ? '—' : `${Math.round(soc)}%`;
 
-  // Runtime only means something while discharging, and only once a bank
-  // capacity is known -- measured by the counter, or entered by hand.
-  // Rather than printing a two-word prompt into a column too narrow to hold
-  // it, the tile simply stays out of the way until it has a figure.
-  const capacity = number(batteryState?.state?.capacity_ah) ?? Number(dashboardSettings.capacityAh);
-  const configured = Number.isFinite(capacity) && capacity > 0;
-  const discharging = current !== null && current < -.05;
+  // The tile stays out of the way while the bank is charging or the counter
+  // has no anchor yet, rather than printing a prompt into a narrow column.
+  const runtime = batteryState?.runtime;
+  const hours = runtime && !runtime.charging ? number(runtime.hours) : null;
   const runtimeTile = document.querySelector('.battery-runtime-estimate');
-  if (runtimeTile) runtimeTile.hidden = !(configured && discharging);
-  if (configured && discharging && soc !== null) {
-    document.querySelector('#battery-runtime').textContent =
-      formatRuntime(capacity * soc / 100 / Math.abs(current));
-  }
-
+  if (runtimeTile) runtimeTile.hidden = hours === null;
+  if (hours !== null) document.querySelector('#battery-runtime').textContent = formatRuntime(hours);
 }
 
 const CONFIG_LABELS = {
@@ -398,7 +385,6 @@ function renderConfig() {
 }
 
 function updateStatusData(sample, diagnostic) {
-  latestStatusSample = sample;
   metricNodes.forEach(node => {
     const value = sample[node.dataset.metric];
     node.textContent = format(value);
@@ -472,7 +458,7 @@ function updateStatusData(sample, diagnostic) {
   document.querySelector('#fan-percent').textContent =
     fans.length ? format(Math.max(...fans), 0) : '—';
 
-  updateEnergyInsights(sample);
+  updateEnergyInsights();
   renderConfig();
   renderWriteBadges();
   document.dispatchEvent(new CustomEvent('solar:sample', {detail: sample}));
@@ -1476,7 +1462,7 @@ function renderBatteryHealth() {
       tile.classList.remove('is-urgent', 'is-warn');
     } else {
       const h = runtime.hours;
-      set('#health-runtime', h >= 24 ? '>24 h' : h >= 1 ? `${Math.floor(h)}h ${Math.round((h % 1) * 60)}m` : `${Math.round(h * 60)} min`);
+      set('#health-runtime', formatRuntime(h));
       set('#health-runtime-note', `${runtime.draw_amps.toFixed(0)} A draw · ${runtime.usable_ah.toFixed(0)} Ah to ${runtime.cutoff_volts.toFixed(1)} V`
         + (runtime.grid_available ? ' · grid available' : ' · no grid to fall back on'));
       tile.classList.toggle('is-urgent', h < 2);
@@ -1500,7 +1486,7 @@ async function refreshBattery() {
     batteryState = null;
   }
   renderBatteryHealth();
-  if (latestStatusSample && Object.keys(latestStatusSample).length) updateEnergyInsights(latestStatusSample);
+  updateEnergyInsights();
 }
 
 // Only needed on the multi-day ranges, where refreshHistory fetches daily
@@ -1715,27 +1701,13 @@ allData.addEventListener('toggle', () => {
 });
 
 function initializeDashboardSettings() {
-  const capacityInput = document.querySelector('#battery-capacity');
-  const emptyInput = document.querySelector('#battery-empty-voltage');
-  const fullInput = document.querySelector('#battery-full-voltage');
   const presentationInput = document.querySelector('#presentation-mode');
   const notificationButton = document.querySelector('#notification-button');
   const notificationStatus = document.querySelector('#notification-status');
 
-  capacityInput.value = dashboardSettings.capacityAh;
-  emptyInput.value = dashboardSettings.emptyVoltage;
-  fullInput.value = dashboardSettings.fullVoltage;
   presentationInput.checked = Boolean(dashboardSettings.presentation);
   document.body.classList.toggle('presentation-mode', presentationInput.checked);
 
-  function saveBatterySettings() {
-    dashboardSettings.capacityAh = capacityInput.value;
-    dashboardSettings.emptyVoltage = Number(emptyInput.value) || 21;
-    dashboardSettings.fullVoltage = Number(fullInput.value) || 28.8;
-    saveDashboardSettings();
-    updateEnergyInsights(latestStatusSample);
-  }
-  [capacityInput, emptyInput, fullInput].forEach(input => input.addEventListener('change', saveBatterySettings));
   presentationInput.addEventListener('change', () => {
     dashboardSettings.presentation = presentationInput.checked;
     document.body.classList.toggle('presentation-mode', presentationInput.checked);
