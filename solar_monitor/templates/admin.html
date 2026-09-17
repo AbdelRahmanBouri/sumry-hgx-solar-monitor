@@ -48,7 +48,7 @@
         </div>
         <article class="panel">
           <h2>Inverter writes</h2>
-          <p><span class="badge" id="writes-badge">Inverter writes: off</span> Charger and protection settings can be written from the Inverter section once writes are switched on there; every write is read back and audited.</p>
+          <p><span class="badge" id="writes-badge">Inverter writes: off</span> Polling is read-only. Charger and protection settings can be written from the Inverter section once writes are switched on there. A write sends the inverter's own configuration block back with only the chosen fields changed, is read back before it is reported as applied, and is audited.</p>
         </article>
       </section>
 
