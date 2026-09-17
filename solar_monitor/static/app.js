@@ -354,6 +354,21 @@ const CONFIG_UNITS = {
   equalization_interval_days: 'days', inverter_power_limit_w: 'W',
 };
 
+// Both badges follow the writes_enabled setting the admin portal toggles;
+// the markup starts neutral so the page never claims a state it has not read.
+const writesBadges = [
+  document.querySelector('#writes-badge'),
+  document.querySelector('#config-writes-badge'),
+];
+
+function renderWriteBadges() {
+  const enabled = latestPayload?.writes_enabled === true;
+  writesBadges.forEach(badge => {
+    badge.textContent = enabled ? 'Writes enabled' : 'Writes disabled';
+    badge.classList.toggle('writes-enabled', enabled);
+  });
+}
+
 function renderConfig() {
   const grid = document.querySelector('#config-grid');
   const note = document.querySelector('#config-note');
@@ -365,7 +380,8 @@ function renderConfig() {
     return;
   }
   note.hidden = false;
-  note.textContent = `Captured ${relativeTime(config.captured_at)} · read-only, never written back to the inverter`;
+  note.textContent = `Captured ${relativeTime(config.captured_at)} · ${
+    latestPayload?.writes_enabled === true ? 'writable from the admin portal' : 'read-only, never written back to the inverter'}`;
   grid.hidden = false;
   grid.replaceChildren();
   Object.entries(config.settings).forEach(([key, value]) => {
@@ -458,6 +474,7 @@ function updateStatusData(sample, diagnostic) {
 
   updateEnergyInsights(sample);
   renderConfig();
+  renderWriteBadges();
   document.dispatchEvent(new CustomEvent('solar:sample', {detail: sample}));
   rawResponse.textContent = diagnostic?.response_hex || diagnostic?.error || 'No serial response captured';
   updateAlert(sample, diagnostic);

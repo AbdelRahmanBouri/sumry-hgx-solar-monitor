@@ -227,7 +227,7 @@
     </section>
 
     <section class="system-card card" id="system">
-      <div class="card-heading"><div><span class="kicker">SYSTEM</span><h2>Status & diagnostics</h2></div><span class="read-only">Writes disabled</span></div>
+      <div class="card-heading"><div><span class="kicker">SYSTEM</span><h2>Status & diagnostics</h2></div><span class="read-only" id="writes-badge">Checking writes</span></div>
       <div class="system-rows">
         <div><span>Operating state</span><strong data-metric="operating_state">Not decoded</strong></div>
         <div><span>Faults</span><strong data-metric="faults" id="fault-value">No active faults</strong></div>
@@ -243,7 +243,7 @@
     </section>
 
     <section class="system-card card" id="config" aria-label="Inverter configuration">
-      <div class="card-heading"><div><span class="kicker">INVERTER</span><h2>Configuration</h2></div><span class="read-only">Read-only</span></div>
+      <div class="card-heading"><div><span class="kicker">INVERTER</span><h2>Configuration</h2></div><span class="read-only" id="config-writes-badge">Checking writes</span></div>
       <p class="config-note" id="config-note">Waiting for the inverter's configuration snapshot (captured every few minutes).</p>
       <div class="config-grid" id="config-grid" hidden></div>
     </section>

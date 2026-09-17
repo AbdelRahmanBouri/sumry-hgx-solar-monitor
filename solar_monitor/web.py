@@ -178,6 +178,19 @@ def create_app(
     def solar_potential():
         return render_template("estimate.html")
 
+    def status_payload(collector_state: dict) -> dict:
+        # Whether the inverter can be written to is a setting the admin
+        # portal toggles, so the dashboard must read it rather than assume.
+        writes_enabled = inverter_writes_enabled()
+        return {
+            "sample": live_sample(database.latest_sample()),
+            "inverter_config": database.latest_inverter_config(),
+            "diagnostic": database.latest_diagnostic(),
+            "collector": collector_state,
+            "writes_enabled": writes_enabled,
+            "read_only": not writes_enabled,
+        }
+
     @app.get("/api/status")
     def status():
         collector_state = (
@@ -185,13 +198,7 @@ def create_app(
             if collector is not None
             else {"running": False, "reason": "collector is disabled"}
         )
-        return jsonify({
-            "sample": live_sample(database.latest_sample()),
-            "inverter_config": database.latest_inverter_config(),
-            "diagnostic": database.latest_diagnostic(),
-            "collector": collector_state,
-            "read_only": True,
-        })
+        return jsonify(status_payload(collector_state))
 
     last_manual_refresh = {"at": 0.0}
 
@@ -207,13 +214,7 @@ def create_app(
             }), 429
         last_manual_refresh["at"] = time.monotonic()
         collector.collect_once()
-        return jsonify({
-            "sample": live_sample(database.latest_sample()),
-            "inverter_config": database.latest_inverter_config(),
-            "diagnostic": database.latest_diagnostic(),
-            "collector": collector.state(),
-            "read_only": True,
-        })
+        return jsonify(status_payload(collector.state()))
 
     def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
         try:

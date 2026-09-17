@@ -110,6 +110,15 @@ class WebTests(unittest.TestCase):
         payload = self.client.get("/api/status").json
         self.assertIsNone(payload["sample"])
         self.assertTrue(payload["read_only"])
+        self.assertFalse(payload["writes_enabled"])
+
+    def test_status_reports_writes_enabled_from_settings(self):
+        # The dashboard badge follows the same setting the admin portal
+        # toggles, so it must never be hardcoded.
+        self.db.set_settings({"writes_enabled": "true"}, "now")
+        payload = self.client.get("/api/status").json
+        self.assertTrue(payload["writes_enabled"])
+        self.assertFalse(payload["read_only"])
 
     def test_status_derives_utility_use_from_the_transfer_relay(self):
         # A night-time bypass reading: mains present, the inverter's own
@@ -155,7 +164,11 @@ class WebTests(unittest.TestCase):
     def test_dashboard_renders(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Writes disabled", response.data)
+        # The badge text is filled from /api/status; the markup itself must
+        # not assert a write state it has not read.
+        self.assertIn(b'id="writes-badge"', response.data)
+        self.assertIn(b'id="config-writes-badge"', response.data)
+        self.assertNotIn(b"Writes disabled", response.data)
 
     def test_solar_potential_page_is_separate_from_live_chart(self):
         response = self.client.get("/estimate")
