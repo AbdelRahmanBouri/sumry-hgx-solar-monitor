@@ -1,7 +1,7 @@
 import struct
 import unittest
 
-from solar_monitor.protocols.sumry_8851 import Sumry8851ProbeProtocol, _crc16_modbus
+from solar_monitor.protocols.sumry_8851 import Sumry8851Protocol, _crc16_modbus
 from solar_monitor.serial_io import escaped_ascii, write_exchange
 
 # A real configuration reply captured from the HGX on 2026-09-04: AGM preset,
@@ -25,7 +25,7 @@ def as_reply(write_frame: bytes) -> bytes:
 
 class SafetyTests(unittest.TestCase):
     def setUp(self):
-        self.protocol = Sumry8851ProbeProtocol()
+        self.protocol = Sumry8851Protocol()
 
     def test_candidate_query_is_exact(self):
         query = self.protocol.query("status_candidate_0003")
@@ -50,7 +50,7 @@ class ConfigurationWriteTests(unittest.TestCase):
     and only whitelisted fields altered. These pin that property down."""
 
     def setUp(self):
-        self.protocol = Sumry8851ProbeProtocol()
+        self.protocol = Sumry8851Protocol()
 
     def test_the_captured_reply_decodes_to_the_known_settings(self):
         decoded = self.protocol.decode(REAL_CONFIG_REPLY)

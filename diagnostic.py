@@ -32,7 +32,7 @@ def listen(port: str, baudrate: int, timeout: float) -> bytes:
 
 def main() -> int:
     args = arguments()
-    protocol = create_protocol("sumry_8851_probe")
+    protocol = create_protocol("sumry_8851")
     ports = args.port or discover_usb_serial_ports()
     bauds = args.baud or [9600]
     if not ports:
@@ -40,7 +40,7 @@ def main() -> int:
         return 2
 
     captures = []
-    print("READ-ONLY MODE: configuration/write commands are not implemented.")
+    print("This probe transmits only the protocol's allow-listed read queries; it never writes to the inverter.")
     for port in ports:
         for baudrate in bauds:
             if args.listen_only:

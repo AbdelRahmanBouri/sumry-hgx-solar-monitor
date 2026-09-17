@@ -81,7 +81,7 @@ class CollectorResilienceTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         self.assertIsNotNone(state["started_at"])
         self.assertEqual(state["interval_seconds"], 30)
-        self.assertEqual(state["protocol"], "sumry_8851_probe")
+        self.assertEqual(state["protocol"], "sumry_8851")
         self.assertEqual(state["configured_port"], "auto")
 
     def test_new_collector_reports_not_running(self):

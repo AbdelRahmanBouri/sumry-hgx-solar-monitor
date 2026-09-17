@@ -18,8 +18,11 @@ class DecodeResult:
     note: str
 
 
-class ReadOnlyProtocol:
-    """Protocol interface whose outbound surface is a fixed safe-query registry."""
+class Protocol:
+    """Protocol interface. Outbound reads are an allow-list: `queries` is
+    every frame `exchange` may send, and `assert_read_only_frame` refuses any
+    other. A protocol that can change settings adds `build_config_write` and
+    `assert_write_frame`, which gate the one write path separately."""
 
     name = "base"
     queries: tuple[Query, ...] = ()
@@ -36,4 +39,8 @@ class ReadOnlyProtocol:
 
     def decode(self, frame: bytes) -> DecodeResult:
         return DecodeResult({}, False, "No decoder has been confirmed for this firmware")
+
+
+# serial_io still imports the class under its former name.
+ReadOnlyProtocol = Protocol
 

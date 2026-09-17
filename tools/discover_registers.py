@@ -31,7 +31,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from solar_monitor.config import load_config  # noqa: E402
 from solar_monitor.protocols.sumry_8851 import WRITABLE_FIELDS  # noqa: E402
 
-MARK_FILE = Path(__file__).resolve().parent.parent / ".register-probe-mark"
 KNOWN = {
     8: "flags0/1", 10: "flags2/3", 12: "inverter_power_limit_w", 14: "output_voltage_v",
     16: "output_frequency_hz", 38: "low_battery_cutoff_v", 48: "bulk_charge_voltage_v",
@@ -41,6 +40,11 @@ KNOWN = {
     96: "equalization_interval_days",
 }
 WRITABLE_OFFSETS = {field.offset for field in WRITABLE_FIELDS.values()}
+
+
+def mark_file(database: str) -> Path:
+    """The baseline lives beside the database it was taken from."""
+    return Path(database).parent / "register-probe-mark"
 
 
 def config_frames(database: str, since: str | None):
@@ -80,12 +84,13 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     database = load_config(args.config).storage.database
+    mark = mark_file(database)
     if args.mark:
         frames = config_frames(database, None)
         if not frames:
             print("No configuration frames captured yet.", file=sys.stderr)
             return 1
-        MARK_FILE.write_text(frames[-1][0], encoding="utf-8")
+        mark.write_text(frames[-1][0], encoding="utf-8")
         print(f"Baseline marked at {frames[-1][0]}.")
         print("Change ONE setting on the front panel, wait about five minutes for a")
         print("configuration poll, then run this again with --diff.")
@@ -93,11 +98,11 @@ def main(argv=None) -> int:
 
     if not args.diff:
         parser.error("pass --mark or --diff")
-    if not MARK_FILE.exists():
+    if not mark.exists():
         print("No baseline. Run with --mark first.", file=sys.stderr)
         return 1
 
-    since = MARK_FILE.read_text(encoding="utf-8").strip()
+    since = mark.read_text(encoding="utf-8").strip()
     frames = config_frames(database, since)
     if len(frames) < 2:
         print(f"Only {len(frames)} frame(s) since {since[:19]}; wait for another poll.", file=sys.stderr)

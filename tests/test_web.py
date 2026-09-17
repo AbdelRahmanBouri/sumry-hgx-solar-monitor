@@ -226,8 +226,8 @@ class WebTests(unittest.TestCase):
 
     def test_inverter_writes_are_off_by_default_and_gated(self):
         class FakeCollector:
-            from solar_monitor.protocols.sumry_8851 import Sumry8851ProbeProtocol
-            protocol = Sumry8851ProbeProtocol()
+            from solar_monitor.protocols.sumry_8851 import Sumry8851Protocol
+            protocol = Sumry8851Protocol()
             calls = []
 
             def state(self):

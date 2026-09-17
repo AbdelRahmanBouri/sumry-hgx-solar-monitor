@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import struct
 from typing import Any
 
-from .base import DecodeResult, Query, ReadOnlyProtocol
+from .base import DecodeResult, Query, Protocol
 
 # --- Frame layout -----------------------------------------------------------
 # Both real HGX status replies captured 2026-09-02 pass their trailing
@@ -140,10 +140,12 @@ def _s16(data: bytes, offset: int) -> int:
     return struct.unpack_from("<h", data, offset)[0]
 
 
-class Sumry8851ProbeProtocol(ReadOnlyProtocol):
-    """Read-only HGX status query with validated frame and field decoding."""
+class Sumry8851Protocol(Protocol):
+    """HGX 0x8851 protocol: allow-listed status and configuration reads with
+    CRC-validated decoding, plus a configuration write built only from the
+    inverter's own last reply and gated by `assert_write_frame`."""
 
-    name = "sumry_8851_probe"
+    name = "sumry_8851"
     queries = (
         Query(
             name="status_candidate_0003",

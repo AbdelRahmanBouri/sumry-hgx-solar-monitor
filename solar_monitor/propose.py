@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timedelta, timezone
+import getpass
 import json
 import sys
 
@@ -47,7 +48,7 @@ def propose(database: Database, changes: dict, reason: str, requested_by: str) -
     change could never be written, so bad input fails here rather than
     silently waiting for an approval that would fail later."""
     settings = database.get_settings()
-    protocol = create_protocol(settings.get("protocol", "sumry_8851_probe"))
+    protocol = create_protocol(settings.get("protocol", "sumry_8851"))
     writable = getattr(protocol, "writable_fields", {})
     if not changes:
         raise ValueError("No changes given")
@@ -96,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--set", dest="assignments", action="append", default=[],
                         metavar="FIELD=VALUE", help="a setting to change; repeatable")
     parser.add_argument("--reason", default="", help="why, recorded in the audit log")
-    parser.add_argument("--by", default="automation", help="who is proposing")
+    parser.add_argument("--by", default=getpass.getuser(), help="who is proposing")
     parser.add_argument("--list", action="store_true", help="show recent requests and exit")
     args = parser.parse_args(argv)
 

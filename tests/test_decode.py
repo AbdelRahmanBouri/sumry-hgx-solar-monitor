@@ -1,6 +1,6 @@
 import unittest
 
-from solar_monitor.protocols.sumry_8851 import Sumry8851ProbeProtocol, _crc16_modbus
+from solar_monitor.protocols.sumry_8851 import Sumry8851Protocol, _crc16_modbus
 
 # Two real HGX replies to the candidate status query, captured 2026-09-02
 # three minutes apart. Both pass the frame's own CRC16/MODBUS checksum,
@@ -15,7 +15,7 @@ CAPTURE_2 = bytes.fromhex(
 
 class DecodeTests(unittest.TestCase):
     def setUp(self):
-        self.protocol = Sumry8851ProbeProtocol()
+        self.protocol = Sumry8851Protocol()
 
     def test_capture_1_decodes_and_validates_crc(self):
         result = self.protocol.decode(CAPTURE_1)
