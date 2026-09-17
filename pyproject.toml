@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "solar-monitor"
+version = "0.1.0"
+description = "Local-first monitor for a SUMRY HGX inverter on a Raspberry Pi"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "Flask>=3.0,<4",
+    "pyserial>=3.5,<4",
+    "waitress>=3,<4",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.6,<1"]
+
+[tool.setuptools]
+packages = ["solar_monitor", "solar_monitor.protocols"]
+
+[tool.setuptools.package-data]
+solar_monitor = ["templates/*.html", "static/*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = ["instance", "captures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    # Lines in the protocol tables and the long explanatory comments run
+    # past 110 on purpose; the limit above is the target for new code.
+    "E501",
+    # `zip(rows, rows[1:])` pairs each reading with the next one. The
+    # lengths differ by design, so `strict=` would be wrong, not missing.
+    "B905",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["solar_monitor"]
+force-sort-within-sections = true
