@@ -1349,7 +1349,9 @@ async function refreshHistory() {
       const response = await fetch(`/api/history/daily?days=${days}`, {cache: 'no-store'});
       if (!response.ok) throw new Error('History unavailable');
       const daily = await response.json();
-      historyRows = daily.map(row => ({
+      // Every calendar day comes back, zeroed where it has no readings; the
+      // chart plots the days that have some and leaves a gap for the rest.
+      historyRows = daily.filter(row => row.samples > 0).map(row => ({
         captured_at: `${row.day}T12:00:00+00:00`,
         pv_watts: row.avg_pv_watts,
         ac_load_watts: row.avg_load_watts,
@@ -1513,20 +1515,29 @@ async function refreshToday() {
   }
 }
 
+// The server returns exactly the last 30 local calendar days, oldest first,
+// with a zero row for any day without readings, so the last seven entries
+// are the last seven days and each day's kWh is integrated from its own
+// readings rather than extrapolated from an average.
 async function refreshPeriodTotals() {
   try {
     const response = await fetch('/api/history/daily?days=30', {cache: 'no-store'});
     if (!response.ok) throw new Error('History unavailable');
     const daily = await response.json();
-    const kwh = (rows, key) => rows.reduce((total, row) => total + (number(row[key]) || 0) * 24 / 1000, 0);
+    const kwh = (rows, key) => rows.reduce((total, row) => total + (number(row[key]) || 0), 0);
+    const withData = rows => rows.filter(row => row.samples > 0).length;
     const last7 = daily.slice(-7);
     const set = (id, value) => {
       document.querySelector(id).textContent = daily.length ? `${value.toFixed(1)} kWh` : '— kWh';
     };
-    set('#solar-7d', kwh(last7, 'avg_pv_watts'));
-    set('#load-7d', kwh(last7, 'avg_load_watts'));
-    set('#solar-30d', kwh(daily, 'avg_pv_watts'));
-    set('#load-30d', kwh(daily, 'avg_load_watts'));
+    set('#solar-7d', kwh(last7, 'pv_kwh'));
+    set('#load-7d', kwh(last7, 'load_kwh'));
+    set('#solar-30d', kwh(daily, 'pv_kwh'));
+    set('#load-30d', kwh(daily, 'load_kwh'));
+    if (daily.length) {
+      document.querySelector('#period-note').textContent =
+        `${withData(last7)} of 7 and ${withData(daily)} of 30 days with data · a day without readings counts as zero`;
+    }
   } catch (_) {
     // leave placeholders
   }

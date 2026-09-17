@@ -411,20 +411,71 @@ class Database:
                 ).fetchone()[0]),
             }
 
-    def daily_summary(self, since_iso: str) -> list[dict[str, Any]]:
-        # captured_at is ISO8601 UTC ("2026-09-02T19:52:30+00:00"); the first
-        # 10 characters group samples by UTC calendar day without a separate
-        # date column. avg_watts * 24h is a rough kWh estimate, not a
-        # trapezoidal integral -- good enough for a dashboard summary, not
-        # for billing.
+    def daily_summary(self, today: str, days: int, utc_offset_minutes: int = 0) -> list[dict[str, Any]]:
+        """The last `days` local calendar days ending on `today`, oldest first.
+
+        `today` is a local date ("2026-09-16") and `utc_offset_minutes` the
+        local clock's offset from UTC; captured_at is stored in UTC. Every
+        day in the window comes back, zeroed where it has no samples, so a
+        caller can sum a true window rather than the last N days that
+        happened to have data.
+
+        Energy is the trapezoid between consecutive readings with the gap
+        capped at five minutes -- the rule the dashboard's own integrator
+        and battery.daily_health use -- and coverage_hours is the sum of
+        those capped gaps. A day with thirty minutes of readings therefore
+        reports thirty minutes and the energy in them, not a whole day
+        extrapolated from its average.
+        """
+        max_gap_hours = 5 / 60
+        local = f"{utc_offset_minutes:+d} minutes"
+        # The scan starts at the first day's local midnight in UTC, less one
+        # gap so the window's first reading still has its predecessor.
+        lead = f"{-(utc_offset_minutes + 5):+d} minutes"
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT substr(captured_at, 1, 10) AS day, "
-                "AVG(pv_watts) AS avg_pv_watts, MAX(pv_watts) AS peak_pv_watts, "
-                "AVG(ac_load_watts) AS avg_load_watts, MAX(ac_load_watts) AS peak_load_watts, "
-                "MIN(battery_voltage) AS min_battery_voltage, COUNT(*) AS samples "
-                "FROM samples WHERE captured_at >= ? GROUP BY day ORDER BY day",
-                (since_iso,),
+                """
+                WITH RECURSIVE calendar(day) AS (
+                    SELECT date(:today, :first_day)
+                    UNION ALL SELECT date(day, '+1 day') FROM calendar WHERE day < :today
+                ),
+                stepped AS (
+                    SELECT date(captured_at, :local) AS day,
+                        pv_watts, ac_load_watts, battery_voltage,
+                        LAG(pv_watts) OVER w AS previous_pv,
+                        LAG(ac_load_watts) OVER w AS previous_load,
+                        (julianday(captured_at) - julianday(LAG(captured_at) OVER w)) * 24 AS gap_hours
+                    FROM samples
+                    WHERE captured_at >= strftime('%Y-%m-%dT%H:%M:%S', :today, :first_day, :lead)
+                    WINDOW w AS (ORDER BY captured_at)
+                ),
+                capped AS (
+                    SELECT day, pv_watts, ac_load_watts, battery_voltage, previous_pv, previous_load,
+                        CASE WHEN gap_hours IS NULL OR gap_hours < 0 THEN 0
+                             WHEN gap_hours > :max_gap THEN :max_gap
+                             ELSE gap_hours END AS hours
+                    FROM stepped
+                ),
+                totals AS (
+                    SELECT day, COUNT(*) AS samples, SUM(hours) AS coverage_hours,
+                        SUM(CASE WHEN pv_watts IS NOT NULL AND previous_pv IS NOT NULL
+                                 THEN (pv_watts + previous_pv) / 2 * hours END) / 1000 AS pv_kwh,
+                        SUM(CASE WHEN ac_load_watts IS NOT NULL AND previous_load IS NOT NULL
+                                 THEN (ac_load_watts + previous_load) / 2 * hours END) / 1000 AS load_kwh,
+                        AVG(pv_watts) AS avg_pv_watts, MAX(pv_watts) AS peak_pv_watts,
+                        AVG(ac_load_watts) AS avg_load_watts, MAX(ac_load_watts) AS peak_load_watts,
+                        MIN(battery_voltage) AS min_battery_voltage
+                    FROM capped GROUP BY day
+                )
+                SELECT calendar.day, COALESCE(samples, 0) AS samples,
+                    ROUND(COALESCE(coverage_hours, 0), 2) AS coverage_hours,
+                    ROUND(COALESCE(pv_kwh, 0), 3) AS pv_kwh,
+                    ROUND(COALESCE(load_kwh, 0), 3) AS load_kwh,
+                    avg_pv_watts, peak_pv_watts, avg_load_watts, peak_load_watts, min_battery_voltage
+                FROM calendar LEFT JOIN totals USING (day) ORDER BY calendar.day
+                """,
+                {"today": today, "first_day": f"-{max(1, int(days)) - 1} days",
+                 "local": local, "lead": lead, "max_gap": max_gap_hours},
             ).fetchall()
         return [dict(row) for row in rows]
 

@@ -246,8 +246,11 @@ def create_app(
     @app.get("/api/history/daily")
     def history_daily():
         days = _bounded_int("days", 30, 1, 90)
-        since = datetime.now(timezone.utc) - timedelta(days=days)
-        return jsonify(database.daily_summary(since.isoformat()))
+        # Calendar days are the reader's, not UTC's: the window ends on the
+        # local date today and each day is cut at local midnight.
+        local_now = datetime.now().astimezone()
+        offset_minutes = int((local_now.utcoffset() or timedelta(0)).total_seconds() // 60)
+        return jsonify(database.daily_summary(local_now.date().isoformat(), days, offset_minutes))
 
     @app.get("/api/estimate")
     def estimate():

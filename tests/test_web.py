@@ -240,19 +240,32 @@ class WebTests(unittest.TestCase):
         self.assertEqual(len(longer), 2)
 
     def test_history_daily_and_faults_endpoints(self):
-        # Midday yesterday: comfortably inside the seven-day window, and far
-        # enough from midnight that both samples share one UTC calendar day,
-        # which is what daily_summary groups on.
-        midday = (datetime.now(timezone.utc) - timedelta(days=1)).replace(
-            hour=12, minute=0, second=0, microsecond=0
-        )
-        self.db.save_sample(midday.isoformat(), {"pv_watts": 100, "faults": "Overload"})
+        # Midday yesterday, local time: comfortably inside the seven-day
+        # window, and far enough from midnight that both samples share one
+        # local calendar day, which is what daily_summary groups on.
+        local_now = datetime.now().astimezone()
+        midday = (local_now - timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
+        first = midday.astimezone(timezone.utc)
+        self.db.save_sample(first.isoformat(), {"pv_watts": 100, "faults": "Overload"})
         self.db.save_sample(
-            (midday + timedelta(hours=1)).isoformat(), {"pv_watts": 300, "faults": "None"}
+            (first + timedelta(hours=1)).isoformat(), {"pv_watts": 300, "faults": "None"}
         )
         daily = self.client.get("/api/history/daily?days=7").json
-        self.assertEqual(len(daily), 1)
-        self.assertEqual(daily[0]["avg_pv_watts"], 200)
+        # Exactly seven calendar days ending today, oldest first, with the
+        # empty days present as zeros so a client can sum a true window.
+        self.assertEqual(len(daily), 7)
+        self.assertEqual(daily[-1]["day"], local_now.date().isoformat())
+        self.assertEqual([row["day"] for row in daily], sorted(row["day"] for row in daily))
+        self.assertEqual(sum(row["samples"] for row in daily), 2)
+        self.assertEqual(daily[0]["samples"], 0)
+        self.assertEqual(daily[0]["pv_kwh"], 0)
+        yesterday = daily[-2]
+        self.assertEqual(yesterday["day"], midday.date().isoformat())
+        self.assertEqual(yesterday["avg_pv_watts"], 200)
+        # An hour between two readings is integrated as five minutes, not as
+        # an hour, and nothing is extrapolated to the rest of the day.
+        self.assertAlmostEqual(yesterday["coverage_hours"], 5 / 60, delta=0.01)
+        self.assertAlmostEqual(yesterday["pv_kwh"], 200 * (5 / 60) / 1000, delta=0.001)
         faults = self.client.get("/api/history/faults?days=7").json
         self.assertEqual(len(faults), 1)
         self.assertEqual(faults[0]["faults"], "Overload")
