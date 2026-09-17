@@ -20,7 +20,6 @@ Reads the database only. It cannot write to the inverter.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
 import struct

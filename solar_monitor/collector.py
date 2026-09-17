@@ -6,7 +6,6 @@ from pathlib import Path
 import threading
 import time
 
-from . import change_policy
 from .config import SerialConfig
 from .db import Database
 from .protocols import create_protocol
