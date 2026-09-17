@@ -72,7 +72,15 @@ WRITABLE_FIELDS: dict[str, WritableField] = {
     "overtemperature_auto_restart": WritableField("bits", 11, shift=6, choices=("false", "true")),
     "buzzer": WritableField("bits", 10, shift=1, choices=("false", "true")),
     "warning_buzzer": WritableField("bits", 10, shift=0, choices=("false", "true")),
-    "equalization_enabled": WritableField("u16", 82, 1, 0, 1),
+    # No "equalization_enabled": the word at offset 82 was decoded as that
+    # boolean until 2026-09-17. A full panel dump that day validated every
+    # other setting in this block -- menu 34 29.2 V, 35 60 min, 36 120 min,
+    # 37 30 days all matched offsets 90/92/94/96 exactly -- while menu 33 read
+    # OFF and offset 82 held 4. It moved 0 -> 4 at 19:58:57 on 2026-09-16, the
+    # moment battery type became User-defined, not when equalization changed.
+    # So it is not an equalization on/off flag. It stays out of this table
+    # because it was declared writable over 0..1 while holding 4: toggling it
+    # would have written a boolean into a register that is something else.
     "equalization_voltage_v": WritableField("u16", 90, 100, 25.0, 29.5),
     "equalization_time_min": WritableField("u16", 92, 1, 5, 900),
     "equalization_timeout_min": WritableField("u16", 94, 1, 5, 900),
@@ -334,7 +342,10 @@ class Sumry8851Protocol(Protocol):
             "low_battery_cutoff_v": _u16(frame, 38) / 100,
             "bulk_charge_voltage_v": _u16(frame, 48) / 100,
             "float_charge_voltage_v": _u16(frame, 52) / 100,
-            "equalization_enabled": bool(_u16(frame, 82)),
+            # NOT equalization_enabled: see the note in WRITABLE_FIELDS. Held
+            # raw so a disproven label is never shown as fact, and so the
+            # value can be compared against the panel if it changes again.
+            "unknown_u16_offset82": _u16(frame, 82),
             "equalization_voltage_v": _u16(frame, 90) / 100,
             "equalization_time_min": _u16(frame, 92),
             "equalization_timeout_min": _u16(frame, 94),
@@ -344,5 +355,7 @@ class Sumry8851Protocol(Protocol):
         return DecodeResult(
             settings, True,
             "CRC-validated HGX 0x8851 v2 current configuration; battery type is not "
-            "decoded (byte 8 bits 3-4 disproven against panel menu 05 on 2026-09-05)",
+            "decoded (byte 8 bits 3-4 disproven against panel menu 05 on 2026-09-05); "
+            "equalization on/off is not decoded (offset 82 disproven against panel "
+            "menu 33 on 2026-09-17)",
         )

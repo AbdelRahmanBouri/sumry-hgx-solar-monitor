@@ -34,7 +34,7 @@ KNOWN = {
     8: "flags0/1", 10: "flags2/3", 12: "inverter_power_limit_w", 14: "output_voltage_v",
     16: "output_frequency_hz", 38: "low_battery_cutoff_v", 48: "bulk_charge_voltage_v",
     52: "float_charge_voltage_v", 54: "back_to_utility_voltage_v", 56: "utility_charge_current_a",
-    58: "maximum_charge_current_a", 60: "charge_cutoff_current_a", 82: "equalization_enabled",
+    58: "maximum_charge_current_a", 60: "charge_cutoff_current_a", 82: "unknown_u16_offset82",
     90: "equalization_voltage_v", 92: "equalization_time_min", 94: "equalization_timeout_min",
     96: "equalization_interval_days",
 }

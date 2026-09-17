@@ -1,7 +1,7 @@
 import struct
 import unittest
 
-from solar_monitor.protocols.sumry_8851 import Sumry8851Protocol, _crc16_modbus
+from solar_monitor.protocols.sumry_8851 import Sumry8851Protocol, _crc16_modbus, _u16
 from solar_monitor.serial_io import escaped_ascii, write_exchange
 
 # A real configuration reply captured from the HGX on 2026-09-04: AGM preset,
@@ -72,12 +72,32 @@ class ConfigurationWriteTests(unittest.TestCase):
         differing = [i for i in range(8, len(frame) - 2) if frame[i] != REAL_CONFIG_REPLY[i]]
         self.assertEqual(differing, [48])
 
+    def test_offset_82_is_not_writable_and_is_not_called_equalization(self):
+        """Offset 82 held 4 while the panel's menu 33 read OFF, so it is not an
+        equalization on/off flag. It was declared writable over 0..1: a toggle
+        would have written a boolean into a register that means something else.
+        """
+        from solar_monitor.protocols.sumry_8851 import WRITABLE_FIELDS
+
+        self.assertNotIn("equalization_enabled", WRITABLE_FIELDS)
+        with self.assertRaises(ValueError) as caught:
+            self.protocol.build_config_write(REAL_CONFIG_REPLY, {"equalization_enabled": 1})
+        self.assertIn("not a writable setting", str(caught.exception))
+
+        metrics = self.protocol.decode(REAL_CONFIG_REPLY).metrics
+        self.assertNotIn("equalization_enabled", metrics)
+        # Reported raw, so a value the panel disagrees with stays visible.
+        self.assertEqual(metrics["unknown_u16_offset82"], _u16(REAL_CONFIG_REPLY, 82))
+        # The rest of the block stayed confirmed against the same panel dump.
+        self.assertEqual(metrics["equalization_voltage_v"], 29.2)
+        self.assertEqual(metrics["equalization_interval_days"], 30)
+
     def test_the_inverter_would_read_the_new_values_back(self):
         changes = {
             "unknown_flag_byte8_bits34": "2", "bulk_charge_voltage_v": 29.2,
             "float_charge_voltage_v": 27.2, "charge_cutoff_current_a": 2,
             "low_battery_cutoff_v": 22.0, "overload_auto_restart": True,
-            "equalization_enabled": 1, "equalization_voltage_v": 29.5,
+            "equalization_voltage_v": 29.5,
         }
         frame = self.protocol.build_config_write(REAL_CONFIG_REPLY, changes)
         decoded = self.protocol.decode(as_reply(frame))
@@ -88,7 +108,6 @@ class ConfigurationWriteTests(unittest.TestCase):
         self.assertEqual(decoded.metrics["charge_cutoff_current_a"], 2.0)
         self.assertEqual(decoded.metrics["low_battery_cutoff_v"], 22.0)
         self.assertTrue(decoded.metrics["overload_auto_restart"])
-        self.assertTrue(decoded.metrics["equalization_enabled"])
         self.assertEqual(decoded.metrics["equalization_voltage_v"], 29.5)
         # Bits sharing a flag byte with a changed one must survive untouched.
         self.assertEqual(decoded.metrics["output_frequency_mode"], "60 Hz")

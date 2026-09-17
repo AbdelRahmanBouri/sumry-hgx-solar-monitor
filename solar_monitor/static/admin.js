@@ -101,7 +101,7 @@ const INVERTER_LABELS = {
   charge_cutoff_current_a: 'Charge cut-off current', low_battery_cutoff_v: 'Low-battery cut-off',
   overload_auto_restart: 'Overload auto-restart', overtemperature_auto_restart: 'Over-temperature auto-restart',
   buzzer: 'Button buzzer', warning_buzzer: 'Warning buzzer',
-  equalization_enabled: 'Boost program', equalization_voltage_v: 'Boost voltage',
+  unknown_u16_offset82: 'Unknown register 82', equalization_voltage_v: 'Boost voltage',
   equalization_time_min: 'Boost time', equalization_timeout_min: 'Boost timeout',
   equalization_interval_days: 'Boost interval',
 };
@@ -114,7 +114,6 @@ const INVERTER_UNITS = {
 function inverterDisplay(name, value) {
   if (value === undefined || value === null) return '—';
   if (typeof value === 'boolean') return value ? 'On' : 'Off';
-  if (name === 'equalization_enabled') return Number(value) ? 'On' : 'Off';
   if (typeof value === 'number') return `${value}${INVERTER_UNITS[name] || ''}`;
   return String(value);
 }
@@ -140,7 +139,7 @@ function fillInverterForm(settings) {
     const field = $(`#inverter-form [name="${name}"]`);
     if (!field || settings[name] === undefined) return;
     const value = settings[name];
-    if (typeof value === 'boolean') field.value = value ? (name === 'equalization_enabled' ? '1' : 'true') : (name === 'equalization_enabled' ? '0' : 'false');
+    if (typeof value === 'boolean') field.value = value ? 'true' : 'false';
     else field.value = String(value);
   });
 }
@@ -150,7 +149,7 @@ function renderInverterSnapshots(snapshots) {
   if (!snapshots.length) { body.innerHTML = '<tr><td colspan="8">No configuration snapshots yet.</td></tr>'; return; }
   body.innerHTML = snapshots.map(snap => {
     const s = snap.settings;
-    return `<tr><td>${formatTimestamp(snap.captured_at)}</td><td>${esc(s.unknown_flag_byte8_bits34)}</td><td>${esc(s.bulk_charge_voltage_v)} V</td><td>${esc(s.float_charge_voltage_v)} V</td><td>${esc(s.charge_cutoff_current_a)} A</td><td>${esc(s.low_battery_cutoff_v)} V</td><td>${s.equalization_enabled ? `${esc(s.equalization_voltage_v)} V` : 'Off'}</td><td><button type="button" class="secondary" data-restore="${snap.id}">Restore</button></td></tr>`;
+    return `<tr><td>${formatTimestamp(snap.captured_at)}</td><td>${esc(s.unknown_flag_byte8_bits34)}</td><td>${esc(s.bulk_charge_voltage_v)} V</td><td>${esc(s.float_charge_voltage_v)} V</td><td>${esc(s.charge_cutoff_current_a)} A</td><td>${esc(s.low_battery_cutoff_v)} V</td><td>${esc(s.equalization_voltage_v)} V</td><td><button type="button" class="secondary" data-restore="${snap.id}">Restore</button></td></tr>`;
   }).join('');
   body.querySelectorAll('[data-restore]').forEach(button => {
     button.onclick = async () => {

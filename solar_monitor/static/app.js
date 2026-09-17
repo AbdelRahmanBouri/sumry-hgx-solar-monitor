@@ -328,7 +328,7 @@ const CONFIG_LABELS = {
   warning_buzzer: 'Warning buzzer', auto_return_display: 'Auto-return display', backlight: 'Backlight',
   power_interruption_buzzer: 'Power-interruption buzzer', fault_recording: 'Fault recording',
   low_battery_cutoff_v: 'Low-battery cutoff', bulk_charge_voltage_v: 'Bulk charge voltage',
-  float_charge_voltage_v: 'Float charge voltage', equalization_enabled: 'Equalization',
+  float_charge_voltage_v: 'Float charge voltage', unknown_u16_offset82: 'Unknown register 82',
   equalization_voltage_v: 'Equalization voltage', equalization_time_min: 'Equalization time',
   equalization_timeout_min: 'Equalization timeout', equalization_interval_days: 'Equalization interval',
   inverter_power_limit_w: 'Power limit',
