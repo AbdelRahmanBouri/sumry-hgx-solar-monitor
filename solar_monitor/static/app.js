@@ -57,6 +57,7 @@ const SPARKLINE_FIELDS = [
 ].join(',');
 
 let historyRows = [];
+let dailyRows = []; // /api/history/daily, one row per calendar day, for the 7- and 30-day ranges
 let sparklineRows = [];
 let potentialRows = []; // modelled output from /api/estimate, past points only
 let todayRows = [];
@@ -791,10 +792,209 @@ function chartPalette() {
 }
 
 // The potential line only exists at chart resolution for the ranges the
-// estimate covers; the daily-average views have nothing to compare it to.
+// estimate covers; the daily views have nothing to compare it to.
 const potentialAvailable = () => selectedHours <= 24;
+const dailyRange = () => selectedHours > 24;
+const chartControls = document.querySelector('.chart-controls');
+
+function syncChartHint() {
+  chartHint.textContent = dailyRange() ? 'Tap or hover over a day for its totals'
+    : chartMode === 'pan' ? 'Drag left or right to move through time · pinch to zoom'
+    : 'Drag to inspect exact values · pinch to zoom';
+}
+
+const localDayKey = date => [
+  date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0'),
+].join('-');
+const dayLabel = (day, options) => new Date(`${day}T12:00`).toLocaleDateString([], options);
+
+function renderDailyTable(days) {
+  chartTableBody.replaceChildren();
+  [...days].reverse().forEach(day => {
+    const tr = document.createElement('tr');
+    const values = [
+      dayLabel(day.day, {weekday: 'short', month: 'short', day: 'numeric'}),
+      day.samples ? `${format(number(day.pv_kwh), 2)} kWh` : '—',
+      day.samples ? `${format(number(day.load_kwh), 2)} kWh` : '—',
+      day.samples ? `${format(number(day.min_battery_voltage), 1)} V` : '—',
+    ];
+    values.forEach(value => { const td = document.createElement('td'); td.textContent = value; tr.appendChild(td); });
+    chartTableBody.appendChild(tr);
+  });
+  document.querySelector('#chart-table-time').textContent = 'Day';
+  document.querySelector('#chart-table-battery').textContent = 'Battery low';
+  chartWindowLabel.textContent = `${days.filter(day => day.samples).length} of ${days.length} days with readings · newest first`;
+}
+
+// Seven and thirty days are drawn as energy per day. Watts averaged over a
+// whole day is a number nobody reads, and the tiles beneath used to call the
+// largest of those averages the "peak" -- 388 W in a week that peaked at
+// 1.9 kW. The daily summary carries each day's real peaks and lowest
+// voltage, so the four tiles keep their meaning here and are simply right.
+function drawDailyChart() {
+  const palette = chartPalette();
+  const days = dailyRows;
+  const withData = days.filter(day => day.samples > 0);
+  const empty = document.querySelector('#chart-empty');
+  const ctx = chartCanvas.getContext('2d');
+  const octx = overlayCanvas.getContext('2d');
+  renderDailyTable(days);
+
+  const values = key => withData.map(day => number(day[key])).filter(value => value !== null);
+  const hours = values('coverage_hours').reduce((sum, value) => sum + value, 0);
+  const solarKwh = values('pv_kwh').reduce((sum, value) => sum + value, 0);
+  const solarPeaks = values('peak_pv_watts');
+  const loadPeaks = values('peak_load_watts');
+  const lows = values('min_battery_voltage');
+  document.querySelector('#solar-average').textContent = hours ? `${Math.round(solarKwh * 1000 / hours)} W` : '— W';
+  document.querySelector('#solar-peak').textContent = solarPeaks.length ? `${Math.round(Math.max(...solarPeaks))} W` : '— W';
+  document.querySelector('#load-peak').textContent = loadPeaks.length ? `${Math.round(Math.max(...loadPeaks))} W` : '— W';
+  document.querySelector('#trend-battery-min').textContent = lows.length ? `${Math.min(...lows).toFixed(1)} V` : '— V';
+
+  if (!withData.length) {
+    empty.hidden = false;
+    ctx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+    octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    renderedChart = null;
+    return;
+  }
+  empty.hidden = true;
+
+  const {width, height} = ChartCore.setupCanvas(chartCanvas);
+  overlayCanvas.width = chartCanvas.width;
+  overlayCanvas.height = chartCanvas.height;
+  octx.setTransform(1, 0, 0, 1, 0, 0);
+  octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+  const compact = width < 500;
+  const showBattery = seriesVisible.battery && lows.length > 0;
+  const padding = {left: compact ? 40 : 44, right: showBattery ? (compact ? 44 : 42) : 12, top: 20, bottom: compact ? 30 : 26};
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const series = [
+    seriesVisible.pv && {key: 'pv_kwh', color: palette.solar, alpha: 1},
+    seriesVisible.load && {key: 'load_kwh', color: palette.load, alpha: .78},
+  ].filter(Boolean);
+  const top = Math.max(0.5, ...withData.flatMap(day => series.map(({key}) => number(day[key]) || 0)));
+  const step = ChartCore.niceStep(top / 4);
+  const yMax = Math.ceil(top / step) * step;
+  const yFor = value => padding.top + plotHeight * (1 - value / yMax);
+
+  ctx.font = `${compact ? 11 : 10}px ${ChartCore.FONT_STACK}`;
+  ctx.textBaseline = 'middle';
+  ChartCore.valueTicks(0, yMax, 4).forEach(value => {
+    const y = ChartCore.crisp(yFor(value));
+    ctx.strokeStyle = palette.grid;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(width - padding.right, y);
+    ctx.stroke();
+    ctx.fillStyle = palette.axis;
+    ctx.textAlign = 'right';
+    ctx.fillText(value >= 10 ? String(Math.round(value)) : String(+value.toFixed(1)), padding.left - 7, y);
+  });
+  ctx.textAlign = 'left';
+  ctx.fillStyle = palette.axisStrong;
+  ctx.fillText('kWh', 2, padding.top - 11);
+
+  // One group of bars per calendar day. Today is still running, so it is
+  // drawn faint; a day without readings is an empty slot, not a zero bar.
+  const slot = plotWidth / days.length;
+  const group = Math.min(slot * .72, series.length * 22);
+  const bar = series.length ? group / series.length : 0;
+  const today = localDayKey(new Date());
+  days.forEach((day, index) => {
+    if (!day.samples) return;
+    const left = padding.left + slot * index + (slot - group) / 2;
+    series.forEach(({key, color, alpha}, position) => {
+      const value = number(day[key]);
+      if (!value) return;
+      const y = yFor(value);
+      ctx.globalAlpha = alpha * (day.day === today ? .45 : 1);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      const x = left + bar * position + 1;
+      const w = Math.max(1, bar - 2);
+      const h = padding.top + plotHeight - y;
+      if (ctx.roundRect) ctx.roundRect(x, y, w, h, [Math.min(3, w / 2), Math.min(3, w / 2), 0, 0]);
+      else ctx.rect(x, y, w, h);
+      ctx.fill();
+    });
+  });
+  ctx.globalAlpha = 1;
+
+  // Labels are anchored on the newest day and thinned to fit.
+  const every = Math.max(1, Math.ceil(days.length / Math.max(1, Math.floor(plotWidth / (compact ? 46 : 58)))));
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = palette.axis;
+  days.forEach((day, index) => {
+    if ((days.length - 1 - index) % every) return;
+    const label = days.length <= 7
+      ? dayLabel(day.day, {weekday: 'short'})
+      : dayLabel(day.day, {month: 'short', day: 'numeric'});
+    ctx.fillText(label, padding.left + slot * (index + .5), height - 8);
+  });
+
+  // The day's lowest battery voltage, on its own axis, cased like the
+  // voltage line on the shorter ranges.
+  let batteryPoints = days.map(() => null);
+  if (showBattery) {
+    const low = Math.floor(Math.min(...lows) * 2) / 2 - .5;
+    const high = Math.ceil(Math.max(...lows) * 2) / 2 + .5;
+    const vFor = volts => padding.top + plotHeight * (1 - (volts - low) / ((high - low) || 1));
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = palette.battery;
+    ChartCore.valueTicks(low, high, 4).forEach(value => ctx.fillText(value.toFixed(1), width - padding.right + 6, vFor(value)));
+    ctx.fillText('V', width - padding.right + 6, padding.top - 11);
+    batteryPoints = days.map((day, index) => {
+      const volts = number(day.min_battery_voltage);
+      return !day.samples || volts === null ? null : {x: padding.left + slot * (index + .5), y: vFor(volts)};
+    });
+    const runs = [];
+    batteryPoints.forEach(point => {
+      if (!point) runs.push([]);
+      else if (runs.length && runs.at(-1).length) runs.at(-1).push(point);
+      else runs.push([point]);
+    });
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    runs.filter(run => run.length).forEach(run => {
+      ctx.beginPath();
+      ChartCore.linePath(ctx, run);
+      ctx.globalAlpha = .55;
+      ctx.strokeStyle = palette.dotEdge;
+      ctx.lineWidth = 4.5;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = palette.battery;
+      ctx.lineWidth = 1.9;
+      ctx.stroke();
+      run.forEach(point => {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 2.6, 0, Math.PI * 2);
+        ctx.fillStyle = palette.battery;
+        ctx.fill();
+      });
+    });
+  }
+  renderedChart = {
+    kind: 'daily', days, slot, padding, plotWidth, plotHeight, width, height, batteryPoints,
+    indexAt: x => Math.max(0, Math.min(days.length - 1, Math.floor((x - padding.left) / slot))),
+  };
+}
 
 function drawChart() {
+  chartControls.hidden = dailyRange();
+  syncChartHint();
+  if (dailyRange()) {
+    drawDailyChart();
+    return;
+  }
+  document.querySelector('#chart-table-time').textContent = 'Time';
+  document.querySelector('#chart-table-battery').textContent = 'Battery';
   const palette = chartPalette();
   const rows = downsample(filteredRows());
   const empty = document.querySelector('#chart-empty');
@@ -1050,6 +1250,7 @@ function setupChartInteractions() {
     if (!renderedChart) return null;
     const rect = chartCanvas.getBoundingClientRect();
     const x = clientX - rect.left;
+    if (renderedChart.kind === 'daily') return renderedChart.indexAt(x);
     const {solarPoints} = renderedChart;
     let closest = 0;
     let distance = Infinity;
@@ -1067,6 +1268,24 @@ function setupChartInteractions() {
     if (index === null || !renderedChart) return;
     const ratio = window.devicePixelRatio || 1;
     octx.scale(ratio, ratio);
+    if (renderedChart.kind === 'daily') {
+      const {padding, slot, plotHeight, batteryPoints: points} = renderedChart;
+      octx.globalAlpha = .12;
+      octx.fillStyle = palette.axisStrong;
+      octx.fillRect(padding.left + slot * index, padding.top, slot, plotHeight);
+      octx.globalAlpha = 1;
+      const point = points[index];
+      if (point) {
+        octx.beginPath();
+        octx.arc(point.x, point.y, 3.6, 0, Math.PI * 2);
+        octx.fillStyle = palette.battery;
+        octx.fill();
+        octx.lineWidth = 1.4;
+        octx.strokeStyle = palette.dotEdge;
+        octx.stroke();
+      }
+      return;
+    }
     const {solarPoints, loadPoints, batteryPoints, currentPoints, padding, plotHeight, rows} = renderedChart;
     const x = solarPoints[index].x;
     octx.beginPath();
@@ -1107,9 +1326,29 @@ function setupChartInteractions() {
     drawCrosshair(null);
   }
 
+  function showDailyReading(index) {
+    const day = renderedChart.days[index];
+    const lines = [`<strong>${dayLabel(day.day, {weekday: 'short', month: 'short', day: 'numeric'})}</strong>`];
+    if (!day.samples) {
+      lines.push('<span>No readings</span>');
+    } else {
+      if (seriesVisible.pv) lines.push(`<span><i class="solar-key"></i>${format(number(day.pv_kwh), 2)} kWh</span>`);
+      if (seriesVisible.load) lines.push(`<span><i class="load-key"></i>${format(number(day.load_kwh), 2)} kWh</span>`);
+      if (seriesVisible.battery) lines.push(`<span><i class="battery-key"></i>low ${format(number(day.min_battery_voltage), 2)} V</span>`);
+      const covered = number(day.coverage_hours);
+      if (covered !== null && covered < 23.5) lines.push(`<span>${format(covered, 1)} h of readings</span>`);
+    }
+    chartReading.innerHTML = lines.join('');
+    chartReading.hidden = false;
+    chartHint.hidden = true;
+    chartReading.parentElement.classList.add('is-reading');
+    drawCrosshair(index);
+  }
+
   function showOverlay(clientX) {
     const index = nearestIndex(clientX);
     if (index === null) return hideOverlay();
+    if (renderedChart.kind === 'daily') return showDailyReading(index);
     const {rows} = renderedChart;
     const row = rows[index];
     const at = new Date(timestamp(row));
@@ -1155,6 +1394,11 @@ function setupChartInteractions() {
   chartCanvas.addEventListener('pointerdown', event => {
     try { chartCanvas.setPointerCapture(event.pointerId); } catch (_) { /* older browsers */ }
     pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
+    if (renderedChart?.kind === 'daily') {
+      // Days are read, never panned or zoomed: thirty bars always fit.
+      if (pointers.size === 1) showOverlay(event.clientX);
+      return;
+    }
     if (pointers.size === 1) {
       gestureMoved = false;
       if (chartMode === 'inspect') {
@@ -1184,6 +1428,10 @@ function setupChartInteractions() {
   });
 
   chartCanvas.addEventListener('pointermove', event => {
+    if (renderedChart?.kind === 'daily') {
+      if (pointers.has(event.pointerId) || event.pointerType === 'mouse') showOverlay(event.clientX);
+      return;
+    }
     if (!pointers.has(event.pointerId)) {
       if (event.pointerType === 'mouse') {
         const zone = inYAxisZone(event.clientX);
@@ -1294,8 +1542,9 @@ function setupChartInteractions() {
   chartCanvas.addEventListener('pointerleave', event => { if (!pointers.size && event.pointerType === 'mouse') hideOverlay(); });
 
   chartCanvas.addEventListener('wheel', event => {
+    // Nothing to zoom on the daily bars, so the page scrolls as normal.
+    if (!renderedChart || renderedChart.kind === 'daily') return;
     event.preventDefault();
-    if (!renderedChart) return;
     const rect = chartCanvas.getBoundingClientRect();
     const factor = event.deltaY > 0 ? 1.25 : 0.8;
 
@@ -1334,9 +1583,7 @@ function setChartMode(mode) {
   chartInspectButton.setAttribute('aria-pressed', String(chartMode === 'inspect'));
   chartPanButton.setAttribute('aria-pressed', String(chartMode === 'pan'));
   chartCanvas.classList.toggle('pan-mode', chartMode === 'pan');
-  chartHint.textContent = chartMode === 'pan'
-    ? 'Drag left or right to move through time · pinch to zoom'
-    : 'Drag to inspect exact values · pinch to zoom';
+  syncChartHint();
 }
 
 function zoomChart(factor) {
@@ -1365,8 +1612,10 @@ chartYScale.addEventListener('change', () => {
 document.querySelector('#chart-export').addEventListener('click', event => {
   event.preventDefault();
   event.stopPropagation();
-  const rows = filteredRows();
-  const columns = ['captured_at', 'pv_watts', 'ac_load_watts', 'battery_voltage'];
+  const rows = dailyRange() ? dailyRows : filteredRows();
+  const columns = dailyRange()
+    ? ['day', 'pv_kwh', 'load_kwh', 'peak_pv_watts', 'peak_load_watts', 'min_battery_voltage', 'coverage_hours']
+    : ['captured_at', 'pv_watts', 'ac_load_watts', 'battery_voltage'];
   const csv = [columns.join(','), ...rows.map(row => columns.map(key => JSON.stringify(row[key] ?? '')).join(','))].join('\n');
   const link = document.createElement('a');
   link.href = URL.createObjectURL(new Blob([csv], {type: 'text/csv'}));
@@ -1398,6 +1647,7 @@ function syncAdvancedLegend() {
   legendMore.textContent = seriesVisible.advanced ? 'Less' : 'More';
   const potentialToggle = legendAdvanced.querySelector('[data-series="potential"]');
   potentialToggle.disabled = !potentialAvailable();
+  legendAdvanced.querySelector('[data-series="current"]').disabled = dailyRange();
 }
 legendMore.addEventListener('click', () => {
   seriesVisible.advanced = !seriesVisible.advanced;
@@ -1453,15 +1703,10 @@ async function refreshHistory() {
       const days = Math.round(selectedHours / 24);
       const response = await fetch(`/api/history/daily?days=${days}`, {cache: 'no-store'});
       if (!response.ok) throw new Error('History unavailable');
-      const daily = await response.json();
       // Every calendar day comes back, zeroed where it has no readings; the
-      // chart plots the days that have some and leaves a gap for the rest.
-      historyRows = daily.filter(row => row.samples > 0).map(row => ({
-        captured_at: `${row.day}T12:00:00+00:00`,
-        pv_watts: row.avg_pv_watts,
-        ac_load_watts: row.avg_load_watts,
-        battery_voltage: row.min_battery_voltage,
-      }));
+      // chart leaves an empty slot for those rather than drawing a zero.
+      dailyRows = await response.json();
+      historyRows = [];
     } else {
       const response = await fetch(
         `/api/history?hours=${Math.max(selectedHours, 24)}&fields=${HISTORY_FIELDS}`, {cache: 'no-store'});
@@ -1476,6 +1721,7 @@ async function refreshHistory() {
     drawChart();
   } catch (_) {
     historyRows = [];
+    dailyRows = [];
     potentialRows = [];
     drawChart();
   }
