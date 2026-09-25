@@ -784,7 +784,7 @@ def create_app(
         with collector.lock if collector is not None else nullcontext():
             if mode == "listen":
                 try:
-                    with serial.Serial(port, link.baudrate, timeout=link.timeout_seconds) as connection:
+                    with serial.serial_for_url(port, link.baudrate, timeout=link.timeout_seconds) as connection:
                         response = connection.read(4096)
                 except (serial.SerialException, OSError, ValueError) as exc:
                     return jsonify({"error": str(exc)}), 400

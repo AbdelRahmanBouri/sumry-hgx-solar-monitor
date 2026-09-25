@@ -26,7 +26,9 @@ def arguments() -> argparse.Namespace:
 def listen(port: str, baudrate: int, timeout: float) -> bytes:
     import serial
 
-    with serial.Serial(port, baudrate, timeout=timeout) as connection:
+    # serial_for_url, like the transport, so `--port sim://` reaches the
+    # simulator here too.
+    with serial.serial_for_url(port, baudrate, timeout=timeout) as connection:
         return connection.read(4096)
 
 
