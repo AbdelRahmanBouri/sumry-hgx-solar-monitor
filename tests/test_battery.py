@@ -253,7 +253,7 @@ class DailyHealthTests(unittest.TestCase):
         self.assertIsNone(today["tail_amps"])
 
     def test_local_day_boundaries_follow_the_offset(self):
-        day = datetime(2026, 9, 5, 5, 0, tzinfo=UTC)  # 22:00 the evening before at the site
+        day = datetime(2026, 9, 5, 5, 0, tzinfo=UTC)  # 22:00 the evening before, Pacific time
         rows = readings(day, 60, 24.0, -2.0)
         self.assertEqual(battery.daily_health(rows, 28.2, utc_offset_minutes=-420)[0]["day"], "2026-09-04")
         self.assertEqual(battery.daily_health(rows, 28.2)[0]["day"], "2026-09-05")

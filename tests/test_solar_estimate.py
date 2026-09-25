@@ -194,7 +194,7 @@ class LearnedEfficiencyTests(unittest.TestCase):
 
     def synthetic_day(self, day, factor, volts=25.5, amps=30.0, every_minutes=2):
         """A day of readings from an array delivering `factor` of the clear-sky
-        model: 13:00 to 23:00 UTC is dawn to dusk at the site."""
+        model: 13:00 to 23:00 UTC is sunrise to mid-afternoon, Pacific time."""
         samples = []
         when = datetime(2026, 9, day, 13, 0, tzinfo=UTC)
         end = when.replace(hour=23)
