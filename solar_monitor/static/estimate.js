@@ -51,9 +51,8 @@ function applySystemFacts(estimate) {
   const orientation = $('#spec-orientation');
   if (orientation && array.tilt_degrees != null && array.azimuth_degrees != null) {
     const front = array.azimuth_degrees;
-    orientation.textContent = array.dual_slope
-      ? `${compass(front)} and ${compass(front + 180)}`
-      : compass(front);
+    const faces = array.dual_slope ? `${compass(front)} and ${compass(front + 180)}` : compass(front);
+    orientation.textContent = faces.charAt(0).toUpperCase() + faces.slice(1);
     $('#spec-pitch').textContent =
       `${Math.round(array.tilt_degrees)}° pitch · ${Math.round(front)}°${array.dual_slope ? ` / ${Math.round((front + 180) % 360)}°` : ''}`;
   }
@@ -129,10 +128,10 @@ function renderScenarios(scenarios) {
   panel.hidden = false;
   $('#scenario-asbuilt').textContent = kwh(built);
   $('#scenario-perface').textContent = kwh(perFace);
-  $('#scenario-onesplope').textContent = kwh(onePlane);
+  $('#scenario-oneslope').textContent = kwh(onePlane);
   const gain = (value) => built > 0 ? `+${((value / built - 1) * 100).toFixed(0)}%` : '—';
   $('#scenario-perface-gain').textContent = gain(perFace);
-  $('#scenario-onesplope-gain').textContent = gain(onePlane);
+  $('#scenario-oneslope-gain').textContent = gain(onePlane);
   $('#recoverable-total').textContent = `${(onePlane - built).toFixed(2)} kWh`;
 }
 
@@ -529,7 +528,7 @@ function drawOpportunityChart() {
   $('#opportunity-empty').hidden = hasOpportunity;
   ctx.clearRect(0, 0, width, height);
   if (!rows.length) return;
-  const pad = {left: 32, right: 8, top: 8, bottom: 24};
+  const pad = {left: 32, right: 8, top: 20, bottom: 24};
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   const max = Math.max(.25, ...rows.map(row => row.high + row.low));
@@ -543,6 +542,8 @@ function drawOpportunityChart() {
     ctx.strokeStyle = grid; ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(width - pad.right, yy); ctx.stroke();
     ctx.fillStyle = axis; ctx.fillText(value.toFixed(1), pad.left - 5, yy);
   }
+  ctx.textAlign = 'left';
+  ctx.fillText('kWh', 2, 8);
   const slot = plotW / Math.max(rows.length, 1);
   const barW = Math.max(3, Math.min(15, slot * .56));
   rows.forEach((row, index) => {

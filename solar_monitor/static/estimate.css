@@ -182,6 +182,9 @@ input[type="range"] { width: 100%; height: 30px; margin: 3px 0 0; accent-color: 
      put both panels in one grid area, drawn straight through each other. */
   .losses-panel { grid-column: 2; grid-row: 3; align-self: start; }
   .calculator-panel, .system-panel { grid-column: 1 / -1; }
+  /* A single-plane array has no recoverable-losses panel, which left the
+     cell beside the chart empty; the chart takes the whole row instead. */
+  main:has(.losses-panel[hidden]) .chart-panel { grid-column: 1 / -1; }
   .intro-panel { display: grid; grid-template-columns: 1.1fr .9fr; }
   .now-grid { grid-template-columns: 1fr; }
   .now-grid > div { padding: 12px 16px; }
@@ -189,7 +192,7 @@ input[type="range"] { width: 100%; height: 30px; margin: 3px 0 0; accent-color: 
   .chart-shell { height: 330px; }
   .hourly-shell { height: 250px; }
   .calculator-layout { grid-template-columns: minmax(0, 1.3fr) minmax(300px, .7fr); align-items: stretch; }
-  .spec-grid { grid-template-columns: repeat(4,1fr); }
+  .spec-grid { grid-template-columns: repeat(3, 1fr); }  /* six facts: never four and a gap */
   .potential-nav { display: none; }
 }
 
