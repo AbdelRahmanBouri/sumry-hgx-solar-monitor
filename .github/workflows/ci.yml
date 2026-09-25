@@ -4,13 +4,17 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13"]
+        # pyproject.toml declares 3.11 as the floor, so the floor is tested.
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,7 +38,4 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -r requirements-dev.txt
-      # Advisory for now. Once the existing findings are cleared, remove
-      # continue-on-error so this step becomes blocking.
       - run: ruff check .
-        continue-on-error: true

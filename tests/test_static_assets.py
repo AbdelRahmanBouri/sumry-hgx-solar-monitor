@@ -7,10 +7,10 @@ spirit as the DOM-hook checks in test_templates.py.
 """
 
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import unittest
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "solar_monitor" / "static"

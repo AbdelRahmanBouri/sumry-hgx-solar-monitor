@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any, Iterator
-
+from typing import Any
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS samples (
@@ -386,7 +386,7 @@ class Database:
         """Prune bulky protocol captures without deleting decoded samples."""
         success_days = max(1, int(success_days))
         diagnostic_days = max(success_days, int(diagnostic_days))
-        reference_time = reference_time or datetime.now(timezone.utc)
+        reference_time = reference_time or datetime.now(UTC)
         normal_cutoff = (reference_time - timedelta(days=success_days)).isoformat()
         diagnostic_cutoff = (reference_time - timedelta(days=diagnostic_days)).isoformat()
         with self.connect() as connection:

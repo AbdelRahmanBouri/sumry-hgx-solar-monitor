@@ -2,7 +2,6 @@ import unittest
 
 from solar_monitor import utility
 
-
 # Real readings from this installation. The overnight pair is the case the
 # whole module exists for: utility present, inverter output collapsed to
 # nothing, battery flat, and ~400 W of load still being served -- which only

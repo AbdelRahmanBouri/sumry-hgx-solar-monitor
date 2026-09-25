@@ -14,10 +14,10 @@ library: no npm packages, nothing added to the runtime.
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 
 # name -> (path, width, height)
 VIEWS = {

@@ -1,5 +1,5 @@
+from datetime import UTC, datetime, timedelta
 import unittest
-from datetime import datetime, timedelta, timezone
 
 from solar_monitor import battery
 
@@ -15,7 +15,7 @@ def readings(start, minutes, volts, amps, pv=0.0, every=1):
     return rows
 
 
-T0 = datetime(2026, 9, 4, 12, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 9, 4, 12, 0, tzinfo=UTC)
 
 
 class RestVoltageTests(unittest.TestCase):
@@ -186,7 +186,7 @@ class CoulombCountTests(unittest.TestCase):
 
 class DailyHealthTests(unittest.TestCase):
     def synthetic_day(self):
-        day = datetime(2026, 9, 4, 0, 0, tzinfo=timezone.utc)
+        day = datetime(2026, 9, 4, 0, 0, tzinfo=UTC)
         rows = readings(day, 360, 23.8, -3.0, pv=0)                                   # night to 06:00
         rows += readings(day + timedelta(hours=6), 240, 26.0, 30.0, pv=900)           # bulk to 10:00
         # Absorption: at the setpoint from 10:00, current tapering 20 -> 4 A, until 12:00.
@@ -220,7 +220,7 @@ class DailyHealthTests(unittest.TestCase):
         """The regression this guards: taking the first crossing of the band
         reported 3 minutes and a 43 A tail for a hold that in the real data
         ran over an hour and tapered to 4 A."""
-        day = datetime(2026, 9, 6, 0, 0, tzinfo=timezone.utc)
+        day = datetime(2026, 9, 6, 0, 0, tzinfo=UTC)
         rows = readings(day, 360, 23.8, -3.0)
         rows += readings(day + timedelta(hours=6), 2, 28.2, 43.0, pv=900)     # transient spike
         rows += readings(day + timedelta(hours=6, minutes=2), 178, 26.5, 40.0, pv=900)  # bulk
@@ -238,14 +238,14 @@ class DailyHealthTests(unittest.TestCase):
         self.assertAlmostEqual(today["tail_amps"], 4.1, delta=0.4)
 
     def test_a_hold_still_running_at_the_end_of_the_data_is_not_ended(self):
-        day = datetime(2026, 9, 7, 6, 0, tzinfo=timezone.utc)
+        day = datetime(2026, 9, 7, 6, 0, tzinfo=UTC)
         rows = readings(day, 60, 26.0, 30.0, pv=900) + readings(day + timedelta(hours=1), 40, 28.2, 12.0, pv=900)
         today = battery.daily_health(rows, bulk_setpoint_v=28.2)[0]
         self.assertTrue(today["absorption_reached"])
         self.assertFalse(today["absorption_ended"])
 
     def test_a_day_that_never_reaches_absorption_says_so(self):
-        day = datetime(2026, 9, 5, 0, 0, tzinfo=timezone.utc)
+        day = datetime(2026, 9, 5, 0, 0, tzinfo=UTC)
         rows = readings(day, 360, 23.5, -2.0) + readings(day + timedelta(hours=6), 600, 25.5, 10.0, pv=500)
         today = battery.daily_health(rows, bulk_setpoint_v=28.2)[0]
         self.assertFalse(today["absorption_reached"])
@@ -253,7 +253,7 @@ class DailyHealthTests(unittest.TestCase):
         self.assertIsNone(today["tail_amps"])
 
     def test_local_day_boundaries_follow_the_offset(self):
-        day = datetime(2026, 9, 5, 5, 0, tzinfo=timezone.utc)  # 22:00 the evening before at the site
+        day = datetime(2026, 9, 5, 5, 0, tzinfo=UTC)  # 22:00 the evening before at the site
         rows = readings(day, 60, 24.0, -2.0)
         self.assertEqual(battery.daily_health(rows, 28.2, utc_offset_minutes=-420)[0]["day"], "2026-09-04")
         self.assertEqual(battery.daily_health(rows, 28.2)[0]["day"], "2026-09-05")

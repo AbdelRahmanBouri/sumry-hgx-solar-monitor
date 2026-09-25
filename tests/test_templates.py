@@ -7,9 +7,9 @@ updating. There is no browser or JS engine on the Pi to catch that at runtime,
 so this test enforces it statically instead.
 """
 
+from pathlib import Path
 import re
 import unittest
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "solar_monitor" / "static"

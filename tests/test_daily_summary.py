@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import tempfile
 import unittest
 
@@ -16,7 +16,7 @@ class DailySummaryTests(unittest.TestCase):
     def test_a_partial_day_reports_its_coverage_and_only_the_energy_in_it(self):
         # Thirty minutes of readings every 30 s: PV flat at 100 W, the load
         # ramping 200 -> 400 W, the battery sagging 25.0 -> 24.4 V.
-        start = datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 9, 10, 10, 0, tzinfo=UTC)
         for index in range(61):
             self.db.save_sample((start + timedelta(seconds=30 * index)).isoformat(), {
                 "pv_watts": 100,

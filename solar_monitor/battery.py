@@ -23,7 +23,7 @@ synthetic days.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 # --- Chemistry ------------------------------------------------------------
@@ -81,7 +81,7 @@ DAYLIGHT_WATTS = 20
 
 def _when(row: dict) -> datetime:
     stamp = datetime.fromisoformat(row["captured_at"])
-    return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC)
 
 
 def _number(value: Any) -> float | None:

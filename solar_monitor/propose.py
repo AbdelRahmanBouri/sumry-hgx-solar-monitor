@@ -13,7 +13,7 @@ the auto-apply policy -- which is off and empty until an admin sets it.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import getpass
 import json
 import sys
@@ -27,7 +27,7 @@ PROPOSAL_TTL_HOURS = 12
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def parse_value(raw: str):
@@ -75,7 +75,7 @@ def propose(
     if problems:
         raise ValueError("; ".join(problems))
 
-    database.expire_change_requests((datetime.now(timezone.utc) - timedelta(hours=PROPOSAL_TTL_HOURS)).isoformat())
+    database.expire_change_requests((datetime.now(UTC) - timedelta(hours=PROPOSAL_TTL_HOURS)).isoformat())
     automatic, blocked = change_policy.evaluate(changes, change_policy.load_policy(settings))
     request_id = database.create_change_request(
         _now(), requested_by, reason, changes,

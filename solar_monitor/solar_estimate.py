@@ -12,7 +12,7 @@ stays a stdlib-only module.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import json
 import math
 import time
@@ -67,7 +67,7 @@ def solar_position(lat_deg: float, lon_deg: float, when: datetime) -> tuple[floa
     NOAA Solar Calculator), accurate to well within a degree -- ample for
     estimating panel output from clear-sky irradiance.
     """
-    when = when.astimezone(timezone.utc)
+    when = when.astimezone(UTC)
     day_of_year = when.timetuple().tm_yday
     hour_utc = when.hour + when.minute / 60 + when.second / 3600
     gamma = 2 * math.pi / 365 * (day_of_year - 1 + (hour_utc - 12) / 24)
@@ -267,7 +267,7 @@ def fetch_cloud_cover(lat: float, lon: float, *, force: bool = False) -> dict[st
 
 
 def _hour_bucket(when: datetime) -> str:
-    return when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:00")
+    return when.astimezone(UTC).strftime("%Y-%m-%dT%H:00")
 
 
 def array_irradiance(
@@ -376,7 +376,7 @@ def learn_efficiency(
         if volts >= HOLDING_VOLTS:
             continue
         if when.tzinfo is None:
-            when = when.replace(tzinfo=timezone.utc)
+            when = when.replace(tzinfo=UTC)
         elevation, azimuth = solar_position(lat, lon, when)
         if elevation < 3:
             continue
@@ -393,7 +393,7 @@ def learn_efficiency(
         if not 0 < ratio < 1.3:
             continue
         ratios_by_band.setdefault(_band_of(elevation), []).append(ratio)
-        days.add(when.astimezone(timezone.utc).strftime("%Y-%m-%d"))
+        days.add(when.astimezone(UTC).strftime("%Y-%m-%d"))
 
     observed = {
         band: round(min(1.1, max(0.3, _percentile(ratios, ENVELOPE_PERCENTILE))), 3)
@@ -439,8 +439,11 @@ def estimate_series(
     """
     cloud_by_hour = fetch_cloud_cover(lat, lon)
     weather_source = "open-meteo" if cloud_by_hour else "clear-sky-only"
-    now = datetime.now(timezone.utc)
-    ceiling = capacity_watts * 1.05
+    now = datetime.now(UTC)
+    geometry = {
+        "tilt_degrees": tilt_degrees, "azimuth_degrees": azimuth_degrees,
+        "dual_slope": dual_slope, "split_strings": split_strings,
+    }
 
     points: list[dict] = []
     step = timedelta(minutes=max(1, step_minutes))
@@ -455,21 +458,26 @@ def estimate_series(
         # Attenuate first, then transpose: thicker cloud lowers the clearness
         # index, which Erbs turns into a larger diffuse share, so an overcast
         # sky correctly stops caring about panel angle.
-        def watts(horizontal: float) -> float:
-            plane = array_irradiance(
-                elevation, azimuth, horizontal, tilt_degrees, azimuth_degrees,
-                dual_slope, split_strings,
-            )
-            return round(max(0.0, min(ceiling, capacity_watts * (plane / 1000) * factor)), 1)
-
+        clear_watts, estimated_watts = (
+            _array_watts(horizontal, elevation, azimuth, geometry, capacity_watts, factor)
+            for horizontal in (clear_sky, clear_sky * attenuation)
+        )
         points.append({
             "timestamp": cursor.isoformat(),
             "elevation_deg": round(elevation, 2),
             "azimuth_deg": round(azimuth, 2),
             "cloud_cover_percent": cloud_percent,
-            "clear_sky_watts": watts(clear_sky),
-            "estimated_watts": watts(clear_sky * attenuation),
+            "clear_sky_watts": clear_watts,
+            "estimated_watts": estimated_watts,
             "forecast": cursor > now,
         })
         cursor += step
     return points, weather_source
+
+
+def _array_watts(
+    horizontal: float, elevation: float, azimuth: float, geometry: dict, capacity_watts: float, factor: float,
+) -> float:
+    """DC watts from horizontal irradiance, capped a little above nameplate."""
+    plane = array_irradiance(elevation, azimuth, horizontal, **geometry)
+    return round(max(0.0, min(capacity_watts * 1.05, capacity_watts * (plane / 1000) * factor)), 1)

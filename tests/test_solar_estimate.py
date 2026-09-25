@@ -1,6 +1,6 @@
+from datetime import UTC, datetime, timedelta
 import json
 import unittest
-from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 import urllib.error
 
@@ -10,19 +10,19 @@ from solar_monitor import solar_estimate
 class SolarPositionTests(unittest.TestCase):
     def test_midday_equinox_is_near_zenith_at_the_equator(self):
         # March equinox, solar noon at 0,0: the sun should be almost directly overhead.
-        when = datetime(2025, 3, 20, 12, 8, tzinfo=timezone.utc)
+        when = datetime(2025, 3, 20, 12, 8, tzinfo=UTC)
         elevation, _azimuth = solar_estimate.solar_position(0.0, 0.0, when)
         self.assertGreater(elevation, 85)
 
     def test_local_midnight_is_below_horizon(self):
         # 40N, 105W: solar noon falls near 19:00 UTC, so solar midnight (and
         # the deepest night) falls near 07:00 UTC.
-        when = datetime(2025, 6, 21, 7, 0, tzinfo=timezone.utc)
+        when = datetime(2025, 6, 21, 7, 0, tzinfo=UTC)
         elevation, _azimuth = solar_estimate.solar_position(40.0, -105.0, when)
         self.assertLess(elevation, 0)
 
     def test_elevation_range_is_physical(self):
-        when = datetime(2025, 9, 3, 15, 30, tzinfo=timezone.utc)
+        when = datetime(2025, 9, 3, 15, 30, tzinfo=UTC)
         elevation, azimuth = solar_estimate.solar_position(34.05, -118.24, when)
         self.assertTrue(-90 <= elevation <= 90)
         self.assertTrue(0 <= azimuth <= 360)
@@ -30,7 +30,7 @@ class SolarPositionTests(unittest.TestCase):
     def test_late_afternoon_sun_is_in_the_west(self):
         # 17:30 PDT is 00:30 UTC on the following date. This specifically
         # guards the true-solar-time midnight wrap used by azimuth.
-        when = datetime(2026, 9, 4, 0, 30, tzinfo=timezone.utc)
+        when = datetime(2026, 9, 4, 0, 30, tzinfo=UTC)
         elevation, azimuth = solar_estimate.solar_position(34.05, -118.24, when)
         self.assertGreater(elevation, 0)
         self.assertTrue(180 < azimuth < 300)
@@ -84,14 +84,14 @@ class PlaneOfArrayTests(unittest.TestCase):
         # Tilt zero adds no ground reflection and sees the whole sky, so the
         # transposition must collapse back to plain GHI.
         elevation, azimuth = solar_estimate.solar_position(
-            self.LAT, self.LON, datetime(2026, 9, 3, 19, 26, tzinfo=timezone.utc)
+            self.LAT, self.LON, datetime(2026, 9, 3, 19, 26, tzinfo=UTC)
         )
         ghi = solar_estimate.clear_sky_ghi(elevation)
         plane = solar_estimate.plane_of_array_irradiance(elevation, azimuth, ghi, 0, 180)
         self.assertAlmostEqual(plane, ghi, delta=ghi * 0.01)
 
     def test_tilt_favours_low_sun_and_costs_a_little_at_high_sun(self):
-        noon = datetime(2026, 12, 21, 20, 0, tzinfo=timezone.utc)   # winter, low sun
+        noon = datetime(2026, 12, 21, 20, 0, tzinfo=UTC)   # winter, low sun
         elevation, azimuth = solar_estimate.solar_position(self.LAT, self.LON, noon)
         ghi = solar_estimate.clear_sky_ghi(elevation)
         flat = solar_estimate.plane_of_array_irradiance(elevation, azimuth, ghi, 0, 185)
@@ -99,7 +99,7 @@ class PlaneOfArrayTests(unittest.TestCase):
         self.assertGreater(tilted, flat * 1.2, "a 45 degree array beats flat in winter")
 
     def test_facing_away_from_the_sun_loses_the_beam(self):
-        when = datetime(2026, 9, 3, 19, 26, tzinfo=timezone.utc)
+        when = datetime(2026, 9, 3, 19, 26, tzinfo=UTC)
         elevation, azimuth = solar_estimate.solar_position(self.LAT, self.LON, when)
         ghi = solar_estimate.clear_sky_ghi(elevation)
         south = solar_estimate.plane_of_array_irradiance(elevation, azimuth, ghi, 45, 185)
@@ -108,7 +108,7 @@ class PlaneOfArrayTests(unittest.TestCase):
         self.assertGreater(north, 0, "a shaded panel still collects diffuse and ground light")
 
     def test_series_honours_the_array_orientation(self):
-        when = datetime(2026, 12, 21, 20, 0, tzinfo=timezone.utc)
+        when = datetime(2026, 12, 21, 20, 0, tzinfo=UTC)
         with patch.object(solar_estimate, "fetch_cloud_cover", return_value=None):
             flat, _ = solar_estimate.estimate_series(
                 self.LAT, self.LON, 2640, 0.8, when, when, step_minutes=10,
@@ -121,7 +121,7 @@ class PlaneOfArrayTests(unittest.TestCase):
         self.assertIn("azimuth_deg", tilted[0])
 
     def test_a_gable_split_lands_between_its_two_faces(self):
-        when = datetime(2026, 9, 3, 19, 26, tzinfo=timezone.utc)
+        when = datetime(2026, 9, 3, 19, 26, tzinfo=UTC)
         with patch.object(solar_estimate, "fetch_cloud_cover", return_value=None):
             def watts(**kw):
                 points, _ = solar_estimate.estimate_series(
@@ -139,7 +139,7 @@ class PlaneOfArrayTests(unittest.TestCase):
         # Opposite faces cancel, which is why the roof pitch is a low-stakes
         # input: this is the guard against re-introducing a steep single-plane
         # "fit" that morning-and-evening-only data would happily support.
-        when = datetime(2026, 9, 3, 19, 26, tzinfo=timezone.utc)
+        when = datetime(2026, 9, 3, 19, 26, tzinfo=UTC)
         with patch.object(solar_estimate, "fetch_cloud_cover", return_value=None):
             flat, _ = solar_estimate.estimate_series(
                 self.LAT, self.LON, 2640, 0.74, when, when, step_minutes=10,
@@ -167,7 +167,7 @@ class PlaneOfArrayTests(unittest.TestCase):
         self.assertTrue(0.6 < worst < 0.75)
 
     def test_straddling_strings_cost_output_against_per_face_strings(self):
-        when = datetime(2026, 12, 21, 20, 0, tzinfo=timezone.utc)
+        when = datetime(2026, 12, 21, 20, 0, tzinfo=UTC)
         with patch.object(solar_estimate, "fetch_cloud_cover", return_value=None):
             def watts(split):
                 points, _ = solar_estimate.estimate_series(
@@ -179,7 +179,7 @@ class PlaneOfArrayTests(unittest.TestCase):
         self.assertLess(watts(True), watts(False))
 
     def test_output_never_exceeds_the_array_by_more_than_a_hair(self):
-        when = datetime(2026, 6, 21, 19, 30, tzinfo=timezone.utc)
+        when = datetime(2026, 6, 21, 19, 30, tzinfo=UTC)
         with patch.object(solar_estimate, "fetch_cloud_cover", return_value=None):
             points, _ = solar_estimate.estimate_series(
                 self.LAT, self.LON, 2640, 0.8, when, when, step_minutes=10,
@@ -196,7 +196,7 @@ class LearnedEfficiencyTests(unittest.TestCase):
         """A day of readings from an array delivering `factor` of the clear-sky
         model: 13:00 to 23:00 UTC is dawn to dusk at the site."""
         samples = []
-        when = datetime(2026, 9, day, 13, 0, tzinfo=timezone.utc)
+        when = datetime(2026, 9, day, 13, 0, tzinfo=UTC)
         end = when.replace(hour=23)
         while when < end:
             elevation, azimuth = solar_estimate.solar_position(self.LAT, self.LON, when)
@@ -265,7 +265,7 @@ class LearnedEfficiencyTests(unittest.TestCase):
         self.assertEqual(solar_estimate.efficiency_at({}, 45), 1.0)
 
     def test_a_learned_curve_sets_the_level_of_the_series(self):
-        when = datetime(2026, 9, 3, 19, 26, tzinfo=timezone.utc)
+        when = datetime(2026, 9, 3, 19, 26, tzinfo=UTC)
         with patch.object(solar_estimate, "fetch_cloud_cover", return_value=None):
             def watts(**kw):
                 points, _ = solar_estimate.estimate_series(
@@ -282,8 +282,8 @@ class EstimateSeriesTests(unittest.TestCase):
     def test_falls_back_to_clear_sky_without_weather(self):
         # No network (or an unreachable host) should degrade gracefully
         # rather than raising; mocked here so the test is fast and offline.
-        start = datetime(2025, 9, 3, 6, 0, tzinfo=timezone.utc)
-        end = datetime(2025, 9, 3, 8, 0, tzinfo=timezone.utc)
+        start = datetime(2025, 9, 3, 6, 0, tzinfo=UTC)
+        end = datetime(2025, 9, 3, 8, 0, tzinfo=UTC)
         with patch.object(solar_estimate, "fetch_cloud_cover", return_value=None):
             points, source = solar_estimate.estimate_series(
                 34.05, -118.24, capacity_watts=600, performance_ratio=0.8,
@@ -296,7 +296,7 @@ class EstimateSeriesTests(unittest.TestCase):
             self.assertLessEqual(point["estimated_watts"], 600 * 1.05)
 
     def test_cloud_cover_reduces_the_estimate(self):
-        start = datetime(2025, 9, 3, 18, 0, tzinfo=timezone.utc)  # midday in LA
+        start = datetime(2025, 9, 3, 18, 0, tzinfo=UTC)  # midday in LA
         with patch.object(solar_estimate, "fetch_cloud_cover", return_value={"2025-09-03T18:00": 100}):
             overcast, source = solar_estimate.estimate_series(
                 34.05, -118.24, capacity_watts=600, performance_ratio=0.8,
@@ -311,7 +311,7 @@ class EstimateSeriesTests(unittest.TestCase):
         self.assertLess(overcast[0]["estimated_watts"], clear[0]["estimated_watts"])
 
     def test_nighttime_output_is_zero(self):
-        midnight = datetime(2025, 9, 3, 8, 0, tzinfo=timezone.utc)  # ~1am Pacific
+        midnight = datetime(2025, 9, 3, 8, 0, tzinfo=UTC)  # ~1am Pacific
         with patch.object(solar_estimate, "fetch_cloud_cover", return_value=None):
             points, _source = solar_estimate.estimate_series(
                 34.05, -118.24, capacity_watts=600, performance_ratio=0.8,

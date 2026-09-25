@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import sqlite3
 import tempfile
 import unittest
@@ -6,11 +6,10 @@ import unittest
 from solar_monitor.db import Database
 from solar_monitor.protocols.sumry_8851 import Sumry8851Protocol
 from solar_monitor.serial_io import Exchange
-
 from tests.test_decode import CAPTURE_1
 from tests.test_safety import REAL_CONFIG_REPLY
 
-REFERENCE = datetime(2026, 9, 25, tzinfo=timezone.utc)
+REFERENCE = datetime(2026, 9, 25, tzinfo=UTC)
 OLD = "2026-09-10T00:00:00+00:00"     # 15 days before REFERENCE
 RECENT = "2026-09-24T00:00:00+00:00"  # 1 day before
 ANCIENT = "2026-05-01T00:00:00+00:00"  # past the 90-day window too

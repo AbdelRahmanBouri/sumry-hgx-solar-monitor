@@ -1,7 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 from solar_monitor.config import SiteConfig
@@ -12,7 +12,7 @@ from solar_monitor.web import create_app
 def hours_ago(hours: float) -> str:
     # The history endpoints window on "now", so fixtures have to be stamped
     # relative to it. Hardcoded dates quietly stop being inside the window.
-    return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    return (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
 
 
 # A made-up installation. The seeding tests need a profile to seed, and the
@@ -245,7 +245,7 @@ class WebTests(unittest.TestCase):
         # local calendar day, which is what daily_summary groups on.
         local_now = datetime.now().astimezone()
         midday = (local_now - timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
-        first = midday.astimezone(timezone.utc)
+        first = midday.astimezone(UTC)
         self.db.save_sample(first.isoformat(), {"pv_watts": 100, "faults": "Overload"})
         self.db.save_sample(
             (first + timedelta(hours=1)).isoformat(), {"pv_watts": 300, "faults": "None"}

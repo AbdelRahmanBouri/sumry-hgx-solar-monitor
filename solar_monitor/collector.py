@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import logging
 from pathlib import Path
 import threading
@@ -11,14 +11,14 @@ from .db import Database
 from .protocols import create_protocol
 from .serial_io import discover_usb_serial_ports, exchange, write_exchange
 
-
 LOG = logging.getLogger(__name__)
 
 # systemd-timesyncd creates this once the clock has been set from the network.
 _SYNC_FLAG = Path("/run/systemd/timesync/synchronized")
 
+
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _same_setting(requested, reported) -> bool:

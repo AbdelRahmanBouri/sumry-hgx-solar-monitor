@@ -5,19 +5,19 @@ after something released it -- a person approving, or a policy an admin wrote
 deliberately -- and it is applied by the process that owns the port, exactly
 once.
 """
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from unittest.mock import patch
 
-from solar_monitor import change_policy, collector as collector_module, propose
+from solar_monitor import change_policy, propose
+from solar_monitor import collector as collector_module
 from solar_monitor.collector import Collector
 from solar_monitor.config import SerialConfig
 from solar_monitor.db import Database
 from solar_monitor.serial_io import Exchange
 from solar_monitor.web import create_app
-
 from tests.test_safety import REAL_CONFIG_REPLY, as_reply
 
 
@@ -89,7 +89,7 @@ class ProposalTests(unittest.TestCase):
         self.assertEqual(request["decided_by"], "auto-apply policy")
 
     def test_a_stale_proposal_expires_rather_than_waiting_forever(self):
-        old = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
+        old = (datetime.now(UTC) - timedelta(hours=48)).isoformat()
         stale = self.db.create_change_request(old, "automation", "old", {"buzzer": "false"})
         propose.propose(self.db, {"buzzer": "true"}, "fresh", "automation")
         self.assertEqual(self.db.change_request(stale)["status"], "expired")

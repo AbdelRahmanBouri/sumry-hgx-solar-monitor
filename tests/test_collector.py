@@ -1,13 +1,11 @@
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
 from solar_monitor import collector as collector_module
 from solar_monitor.collector import Collector, start_collector
 from solar_monitor.config import SerialConfig
-from pathlib import Path
-
 from solar_monitor.serial_io import Exchange
-
 from tests.test_safety import REAL_CONFIG_REPLY, as_reply
 
 

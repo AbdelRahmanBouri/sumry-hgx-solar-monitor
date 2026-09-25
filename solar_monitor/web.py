@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from datetime import datetime, timedelta, timezone
 import csv
+from datetime import UTC, datetime, timedelta
 from functools import wraps
 import io
 import json
@@ -11,24 +11,19 @@ import secrets
 import shutil
 import time
 
-from flask import (
-    Flask, Response, abort, jsonify, redirect, render_template, request, session, url_for
-)
+from flask import Flask, Response, abort, jsonify, redirect, render_template, request, session, url_for
 import serial
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from . import privileged, system_info
+from . import battery as battery_model
+from . import change_policy, privileged, propose, solar_estimate, system_info
+from . import utility as utility_model
 from .collector import Collector
 from .config import SerialConfig, SiteConfig
 from .db import Database
 from .protocols import create_protocol
 from .security import load_or_create_secret
 from .serial_io import Exchange, discover_usb_serial_ports, exchange
-from . import battery as battery_model
-from . import change_policy
-from . import propose
-from . import solar_estimate
-from . import utility as utility_model
 
 MANUAL_REFRESH_COOLDOWN_SECONDS = 5.0
 FORECAST_PREVIEW = timedelta(hours=6)
@@ -230,7 +225,7 @@ def create_app(
     @app.get("/api/history")
     def history():
         hours = _bounded_int("hours", 24, 1, 24 * 30)
-        since = datetime.now(timezone.utc) - timedelta(hours=hours)
+        since = datetime.now(UTC) - timedelta(hours=hours)
         settings = database.get_settings()
         max_points = _bounded_int(
             "points", int(settings.get("history_max_points", "1500")), 250, 5000
@@ -292,7 +287,7 @@ def create_app(
         # included as well (each point says whether it is a forecast) so a
         # caller can show what is still to come without a second request.
         hours = _bounded_int("hours", 24, 1, 48)
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         window = (now_utc - timedelta(hours=hours), now_utc + FORECAST_PREVIEW)
 
         # The level of the line is learned from the array's own unconstrained
@@ -401,7 +396,7 @@ def create_app(
             bulk = float((config.get("settings") or {}).get("bulk_charge_voltage_v") or 28.2)
         except (TypeError, ValueError):
             bulk = 28.2
-        since = datetime.now(timezone.utc) - timedelta(days=14)
+        since = datetime.now(UTC) - timedelta(days=14)
         samples = database.history(since.isoformat(), max_points=8000)
         local_offset = datetime.now().astimezone().utcoffset() or timedelta(0)
         try:
@@ -432,7 +427,7 @@ def create_app(
     @app.get("/api/history/faults")
     def history_faults():
         days = _bounded_int("days", 30, 1, 90)
-        since = datetime.now(timezone.utc) - timedelta(days=days)
+        since = datetime.now(UTC) - timedelta(days=days)
         return jsonify(database.fault_history(since.isoformat()))
 
     @app.get("/api/system")
@@ -811,7 +806,7 @@ def create_app(
     def admin_inverter():
         settings = database.get_settings()
         database.expire_change_requests(
-            (datetime.now(timezone.utc) - timedelta(hours=propose.PROPOSAL_TTL_HOURS)).isoformat()
+            (datetime.now(UTC) - timedelta(hours=propose.PROPOSAL_TTL_HOURS)).isoformat()
         )
         return jsonify({
             "writes_enabled": inverter_writes_enabled(),
@@ -954,4 +949,4 @@ def create_app(
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()

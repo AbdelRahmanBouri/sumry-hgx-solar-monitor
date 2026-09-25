@@ -1,9 +1,8 @@
+from pathlib import Path
 import tempfile
 import unittest
-from pathlib import Path
 
 from solar_monitor.config import AppConfig, SiteConfig, load_config
-
 
 BASE = """
 [serial]

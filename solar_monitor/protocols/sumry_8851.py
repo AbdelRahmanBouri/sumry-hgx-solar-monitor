@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import struct
 from typing import Any
 
-from .base import DecodeResult, Query, Protocol
+from .base import DecodeResult, Protocol, Query
 
 # --- Frame layout -----------------------------------------------------------
 # Both real HGX status replies captured 2026-09-02 pass their trailing

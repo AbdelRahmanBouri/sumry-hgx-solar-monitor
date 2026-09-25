@@ -1,6 +1,5 @@
 from .sumry_8851 import Sumry8851Protocol
 
-
 PROTOCOLS = {Sumry8851Protocol.name: Sumry8851Protocol}
 
 # The settings table and existing config files name the protocol as it was

@@ -8,7 +8,6 @@ import unittest
 
 from solar_monitor.db import Database
 from solar_monitor.protocols.sumry_8851 import _crc16_modbus
-
 from tests.test_safety import REAL_CONFIG_REPLY
 
 TOOL = Path(__file__).resolve().parent.parent / "tools" / "discover_registers.py"

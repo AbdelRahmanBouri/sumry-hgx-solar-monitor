@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import glob
 import os
 import time
@@ -95,7 +95,7 @@ def _transact(
     settle_seconds: float,
 ) -> Exchange:
     started = time.monotonic()
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
     try:
         with serial.Serial(
             port=port,
