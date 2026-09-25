@@ -113,12 +113,16 @@ def soc_from_rest_voltage(volts: float, cells_nominal: int = 24) -> float:
 
 def count_charge(
     samples: list[dict],
-    nominal_ah: float,
+    nominal_ah: float | None,
     bulk_setpoint_v: float | None = None,
     recommended_absorption_v: float = RECOMMENDED_ABSORPTION_V,
 ) -> dict:
     """Walk the readings in order, integrating current and re-anchoring on
     full and rest events. Returns the state at the last reading.
+
+    `nominal_ah` is the bank's nameplate. Without a positive one there is
+    nothing to count against, and the state comes back "unavailable" with
+    its shape intact rather than as a guess.
 
     `bulk_setpoint_v` is what the charger is actually set to. When it is
     below what the chemistry wants, the charger's "full" is short of full:
@@ -140,6 +144,9 @@ def count_charge(
         "recommended_absorption_v": recommended_absorption_v,
         "capacity_is_lower_bound": False,
     }
+    if not nominal_ah or nominal_ah <= 0:
+        state["capacity_ah"] = None
+        return state
     rows = [row for row in samples if _number(row.get("battery_voltage")) is not None
             and _number(row.get("battery_current")) is not None]
     rows.sort(key=_when)

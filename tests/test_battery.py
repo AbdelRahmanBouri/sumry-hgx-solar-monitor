@@ -64,6 +64,15 @@ class CoulombCountTests(unittest.TestCase):
         self.assertAlmostEqual(state["ah_out_since_full"], 20.0, delta=0.3)
         self.assertEqual(state["capacity_source"], "nameplate")
 
+    def test_without_a_positive_nameplate_nothing_is_counted(self):
+        # A site profile saying 0 Ah once reached the integrator as a divisor.
+        rows = readings(T0, 15, 27.2, 3.0) + readings(T0 + timedelta(minutes=15), 60, 25.0, -10.0)
+        for nameplate in (None, 0, -100):
+            state = battery.count_charge(rows, nameplate)
+            self.assertEqual(state["method"], "unavailable", nameplate)
+            self.assertIsNone(state["soc"])
+            self.assertIsNone(state["capacity_ah"])
+
     def test_charge_is_counted_at_the_chemistrys_efficiency(self):
         rows = readings(T0, 40, 24.36, 0.5)                      # resting at 50%
         rows += readings(T0 + timedelta(minutes=40), 60, 26.0, 20.0)  # 20 Ah pushed in

@@ -499,6 +499,16 @@ class WebTests(unittest.TestCase):
         self.assertEqual(settings["estimator_split_strings"], "true")
         self.assertEqual(settings["battery_capacity_ah"], "200")
 
+    def test_a_zero_nameplate_in_the_site_profile_reads_as_unknown(self):
+        from dataclasses import replace
+        self.db.save_sample(hours_ago(0.5), {"battery_voltage": 25.1, "battery_current": -8.0})
+        self.db.save_sample(hours_ago(0.4), {"battery_voltage": 25.0, "battery_current": -8.0})
+        client = create_app(self.db, site=replace(SITE, battery_capacity_ah=0)).test_client()
+        response = client.get("/api/battery")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json["nominal_ah"])
+        self.assertEqual(response.json["state"]["method"], "unavailable")
+
     def test_no_site_profile_seeds_nothing_site_specific(self):
         # setUp built the app without a site; the non-site defaults still land.
         settings = self.db.get_settings()

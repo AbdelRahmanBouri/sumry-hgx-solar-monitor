@@ -106,11 +106,14 @@ def create_app(
     def battery_capacity_ah(settings: dict[str, str]) -> float | None:
         """The bank's nameplate: the admin's setting, else the site profile,
         else unknown. Never a number the installation did not supply."""
-        try:
-            stored = float(settings.get("battery_capacity_ah") or 0)
-        except ValueError:
-            stored = 0.0
-        return stored if stored > 0 else profile.battery_capacity_ah
+        for value in (settings.get("battery_capacity_ah"), profile.battery_capacity_ah):
+            try:
+                capacity = float(value or 0)
+            except ValueError:
+                continue
+            if capacity > 0:
+                return capacity
+        return None
     if collector is not None:
         try:
             collector.set_poll_seconds(int(database.get_settings().get("poll_seconds", "30")))
@@ -410,14 +413,9 @@ def create_app(
         # and the low-voltage cutoff is a hard stop with nothing to fall back
         # to. That is what made 2026-09-05 a shutdown rather than a transfer.
         grid_available = utility_model.utility_state(latest)["present"]
-        if nominal is None:
-            # With no nameplate there is nothing to count against. An empty
-            # series makes count_charge return its "unavailable" state without
-            # arithmetic on the capacity, so the payload keeps its shape and
-            # the capacity is honestly null rather than invented.
-            state = battery_model.count_charge([], nominal, bulk_setpoint_v=bulk)
-        else:
-            state = battery_model.count_charge(samples, nominal, bulk_setpoint_v=bulk)
+        # With no nameplate, count_charge returns its "unavailable" state:
+        # the payload keeps its shape and the capacity is honestly null.
+        state = battery_model.count_charge(samples, nominal, bulk_setpoint_v=bulk)
         payload = {
             "state": state,
             "runtime": battery_model.runtime_to_cutoff(samples, state, cutoff, grid_available),
