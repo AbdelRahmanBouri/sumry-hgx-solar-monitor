@@ -10,11 +10,9 @@ const availableMetrics = {
   ntc2_temperature: ['Temperature sensor 2', '°C'], ntc3_temperature: ['Temperature sensor 3', '°C'],
   ntc4_temperature: ['Temperature sensor 4', '°C'], fan1_percent: ['Fan 1', '%'], fan2_percent: ['Fan 2', '%'],
 };
-let labSample = {};
-let previousLabSample = {};
-const extraMetricStorageKey = document.body.dataset.dashboardMode === 'lab'
-  ? 'solar-lab-extra-metrics-v1'
-  : 'solar-dashboard-extra-metrics-v1';
+let latestSample = {};
+let previousSample = {};
+const extraMetricStorageKey = 'solar-dashboard-extra-metrics-v1';
 
 function finiteNumber(value) {
   const parsed = Number(value);
@@ -36,22 +34,22 @@ function updateFlowState(sample) {
 function animateChangedValues(sample) {
   document.querySelectorAll('[data-metric]').forEach(node => {
     const key = node.dataset.metric;
-    if (!(key in previousLabSample) || sample[key] === previousLabSample[key]) return;
+    if (!(key in previousSample) || sample[key] === previousSample[key]) return;
     node.classList.remove('metric-updated');
     requestAnimationFrame(() => node.classList.add('metric-updated'));
   });
 }
 
-function loadLabMetrics() {
+function loadExtraMetrics() {
   try {
     const saved = JSON.parse(localStorage.getItem(extraMetricStorageKey) || '[]');
     return Array.isArray(saved) ? saved.filter(key => availableMetrics[key]) : [];
   } catch (_) { return []; }
 }
-let labMetrics = loadLabMetrics();
+let extraMetrics = loadExtraMetrics();
 
-function saveLabMetrics() {
-  localStorage.setItem(extraMetricStorageKey, JSON.stringify(labMetrics));
+function saveExtraMetrics() {
+  localStorage.setItem(extraMetricStorageKey, JSON.stringify(extraMetrics));
 }
 
 function metricValue(value) {
@@ -59,16 +57,16 @@ function metricValue(value) {
   return typeof value === 'number' ? value.toFixed(1).replace(/\.0$/, '') : String(value);
 }
 
-function renderLabCards() {
+function renderExtraCards() {
   extraMetricsGrid.replaceChildren();
-  labMetrics.forEach(key => {
+  extraMetrics.forEach(key => {
     const [label, unit] = availableMetrics[key];
     const card = document.createElement('article');
     card.className = 'extra-metric card';
     const labelNode = document.createElement('span');
     labelNode.textContent = label;
     const valueNode = document.createElement('strong');
-    valueNode.textContent = metricValue(labSample[key]);
+    valueNode.textContent = metricValue(latestSample[key]);
     const unitNode = document.createElement('small');
     unitNode.textContent = ` ${unit}`;
     valueNode.appendChild(unitNode);
@@ -77,27 +75,27 @@ function renderLabCards() {
     remove.textContent = '×';
     remove.setAttribute('aria-label', `Remove ${label}`);
     remove.addEventListener('click', () => {
-      labMetrics = labMetrics.filter(item => item !== key);
-      saveLabMetrics(); renderLabCards(); renderLabPicker();
+      extraMetrics = extraMetrics.filter(item => item !== key);
+      saveExtraMetrics(); renderExtraCards(); renderMetricPicker();
     });
     card.append(labelNode, valueNode, remove);
     extraMetricsGrid.appendChild(card);
   });
 }
 
-function renderLabPicker() {
+function renderMetricPicker() {
   metricPicker.replaceChildren();
   Object.entries(availableMetrics).forEach(([key, [label]]) => {
     const choice = document.createElement('label');
     choice.className = 'metric-choice';
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
-    checkbox.checked = labMetrics.includes(key);
+    checkbox.checked = extraMetrics.includes(key);
     checkbox.addEventListener('change', () => {
-      labMetrics = checkbox.checked
-        ? [...labMetrics.filter(item => item !== key), key]
-        : labMetrics.filter(item => item !== key);
-      saveLabMetrics(); renderLabCards();
+      extraMetrics = checkbox.checked
+        ? [...extraMetrics.filter(item => item !== key), key]
+        : extraMetrics.filter(item => item !== key);
+      saveExtraMetrics(); renderExtraCards();
     });
     choice.append(checkbox, document.createTextNode(label));
     metricPicker.appendChild(choice);
@@ -106,19 +104,19 @@ function renderLabPicker() {
 
 document.addEventListener('solar:sample', event => {
   const nextSample = event.detail || {};
-  previousLabSample = labSample;
+  previousSample = latestSample;
   updateFlowState(nextSample);
   animateChangedValues(nextSample);
-  labSample = nextSample;
-  renderLabCards();
+  latestSample = nextSample;
+  renderExtraCards();
 });
-document.querySelector('#customize-open').addEventListener('click', renderLabPicker);
+document.querySelector('#customize-open').addEventListener('click', renderMetricPicker);
 document.querySelector('#clear-data-cards').addEventListener('click', () => {
-  labMetrics = [];
-  saveLabMetrics(); renderLabCards(); renderLabPicker();
+  extraMetrics = [];
+  saveExtraMetrics(); renderExtraCards(); renderMetricPicker();
 });
-renderLabPicker();
-renderLabCards();
+renderMetricPicker();
+renderExtraCards();
 
 const stickyHeader = document.querySelector('.app-bar');
 const updateHeaderElevation = () => stickyHeader?.classList.toggle('scrolled', window.scrollY > 4);
