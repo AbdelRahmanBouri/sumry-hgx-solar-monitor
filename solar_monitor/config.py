@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields
 from pathlib import Path
+import tomllib
 from typing import Any, TypeVar
-try:
-    import tomllib
-except ModuleNotFoundError:  # Python 3.10 and older
-    import tomli as tomllib
+
+DEFAULT_PATH = Path("config.toml")
 
 
 @dataclass(frozen=True)
@@ -15,7 +14,7 @@ class SerialConfig:
     baudrate: int = 9600
     timeout_seconds: float = 1.0
     poll_seconds: int = 30
-    protocol: str = "sumry_8851_probe"
+    protocol: str = "sumry_8851"
 
 
 @dataclass(frozen=True)
@@ -101,8 +100,17 @@ def _section(section_type: type[SectionT], name: str, raw: dict[str, Any]) -> Se
     return section_type(**values)
 
 
-def load_config(path: str | Path | None = None) -> AppConfig:
+def load_config(path: str | Path | None = None, *, required: bool = False) -> AppConfig:
+    """The configuration in `path`, or the defaults when there is none.
+
+    With `required`, a missing file is an error instead. Callers set it when
+    the path was named explicitly: quietly running on defaults looks like a
+    working installation whose estimator has switched itself off, and says
+    nothing about the typo that caused it.
+    """
     if path is None or not Path(path).exists():
+        if required:
+            raise FileNotFoundError(f"Config file not found: {path}")
         return AppConfig()
     with Path(path).open("rb") as handle:
         raw = tomllib.load(handle)

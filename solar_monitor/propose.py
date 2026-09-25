@@ -19,7 +19,7 @@ import json
 import sys
 
 from . import change_policy
-from .config import load_config
+from .config import DEFAULT_PATH, load_config
 from .db import Database
 from .protocols import create_protocol
 
@@ -95,7 +95,7 @@ def propose(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--config", default="config.toml")
+    parser.add_argument("--config", help=f"config file (default: {DEFAULT_PATH}, if present)")
     parser.add_argument("--set", dest="assignments", action="append", default=[],
                         metavar="FIELD=VALUE", help="a setting to change; repeatable")
     parser.add_argument("--reason", default="", help="why, recorded in the audit log")
@@ -103,7 +103,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--list", action="store_true", help="show recent requests and exit")
     args = parser.parse_args(argv)
 
-    config = load_config(args.config)
+    try:
+        config = load_config(args.config or DEFAULT_PATH, required=args.config is not None)
+    except FileNotFoundError as exc:
+        parser.error(str(exc))
     database = Database(config.storage.database)
 
     if args.list:

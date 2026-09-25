@@ -112,6 +112,13 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config, AppConfig())
         self.assertEqual(config.site, SiteConfig())
 
+    def test_a_missing_file_that_was_asked_for_is_an_error(self):
+        # Running on defaults would look like a working install whose
+        # estimator had switched itself off; the typo deserves a message.
+        with self.assertRaises(FileNotFoundError) as caught:
+            load_config(Path(self.temp.name) / "absent.toml", required=True)
+        self.assertIn("absent.toml", str(caught.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,7 +3,7 @@ port = "auto"
 baudrate = 9600
 timeout_seconds = 1.0
 poll_seconds = 30
-protocol = "sumry_8851_probe"
+protocol = "sumry_8851"
 
 [web]
 host = "0.0.0.0"
