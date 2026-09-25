@@ -1,6 +1,8 @@
+import json
 import unittest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+import urllib.error
 
 from solar_monitor import solar_estimate
 
@@ -320,3 +322,52 @@ class EstimateSeriesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WeatherFetchTests(unittest.TestCase):
+    """An off-grid Pi loses its internet link far more often than its power.
+    A dead link must cost one timeout per back-off window, not one per
+    caller, and must not throw away a forecast that already arrived."""
+
+    LAT, LON = 34.0522, -118.2437
+
+    def setUp(self):
+        solar_estimate._weather_cache.clear()
+        self.addCleanup(solar_estimate._weather_cache.clear)
+
+    @staticmethod
+    def reply(cover):
+        body = json.dumps({"hourly": {"time": list(cover), "cloud_cover": list(cover.values())}})
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = body.encode()
+        return response
+
+    def fetch_at(self, clock, urlopen):
+        with patch.object(solar_estimate.time, "monotonic", return_value=clock), \
+                patch.object(solar_estimate.urllib.request, "urlopen", urlopen):
+            return solar_estimate.fetch_cloud_cover(self.LAT, self.LON)
+
+    def test_a_dead_link_is_tried_once_per_back_off_window(self):
+        offline = MagicMock(side_effect=urllib.error.URLError("network unreachable"))
+        self.assertIsNone(self.fetch_at(1000.0, offline))
+        self.assertIsNone(self.fetch_at(1001.0, offline))
+        self.assertIsNone(self.fetch_at(1000.0 + solar_estimate.WEATHER_RETRY_SECONDS - 1, offline))
+        self.assertEqual(offline.call_count, 1)
+        self.fetch_at(1000.0 + solar_estimate.WEATHER_RETRY_SECONDS + 1, offline)
+        self.assertEqual(offline.call_count, 2)
+
+    def test_the_last_forecast_is_served_while_the_link_is_down(self):
+        forecast = {"2026-09-25T18:00": 40}
+        online = MagicMock(return_value=self.reply(forecast))
+        self.assertEqual(self.fetch_at(1000.0, online), forecast)
+
+        # Within the cache window nothing is fetched at all.
+        self.assertEqual(self.fetch_at(1000.0 + 60, online), forecast)
+        self.assertEqual(online.call_count, 1)
+
+        expired = 1000.0 + solar_estimate.WEATHER_CACHE_SECONDS + 1
+        offline = MagicMock(side_effect=TimeoutError())
+        self.assertEqual(self.fetch_at(expired, offline), forecast)
+        self.assertEqual(self.fetch_at(expired + 60, offline), forecast)
+        self.assertEqual(offline.call_count, 1)
+

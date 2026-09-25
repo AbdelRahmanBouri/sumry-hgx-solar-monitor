@@ -6,11 +6,12 @@ key-less forecast API to estimate how many watts a fixed array at a given
 latitude/longitude should be producing right now, in the recent past, and
 over the next few hours.
 
-No third-party HTTP library is used (the project only depends on Flask and
-pyserial); requests go through urllib so this stays a stdlib-only module.
+No third-party HTTP library is used; requests go through urllib so this
+stays a stdlib-only module.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import json
 import math
@@ -22,6 +23,10 @@ import urllib.request
 WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 WEATHER_TIMEOUT_SECONDS = 8
 WEATHER_CACHE_SECONDS = 1800  # Cloud-cover forecasts only update hourly upstream.
+# After a failed fetch, wait this long before trying again. An off-grid Pi
+# loses its internet more often than its power, and every attempt against a
+# dead link can hold a request for the whole timeout.
+WEATHER_RETRY_SECONDS = 300
 WEATHER_PAST_DAYS = 7  # Long enough to cover the efficiency-learning window.
 SOLAR_CONSTANT = 1361.0  # W/m^2, extraterrestrial irradiance.
 GROUND_ALBEDO = 0.25  # Dry desert dirt and gravel around this installation.
@@ -44,7 +49,15 @@ MIN_MODEL_FRACTION = 0.08  # Ignore readings where the model itself is near zero
 # readings show the array's true capability.
 HOLDING_VOLTS = 26.9
 
-_weather_cache: dict[str, tuple[float, dict[str, float] | None]] = {}
+
+@dataclass
+class _Forecast:
+    cover: dict[str, float] | None = None  # the last forecast that arrived
+    fetched_at: float | None = None        # monotonic time it arrived
+    attempted_at: float | None = None      # monotonic time of the last try, good or bad
+
+
+_weather_cache: dict[str, _Forecast] = {}
 
 
 def solar_position(lat_deg: float, lon_deg: float, when: datetime) -> tuple[float, float]:
@@ -216,11 +229,21 @@ def _cache_key(lat: float, lon: float) -> str:
 
 def fetch_cloud_cover(lat: float, lon: float, *, force: bool = False) -> dict[str, float] | None:
     """Hourly cloud-cover percent keyed by UTC hour ("YYYY-MM-DDTHH:00"), or
-    None if the forecast could not be retrieved (e.g. no internet)."""
-    key = _cache_key(lat, lon)
-    cached = _weather_cache.get(key)
-    if not force and cached and (time.monotonic() - cached[0]) < WEATHER_CACHE_SECONDS:
-        return cached[1]
+    None if no forecast has ever been retrieved (e.g. no internet).
+
+    A fresh forecast is reused for `WEATHER_CACHE_SECONDS`. When a fetch
+    fails, the last good forecast is served -- its hours are still the hours
+    it describes -- and no new attempt is made for `WEATHER_RETRY_SECONDS`.
+    Before that back-off, a dead link was retried by every caller, and one
+    /api/estimate request asks four times.
+    """
+    entry = _weather_cache.setdefault(_cache_key(lat, lon), _Forecast())
+    now = time.monotonic()
+    if not force:
+        if entry.fetched_at is not None and now - entry.fetched_at < WEATHER_CACHE_SECONDS:
+            return entry.cover
+        if entry.attempted_at is not None and now - entry.attempted_at < WEATHER_RETRY_SECONDS:
+            return entry.cover
 
     params = {
         "latitude": f"{lat:.4f}",
@@ -231,17 +254,16 @@ def fetch_cloud_cover(lat: float, lon: float, *, force: bool = False) -> dict[st
         "timezone": "UTC",
     }
     url = f"{WEATHER_URL}?{urllib.parse.urlencode(params)}"
+    entry.attempted_at = now
     try:
         with urllib.request.urlopen(url, timeout=WEATHER_TIMEOUT_SECONDS) as response:
             payload = json.loads(response.read())
         hourly = payload["hourly"]
         cover = {t: c for t, c in zip(hourly["time"], hourly["cloud_cover"]) if c is not None}
-    except (urllib.error.URLError, TimeoutError, KeyError, ValueError, OSError):
-        cover = None
-
-    if cover is not None or cached is None:
-        _weather_cache[key] = (time.monotonic(), cover)
-    return cover if cover is not None else (cached[1] if cached else None)
+    except (urllib.error.URLError, TimeoutError, KeyError, TypeError, ValueError, OSError):
+        return entry.cover
+    entry.cover, entry.fetched_at = cover, now
+    return cover
 
 
 def _hour_bucket(when: datetime) -> str:
