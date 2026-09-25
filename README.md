@@ -182,9 +182,10 @@ The dashboard needs no login, so `/api/system` leaves out the hostname, address 
 
 The portal's Raspberry Pi tab can switch the CPU governor, restart the service, reboot, and scan or join Wi-Fi networks. All of these run through one helper, `deploy/pi-control.sh`, which never evaluates its arguments as shell and accepts only a fixed set of actions. A Wi-Fi passphrase reaches it on standard input rather than as an argument, because sudo logs every argument to the system journal. To enable them:
 
-1. Install the sudoers rule, adjusting the user and path: `sudo cp deploy/solar-monitor-sudoers.example /etc/sudoers.d/solar-monitor && sudo chmod 440 /etc/sudoers.d/solar-monitor && sudo visudo -c`. The rule grants root to whatever the script contains, so the script and every directory above it must be owned by root and not writable by the service account. A root-owned `/opt/solar-monitor` run by a separate user is fine; a checkout in the service user's home directory is not.
-2. Make sure the systemd unit does not set `NoNewPrivileges=true`, which blocks `sudo` whatever sudoers says. The shipped unit leaves it off.
-3. Wi-Fi actions need NetworkManager (`nmcli`), the default on Raspberry Pi OS Bookworm and later.
+1. Install the helper where the service account cannot change it: `sudo install -o root -g root -m 0755 deploy/pi-control.sh /usr/local/sbin/solar-monitor-pi-control`. The app uses that copy whenever it exists; re-run the command after an update. The sudoers rule grants root to whatever the file contains, which is why it must not be a file the service account can rewrite, such as the copy in a checkout under its home directory.
+2. Install the sudoers rule, adjusting the user: `sudo cp deploy/solar-monitor-sudoers.example /etc/sudoers.d/solar-monitor && sudo chmod 440 /etc/sudoers.d/solar-monitor && sudo visudo -c`.
+3. Make sure the systemd unit does not set `NoNewPrivileges=true`, which blocks `sudo` whatever sudoers says. The shipped unit leaves it off.
+4. Wi-Fi actions need NetworkManager (`nmcli`), the default on Raspberry Pi OS Bookworm and later.
 
 Without this setup the buttons return a clear error instead of hanging.
 

@@ -3,19 +3,31 @@ from __future__ import annotations
 from pathlib import Path
 import subprocess
 
-# Every privileged action goes through this single, argument-validated
-# wrapper script rather than granting the service account broad sudo rights.
-# See deploy/pi-control.sh and deploy/solar-monitor-sudoers.example.
-_SCRIPT = Path(__file__).resolve().parent.parent / "deploy" / "pi-control.sh"
+# Every privileged action goes through one argument-validated helper script
+# rather than broad sudo rights for the service account. The sudoers rule
+# grants root to whatever that file contains, so the copy it names must be
+# one the service account cannot rewrite. An installed copy, owned by root,
+# is used when present; the checkout's own copy is safe only when the whole
+# checkout is root-owned. See deploy/solar-monitor-sudoers.example.
+INSTALLED_HELPER = Path("/usr/local/sbin/solar-monitor-pi-control")
+CHECKOUT_HELPER = Path(__file__).resolve().parent.parent / "deploy" / "pi-control.sh"
 _GOVERNORS = {"powersave", "ondemand", "performance", "schedutil"}
 
 
+def helper_path() -> Path | None:
+    for candidate in (INSTALLED_HELPER, CHECKOUT_HELPER):
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _run(*args: str, timeout: float = 15.0, stdin: str | None = None) -> tuple[bool, str]:
-    if not _SCRIPT.exists():
-        return False, "Privileged helper script not found (expected deploy/pi-control.sh)"
+    script = helper_path()
+    if script is None:
+        return False, f"Privileged helper not found (install deploy/pi-control.sh as {INSTALLED_HELPER})"
     try:
         result = subprocess.run(
-            ["sudo", "-n", str(_SCRIPT), *args],
+            ["sudo", "-n", str(script), *args],
             input=stdin, capture_output=True, text=True, timeout=timeout,
         )
     except FileNotFoundError:

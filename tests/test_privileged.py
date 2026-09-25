@@ -48,6 +48,29 @@ class WifiPassphraseTests(unittest.TestCase):
         self.assertEqual(self.run_helper("Cafe", ""), ["device", "wifi", "connect", "Cafe"])
 
 
+class HelperLocationTests(unittest.TestCase):
+    """sudo runs whatever file the rule names, so the root-owned installed
+    copy must win over the checkout's whenever it exists."""
+
+    def test_the_installed_copy_is_preferred(self):
+        with tempfile.TemporaryDirectory() as temp:
+            installed = Path(temp) / "solar-monitor-pi-control"
+            installed.write_text("#!/bin/sh\n")
+            with patch.object(privileged, "INSTALLED_HELPER", installed):
+                self.assertEqual(privileged.helper_path(), installed)
+
+    def test_the_checkout_copy_is_the_fallback(self):
+        with patch.object(privileged, "INSTALLED_HELPER", Path("/nonexistent/helper")):
+            self.assertEqual(privileged.helper_path(), SCRIPT)
+
+    def test_no_helper_at_all_is_a_clear_error(self):
+        with patch.object(privileged, "INSTALLED_HELPER", Path("/nonexistent/a")), \
+                patch.object(privileged, "CHECKOUT_HELPER", Path("/nonexistent/b")):
+            ok, message = privileged.reboot()
+        self.assertFalse(ok)
+        self.assertIn("/nonexistent/a", message)
+
+
 class WifiScanTests(unittest.TestCase):
     def test_terse_output_is_split_on_unescaped_colons_only(self):
         networks = privileged.parse_wifi_scan("Cafe\\:5G:71:WPA2\nHome:88:WPA2 WPA3\n")
