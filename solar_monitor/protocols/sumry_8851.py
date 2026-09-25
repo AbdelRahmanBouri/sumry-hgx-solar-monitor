@@ -11,10 +11,9 @@ from .base import DecodeResult, Query, Protocol
 # CRC16/MODBUS checksum, confirming that they are intact 158-byte frames.
 # The field offsets below follow the independently reverse-engineered 0x8851
 # v2 register layout and are supported by internally consistent values:
-# load_watts / (output_
-# voltage * output_current) gives ~0.92 power factor on both captures,
-# battery_voltage sits at ~27V (right for a 24V nominal bank), and output
-# is 120V/59.9Hz, matching this inverter's 24V/120V spec.
+# load_watts / (output_voltage * output_current) gives ~0.92 power factor on
+# both captures, battery_voltage sits at ~27V (right for a 24V nominal
+# bank), and output is 120V/59.9Hz, matching this inverter's 24V/120V spec.
 _HEADER = bytes.fromhex("8851")
 _FRAME_LENGTH = 158
 _CONFIG_FRAME_LENGTH = 104
@@ -88,7 +87,6 @@ WRITABLE_FIELDS: dict[str, WritableField] = {
 }
 
 
-
 def _writable_masks() -> dict[int, int]:
     """Which bits of which bytes a write is allowed to change."""
     masks: dict[int, int] = {}
@@ -104,10 +102,6 @@ def _writable_masks() -> dict[int, int]:
 _WRITABLE_MASKS = _writable_masks()
 
 
-_TRUTHY = {"true", "on", "1", "yes"}
-_FALSY = {"false", "off", "0", "no"}
-
-
 def _encode(field: WritableField, value: Any) -> int:
     if field.kind == "bits":
         if isinstance(value, bool):
@@ -115,10 +109,11 @@ def _encode(field: WritableField, value: Any) -> int:
         if isinstance(value, str) and value in field.choices:
             return field.choices.index(value)
         raise ValueError(f"must be one of {', '.join(field.choices)}")
+    # A switch is a bits field; every word is a quantity. True, "on" or
+    # "yes" for a quantity is a mistake, not a 1 -- as an interval it would
+    # have scheduled an equalization every day.
     if isinstance(value, bool):
-        value = int(value)
-    elif isinstance(value, str) and value.strip().lower() in _TRUTHY | _FALSY:
-        value = int(value.strip().lower() in _TRUTHY)
+        raise ValueError("must be a number")
     try:
         number = float(value)
     except (TypeError, ValueError):
@@ -175,7 +170,7 @@ class Sumry8851Protocol(Protocol):
             return DecodeResult({}, False, "No reply bytes to decode")
         if frame[:2] != _HEADER:
             return DecodeResult({}, False, "Reply missing expected 0x8851 header; raw bytes preserved")
-        if frame[4:6] == bytes.fromhex("0200"):
+        if frame[4:6] == _CONFIG_ADDRESS:
             return self._decode_config(frame)
         return self._decode_state(frame)
 
@@ -308,7 +303,7 @@ class Sumry8851Protocol(Protocol):
         invalid = self._validate(frame, _CONFIG_FRAME_LENGTH, "configuration")
         if invalid:
             return invalid
-        if frame[2:4] != bytes.fromhex("0003") or _u16(frame, 6) != 94:
+        if frame[2:4] != _READ_COMMAND or _u16(frame, 6) != _CONFIG_DATA_LENGTH:
             return DecodeResult({}, False, "Unexpected HGX configuration response header")
 
         flag0, flag1, flag2, flag3 = frame[8:12]

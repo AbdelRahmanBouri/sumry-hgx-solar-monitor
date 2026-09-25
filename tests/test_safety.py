@@ -122,6 +122,9 @@ class ConfigurationWriteTests(unittest.TestCase):
             {"equalization_voltage_v": 30}, {"battery_type": "AGM"},  # no longer writable
             {"output_voltage_v": 110}, {"inverter_power_limit_w": 6000},
             {"bulk_charge_voltage_v": "high"}, {},
+            # A quantity is never a switch: none of these may become a 1.
+            {"equalization_interval_days": True}, {"equalization_interval_days": "yes"},
+            {"equalization_time_min": "on"}, {"charge_cutoff_current_a": float("nan")},
         ):
             with self.assertRaises(ValueError, msg=str(changes)):
                 self.protocol.build_config_write(REAL_CONFIG_REPLY, changes)
