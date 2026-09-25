@@ -7,8 +7,8 @@
   <title>Admin · Solar Monitor</title>
   <link rel="manifest" href="/static/solar-dashboard.webmanifest">
   <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="{{ url_for('static', filename='theme.css', v=1) }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css', v=5) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='theme.css', v=version('theme.css')) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css', v=version('admin.css')) }}">
 </head>
 <body>
   <header class="admin-header">
@@ -218,6 +218,6 @@
       </section>
     </div>
   </main>
-  <script src="{{ url_for('static', filename='admin.js', v=6) }}"></script>
+  <script src="{{ url_for('static', filename='admin.js', v=version('admin.js')) }}"></script>
 </body>
 </html>

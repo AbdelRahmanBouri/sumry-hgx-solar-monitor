@@ -115,6 +115,19 @@ def create_app(
         except ValueError:
             collector.set_poll_seconds(30)
 
+    @app.template_global()
+    def version(filename: str) -> str:
+        """A cache-busting version for a static file, from when it last
+        changed. Pages are rendered fresh but their assets are cached hard,
+        so an update must change the URL of every script and stylesheet it
+        touched -- otherwise a phone pairs the new page with the old script.
+        A hand-kept counter had already drifted: the login pages asked for
+        admin.css?v=3 while the portal asked for v=5."""
+        try:
+            return str(int((Path(app.static_folder) / filename).stat().st_mtime))
+        except OSError:
+            return "0"
+
     def login_required(function):
         @wraps(function)
         def wrapped(*args, **kwargs):

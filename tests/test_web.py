@@ -203,6 +203,18 @@ class WebTests(unittest.TestCase):
             self.assertIn(b'id="battery-soc"', response.data)
             self.assertNotIn(b'Energy source', response.data)
 
+    def test_assets_are_versioned_by_when_they_changed(self):
+        """A deploy must change the URL of every asset it touched, or a
+        phone pairs a new page with a stale cached script."""
+        app = create_app(self.db)
+        version = app.jinja_env.globals["version"]
+        static = Path(app.static_folder)
+        self.assertEqual(version("app.js"), str(int((static / "app.js").stat().st_mtime)))
+        self.assertEqual(version("no-such-file.js"), "0")
+        page = app.test_client().get("/").data.decode()
+        self.assertIn(f"/static/app.js?v={version('app.js')}", page)
+        self.assertNotIn("{{", page)
+
     def test_pages_can_be_zoomed(self):
         """Pinch-zoom is how many people read small text (WCAG 1.4.4). The
         chart keeps its own gestures through touch-action on the canvas, so
