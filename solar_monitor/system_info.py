@@ -170,12 +170,12 @@ def public_snapshot(include_network: bool = False) -> dict:
     without a login, and hostname, address and SSID identify the machine
     rather than describe its health.
     """
-
+    current_governor = governor()
     snapshot = {
         "uptime_seconds": uptime_seconds(),
         "cpu_temperature_c": cpu_temperature_c(),
         "throttled": throttled_flags(),
-        "eco_mode": governor() == "powersave" if governor() else None,
+        "eco_mode": current_governor == "powersave" if current_governor else None,
     }
     if include_network:
         snapshot["network"] = network_info()
@@ -195,11 +195,14 @@ def admin_snapshot(service_name: str = "solar-monitor") -> dict:
 def check_updates(repo_root: Path) -> dict:
     result: dict = {"git": None, "apt": None}
     if (repo_root / ".git").exists():
-        fetch_output = _run(["git", "fetch", "--quiet"], timeout=20)
+        # -C, because the process's working directory is wherever the
+        # service was started from, which need not be the checkout.
+        git = ["git", "-C", str(repo_root)]
+        fetch_output = _run([*git, "fetch", "--quiet"], timeout=20)
         if fetch_output is None:
             result["git"] = {"error": "Could not reach the git remote"}
         else:
-            counts = _run(["git", "rev-list", "--left-right", "--count", "HEAD...@{u}"])
+            counts = _run([*git, "rev-list", "--left-right", "--count", "HEAD...@{u}"])
             if counts:
                 try:
                     ahead, behind = (int(value) for value in counts.split())
