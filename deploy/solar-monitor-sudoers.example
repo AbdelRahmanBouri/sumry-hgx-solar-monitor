@@ -11,4 +11,11 @@
 # Adjust the username and path below if your service account or install
 # location differ from the README's example (/opt/solar-monitor, running as
 # the "solar-monitor" user).
+#
+# The rule grants root to whatever that file contains, so the script and
+# every directory above it must be owned by root and not writable by the
+# service account. The README's layout -- a root-owned /opt/solar-monitor
+# run by a separate user -- satisfies that. A checkout in the service
+# user's own home directory does not: anything running as that user could
+# rewrite the script and then run it as root.
 solar-monitor ALL=(root) NOPASSWD: /opt/solar-monitor/deploy/pi-control.sh

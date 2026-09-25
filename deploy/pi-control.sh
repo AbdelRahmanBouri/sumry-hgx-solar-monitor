@@ -8,6 +8,7 @@
 # granting sudo access to systemctl/nmcli/tee directly.
 #
 # Usage: pi-control.sh <action> [args...]
+#        pi-control.sh wifi-connect <ssid>   (passphrase on standard input)
 set -eu
 
 action="${1:-}"
@@ -40,12 +41,18 @@ case "$action" in
 
   wifi-connect)
     ssid="${1:-}"
-    password="${2:-}"
     if [ -z "$ssid" ]; then
       echo "Missing SSID" >&2
       exit 1
     fi
-    exec /usr/bin/nmcli device wifi connect "$ssid" password "$password"
+    # The passphrase is read from standard input, never taken as an
+    # argument: sudo logs every argument of every command it runs.
+    password=""
+    IFS= read -r password || true
+    if [ -n "$password" ]; then
+      exec /usr/bin/nmcli device wifi connect "$ssid" password "$password"
+    fi
+    exec /usr/bin/nmcli device wifi connect "$ssid"
     ;;
 
   *)
