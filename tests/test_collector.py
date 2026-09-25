@@ -72,10 +72,13 @@ class CollectorResilienceTests(unittest.TestCase):
         self.assertEqual(self.database.raw_frames, [], "no row should be written with no port")
 
     def test_started_collector_reports_its_state(self):
-        collector, thread = start_collector(self.config, self.database)
-        _no_sleep(collector)
-        collector.stop()
-        thread.join(timeout=5)
+        # The thread polls as soon as it starts; with the port on "auto" it
+        # would find this machine's real adapter, so discovery finds none.
+        with patch.object(collector_module, "discover_usb_serial_ports", return_value=[]):
+            collector, thread = start_collector(self.config, self.database)
+            _no_sleep(collector)
+            collector.stop()
+            thread.join(timeout=5)
         state = collector.state()
         self.assertFalse(thread.is_alive())
         self.assertIsNotNone(state["started_at"])
