@@ -39,8 +39,3 @@ class Protocol:
 
     def decode(self, frame: bytes) -> DecodeResult:
         return DecodeResult({}, False, "No decoder has been confirmed for this firmware")
-
-
-# serial_io still imports the class under its former name.
-ReadOnlyProtocol = Protocol
-

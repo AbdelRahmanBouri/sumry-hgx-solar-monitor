@@ -9,7 +9,7 @@ import time
 from .config import SerialConfig
 from .db import Database
 from .protocols import create_protocol
-from .serial_io import discover_usb_serial_ports, escaped_ascii, exchange, write_exchange
+from .serial_io import discover_usb_serial_ports, exchange, write_exchange
 
 
 LOG = logging.getLogger(__name__)
@@ -168,16 +168,11 @@ class Collector:
             written = write_exchange(
                 port, self.config.baudrate, self.config.timeout_seconds, self.protocol, frame, before.response
             )
-            self.database.save_raw_frame({
-                "captured_at": written.timestamp, "port": written.port, "baudrate": written.baudrate,
-                "protocol": self.protocol.name, "query_name": written.query_name,
-                "request_hex": written.request.hex(" ").upper(),
-                "response_hex": written.response.hex(" ").upper(),
-                "response_ascii": escaped_ascii(written.response),
-                "elapsed_ms": written.elapsed_ms,
-                "decode_note": f"configuration write: {sorted(changes)}",
-                "error": written.error,
-            })
+            # The reply to a write is not decoded, so the frame is retained as a
+            # diagnostic -- which is what a record of a write should be.
+            self.database.save_raw_frame(written.record(
+                self.protocol.name, f"configuration write: {sorted(changes)}", decoded=False,
+            ))
             if written.error:
                 raise ValueError(f"Write failed on the serial port: {written.error}")
 
@@ -249,15 +244,11 @@ class Collector:
             self._newest_stored = (latest or {}).get("captured_at") or ""
         return timestamp >= self._newest_stored
 
+    def _save_frame(self, result, decoded) -> None:
+        self.database.save_raw_frame(result.record(self.protocol.name, decoded.note, decoded.valid))
+
     def _record(self, result, decoded) -> None:
-        self.database.save_raw_frame({
-            "captured_at": result.timestamp, "port": result.port, "baudrate": result.baudrate,
-            "protocol": self.protocol.name, "query_name": result.query_name,
-            "request_hex": result.request.hex(" ").upper(),
-            "response_hex": result.response.hex(" ").upper(),
-            "response_ascii": escaped_ascii(result.response),
-            "elapsed_ms": result.elapsed_ms, "decode_note": decoded.note, "error": result.error,
-        })
+        self._save_frame(result, decoded)
         if decoded.metrics and result.query_name == "current_settings_0200":
             self.database.save_inverter_config(result.timestamp, decoded.metrics)
 
@@ -283,19 +274,7 @@ class Collector:
             port, self.config.baudrate, self.config.timeout_seconds, self.protocol, query
         )
         decoded = self.protocol.decode(result.response)
-        self.database.save_raw_frame({
-            "captured_at": result.timestamp,
-            "port": result.port,
-            "baudrate": result.baudrate,
-            "protocol": self.protocol.name,
-            "query_name": result.query_name,
-            "request_hex": result.request.hex(" ").upper(),
-            "response_hex": result.response.hex(" ").upper(),
-            "response_ascii": escaped_ascii(result.response),
-            "elapsed_ms": result.elapsed_ms,
-            "decode_note": decoded.note,
-            "error": result.error,
-        })
+        self._save_frame(result, decoded)
         if decoded.metrics and not self._timestamp_is_trustworthy(result.timestamp):
             LOG.warning(
                 "Discarding a reading stamped %s: the clock is not yet trustworthy",

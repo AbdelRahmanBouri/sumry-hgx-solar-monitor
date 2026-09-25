@@ -21,7 +21,7 @@ from .config import SerialConfig, SiteConfig
 from .db import Database
 from .protocols import create_protocol
 from .security import load_or_create_secret
-from .serial_io import discover_usb_serial_ports, escaped_ascii, exchange
+from .serial_io import Exchange, discover_usb_serial_ports, exchange
 from . import battery as battery_model
 from . import change_policy
 from . import propose
@@ -766,23 +766,15 @@ def create_app(
                 import serial
                 with serial.Serial(port, baudrate, timeout=timeout) as connection:
                     response = connection.read(4096)
-                record = {"captured_at": now(), "port": port, "baudrate": baudrate,
-                          "protocol": protocol.name, "query_name": "listen_only",
-                          "request_hex": "", "response_hex": response.hex(" ").upper(),
-                          "response_ascii": escaped_ascii(response), "elapsed_ms": int(timeout * 1000),
-                          "decode_note": "Passive listen-only capture", "error": None}
             except Exception as exc:
                 return jsonify({"error": str(exc)}), 400
+            capture = Exchange(now(), port, baudrate, "listen_only", b"", response, int(timeout * 1000))
+            record = capture.record(protocol.name, "Passive listen-only capture", decoded=False)
         else:
             query = protocol.queries[0]
             result = exchange(port, baudrate, timeout, protocol, query)
             decoded = protocol.decode(result.response)
-            record = {"captured_at": result.timestamp, "port": port, "baudrate": baudrate,
-                      "protocol": protocol.name, "query_name": result.query_name,
-                      "request_hex": result.request.hex(" ").upper(),
-                      "response_hex": result.response.hex(" ").upper(),
-                      "response_ascii": escaped_ascii(result.response), "elapsed_ms": result.elapsed_ms,
-                      "decode_note": decoded.note, "error": result.error}
+            record = result.record(protocol.name, decoded.note, decoded.valid)
         database.save_raw_frame(record)
         audit(f"serial.{mode}", f"{port} @ {baudrate}")
         return jsonify(record), (400 if record.get("error") else 200)

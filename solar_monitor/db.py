@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS raw_frames (
     response_ascii TEXT NOT NULL,
     elapsed_ms INTEGER NOT NULL,
     decode_note TEXT,
-    error TEXT
+    error TEXT,
+    decoded INTEGER
 );
 CREATE INDEX IF NOT EXISTS raw_frames_captured_at ON raw_frames(captured_at);
 CREATE TABLE IF NOT EXISTS inverter_config_snapshots (
@@ -106,6 +107,23 @@ SAMPLE_METRIC_COLUMNS = {
 }
 
 
+# A routine frame is a read that came back and decoded; it only needs to
+# outlive the short window. Everything else -- serial errors, CRC failures,
+# replies that would not decode, writes, passive captures -- is a diagnostic
+# and is kept for the longer one.
+#
+# Rows from before the `decoded` flag existed fall back to the one wording
+# every decoded frame's note has always started with. The fallback is a
+# prefix on purpose: this used to be a set of substrings searched anywhere
+# in the note, and "not decoded" and "fault" both occur in the note of a
+# perfectly good status frame, so no frame ever counted as routine and the
+# short window never deleted anything.
+_ROUTINE_FRAME_SQL = (
+    "(COALESCE(TRIM(error), '') = '' "
+    "AND COALESCE(decoded, decode_note LIKE 'CRC-validated%', 0) = 1)"
+)
+
+
 class Database:
     def __init__(self, path: str):
         self.path = Path(path)
@@ -154,6 +172,13 @@ class Database:
         for name, declaration in sample_additions.items():
             if name not in sample_columns:
                 connection.execute(f"ALTER TABLE samples ADD COLUMN {name} {declaration}")
+
+        # Whether a frame decoded, as a flag rather than something inferred
+        # from the note's wording. Rows written before it existed stay NULL
+        # and are classified by `_ROUTINE_FRAME_SQL`'s fallback.
+        frame_columns = {row[1] for row in connection.execute("PRAGMA table_info(raw_frames)")}
+        if "decoded" not in frame_columns:
+            connection.execute("ALTER TABLE raw_frames ADD COLUMN decoded INTEGER")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -352,17 +377,6 @@ class Database:
             result.append(item)
         return result
 
-    @staticmethod
-    def _diagnostic_frame_sql() -> str:
-        return "(" + " OR ".join((
-            "COALESCE(TRIM(error), '') <> ''",
-            "LOWER(COALESCE(decode_note, '')) LIKE '%crc%'",
-            "LOWER(COALESCE(decode_note, '')) LIKE '%unknown%'",
-            "LOWER(COALESCE(decode_note, '')) LIKE '%not decoded%'",
-            "LOWER(COALESCE(decode_note, '')) LIKE '%invalid%'",
-            "LOWER(COALESCE(decode_note, '')) LIKE '%fault%'",
-        )) + ")"
-
     def cleanup_retention(
         self,
         success_days: int = 7,
@@ -375,7 +389,6 @@ class Database:
         reference_time = reference_time or datetime.now(timezone.utc)
         normal_cutoff = (reference_time - timedelta(days=success_days)).isoformat()
         diagnostic_cutoff = (reference_time - timedelta(days=diagnostic_days)).isoformat()
-        diagnostic_sql = self._diagnostic_frame_sql()
         with self.connect() as connection:
             before_raw = int(connection.execute("SELECT COUNT(*) FROM raw_frames").fetchone()[0])
             before_config = int(connection.execute(
@@ -383,7 +396,7 @@ class Database:
             ).fetchone()[0])
             connection.execute(
                 f"DELETE FROM raw_frames WHERE captured_at < ? "
-                f"AND (captured_at < ? OR NOT {diagnostic_sql})",
+                f"AND (captured_at < ? OR {_ROUTINE_FRAME_SQL})",
                 (normal_cutoff, diagnostic_cutoff),
             )
             # Configuration snapshots are also bulky and mostly repetitive;

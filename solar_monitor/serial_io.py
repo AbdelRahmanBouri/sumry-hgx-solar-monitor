@@ -5,10 +5,11 @@ from datetime import datetime, timezone
 import glob
 import os
 import time
+from typing import Any
 
 import serial
 
-from .protocols.base import Query, ReadOnlyProtocol
+from .protocols.base import Protocol, Query
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,28 @@ class Exchange:
     response: bytes
     elapsed_ms: int
     error: str | None = None
+
+    def record(self, protocol: str, note: str | None, decoded: bool) -> dict[str, Any]:
+        """This exchange as a `raw_frames` row.
+
+        `decoded` says whether the reply decoded into readings. Retention
+        keys on it: a decoded frame is routine and ages out quickly, anything
+        else is kept as a diagnostic.
+        """
+        return {
+            "captured_at": self.timestamp,
+            "port": self.port,
+            "baudrate": self.baudrate,
+            "protocol": protocol,
+            "query_name": self.query_name,
+            "request_hex": self.request.hex(" ").upper(),
+            "response_hex": self.response.hex(" ").upper(),
+            "response_ascii": escaped_ascii(self.response),
+            "elapsed_ms": self.elapsed_ms,
+            "decode_note": note,
+            "error": self.error,
+            "decoded": int(decoded),
+        }
 
 
 def discover_usb_serial_ports() -> list[str]:
@@ -39,7 +62,7 @@ def exchange(
     port: str,
     baudrate: int,
     timeout: float,
-    protocol: ReadOnlyProtocol,
+    protocol: Protocol,
     query: Query,
     settle_seconds: float = 0.15,
 ) -> Exchange:
