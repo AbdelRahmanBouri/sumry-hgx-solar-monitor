@@ -202,7 +202,17 @@ class WebTests(unittest.TestCase):
             self.assertIn(b'id="chart-y-scale"', response.data)
             self.assertIn(b'id="battery-soc"', response.data)
             self.assertNotIn(b'Energy source', response.data)
-            self.assertIn(b'user-scalable=no', response.data)
+
+    def test_pages_can_be_zoomed(self):
+        """Pinch-zoom is how many people read small text (WCAG 1.4.4). The
+        chart keeps its own gestures through touch-action on the canvas, so
+        disabling zoom for the whole page bought nothing it needed."""
+        for path in ("/", "/estimate"):
+            page = self.client.get(path).data
+            self.assertNotIn(b"user-scalable=no", page, path)
+            self.assertNotIn(b"maximum-scale=1", page, path)
+        stylesheet = (Path(__file__).resolve().parent.parent / "solar_monitor/static/style.css").read_text()
+        self.assertIn("#power-chart, #power-chart-overlay { width: 100%; height: 205px; display: block; touch-action: pan-y;", stylesheet)
 
     def test_unconnected_battery_temperature_channels_are_not_public(self):
         self.db.save_sample(

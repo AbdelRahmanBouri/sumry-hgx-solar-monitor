@@ -540,7 +540,8 @@ main { gap: 12px; }
   .battery-estimates strong { font-size: 15px; }
 
   .health-card { grid-column: 1 / -1; grid-row: auto; padding: 22px 26px; }
-  .health-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+  /* Six tiles: three by two, never five and an orphan. */
+  .health-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   .health-stats strong { font-size: 22px; }
   .today-stats { flex: 1; grid-template-columns: 1fr; margin-top: 18px; }
   .today-stats > span { justify-content: center; padding: 14px 0; border-right: 0; border-bottom: 1px solid var(--hairline); }
@@ -567,11 +568,16 @@ main { gap: 12px; }
   #power-chart-overlay { height: 430px; }
   .trend-stats strong { font-size: 17px; }
 
+  /* Three short cards share a row. The configuration is long, so it gets a
+     full-width row of its own: in a third of the width it stretched its row
+     to its own height and left the cards beside it mostly empty. */
   .period-card { grid-column: 1 / 5; grid-row: auto; }
   #system { grid-column: 5 / 9; grid-row: auto; }
-  #config { grid-column: 9 / 13; grid-row: auto; }
-  .fault-history.card { grid-column: 1 / 7; grid-row: auto; }
-  .pi-card { grid-column: 7 / 13; grid-row: auto; }
+  .pi-card { grid-column: 9 / 13; grid-row: auto; }
+  .fault-history.card { grid-column: 1 / -1; grid-row: auto; }
+  #config { grid-column: 1 / -1; grid-row: auto; }
+  #config .config-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
+  .pi-grid { grid-template-columns: 1fr; }
   .period-card,
   .system-card,
   .pi-card,

@@ -366,22 +366,40 @@ function renderWriteBadges() {
   });
 }
 
-function renderConfig() {
-  const grid = document.querySelector('#config-grid');
-  const note = document.querySelector('#config-note');
-  const config = latestPayload?.inverter_config;
-  if (!config || !config.settings) {
-    grid.hidden = true;
-    note.hidden = false;
-    note.textContent = "Waiting for the inverter's configuration snapshot (captured every few minutes).";
-    return;
-  }
-  note.hidden = false;
-  note.textContent = `Captured ${relativeTime(config.captured_at)} · ${
-    latestPayload?.writes_enabled === true ? 'writable from the admin portal' : 'read-only, never written back to the inverter'}`;
-  grid.hidden = false;
-  grid.replaceChildren();
-  Object.entries(config.settings).forEach(([key, value]) => {
+// The block, grouped by what the settings are for. The first two groups are
+// what a reader checks; the rest sit behind "More settings". Anything the
+// decoder reports that no group names -- a key added later, or one an older
+// snapshot still carries -- lands in "Other" rather than vanishing.
+const CONFIG_GROUPS = [
+  ['Charging', [
+    'bulk_charge_voltage_v', 'float_charge_voltage_v', 'charge_cutoff_current_a', 'maximum_charge_current_a',
+    'utility_charge_current_a', 'charge_source_priority', 'low_battery_cutoff_v', 'back_to_utility_voltage_v',
+  ]],
+  ['Output', [
+    'output_source_priority', 'output_voltage_v', 'output_frequency_mode', 'output_frequency_hz',
+    'inverter_power_limit_w', 'ac_input_range', 'power_saving', 'grid_export_enabled',
+  ]],
+  ['Equalization', [
+    'equalization_voltage_v', 'equalization_time_min', 'equalization_timeout_min', 'equalization_interval_days',
+  ]],
+  ['Protection & alarms', [
+    'overload_auto_restart', 'overtemperature_auto_restart', 'buzzer', 'warning_buzzer',
+    'power_interruption_buzzer', 'fault_recording', 'backlight', 'auto_return_display',
+  ]],
+  ['Not yet identified', ['unknown_flag_byte8_bits34', 'unknown_u16_offset82']],
+];
+const PRIMARY_CONFIG_GROUPS = 2;
+let renderedConfigAt = null;
+
+function configSection(title, keys, settings) {
+  const section = document.createElement('section');
+  section.className = 'config-group';
+  const heading = document.createElement('h3');
+  heading.textContent = title;
+  const grid = document.createElement('div');
+  grid.className = 'config-grid';
+  keys.forEach(key => {
+    const value = settings[key];
     const cell = document.createElement('div');
     const label = document.createElement('span');
     label.textContent = CONFIG_LABELS[key] || readableLabel(key);
@@ -392,6 +410,44 @@ function renderConfig() {
     cell.append(label, output);
     grid.appendChild(cell);
   });
+  section.append(heading, grid);
+  return section;
+}
+
+function renderConfig() {
+  const primary = document.querySelector('#config-grid');
+  const more = document.querySelector('#config-more');
+  const note = document.querySelector('#config-note');
+  const config = latestPayload?.inverter_config;
+  if (!config || !config.settings) {
+    primary.hidden = true;
+    more.hidden = true;
+    note.textContent = "Waiting for the inverter's configuration snapshot (captured every few minutes).";
+    return;
+  }
+  note.textContent = `Captured ${relativeTime(config.captured_at)} · ${
+    latestPayload?.writes_enabled === true ? 'writable from the admin portal' : 'read-only, never written back to the inverter'}`;
+  // Status refreshes every few seconds but the block changes every few
+  // minutes; rebuilding it each time would snap "More settings" shut.
+  if (renderedConfigAt === config.captured_at) return;
+  renderedConfigAt = config.captured_at;
+
+  const settings = config.settings;
+  const grouped = new Set(CONFIG_GROUPS.flatMap(([, keys]) => keys));
+  const groups = CONFIG_GROUPS.map(([title, keys]) => [title, keys.filter(key => key in settings)]);
+  const other = Object.keys(settings).filter(key => !grouped.has(key));
+  if (other.length) groups.splice(groups.length - 1, 0, ['Other', other]);
+  const moreBody = document.querySelector('#config-more-body');
+  primary.replaceChildren();
+  moreBody.replaceChildren();
+  groups.forEach(([title, keys], index) => {
+    if (!keys.length) return;
+    (index < PRIMARY_CONFIG_GROUPS ? primary : moreBody).appendChild(configSection(title, keys, settings));
+  });
+  primary.hidden = false;
+  more.hidden = !moreBody.children.length;
+  document.querySelector('#config-more-summary').textContent =
+    [...moreBody.querySelectorAll('h3')].map(heading => heading.textContent).join(' · ');
 }
 
 function updateStatusData(sample, diagnostic) {
@@ -456,10 +512,15 @@ function updateStatusData(sample, diagnostic) {
   document.querySelectorAll('[data-metric="operating_state"]').forEach(node => {
     if (!sample.operating_state) node.textContent = 'Not decoded';
   });
+  // The fault byte is not identified yet, so a missing value means "not
+  // decoded", not "no faults" -- the page must not claim a clean bill of
+  // health it never read.
+  const faultsDecoded = sample.faults !== null && sample.faults !== undefined;
   document.querySelectorAll('[data-metric="faults"]').forEach(node => {
-    if (!activeFault(sample.faults)) node.textContent = 'No active faults';
+    if (!activeFault(sample.faults)) node.textContent = faultsDecoded ? 'No active faults' : 'Not decoded';
   });
   faultValue.classList.toggle('active', activeFault(sample.faults));
+  faultValue.classList.toggle('undecoded', !faultsDecoded);
 
   const current = number(sample.battery_current);
   const direction = current === null ? 'Awaiting data'
@@ -471,12 +532,18 @@ function updateStatusData(sample, diagnostic) {
   batteryPath.classList.toggle('discharging', direction === 'Discharging');
   batteryPath.classList.toggle('idle', direction === 'Idle' || direction === 'Awaiting data');
 
+  // The icon shows the same state of charge as the text beside it. Terminal
+  // voltage is only the fallback until the counter has an anchor: under
+  // charge it reads full long before the bank is.
   const voltage = number(sample.battery_voltage);
-  const level = voltage === null ? 45 : Math.max(8, Math.min(100, ((voltage - 21) / 7.8) * 100));
-  batteryFill.style.height = `${level}%`;
+  const soc = countedSoc();
+  const level = soc !== null ? soc
+    : voltage === null ? 45 : ((voltage - 21) / 7.8) * 100;
+  batteryFill.style.height = `${Math.max(8, Math.min(100, level))}%`;
 
   const watts = number(sample.ac_load_watts);
-  const load = watts === null ? null : Math.max(0, Math.min(100, watts / 4000 * 100));
+  const rated = number(latestPayload?.inverter_config?.settings?.inverter_power_limit_w) || 4000;
+  const load = watts === null ? null : Math.max(0, Math.min(100, watts / rated * 100));
   loadBar.style.width = load === null ? '0%' : `${load}%`;
   loadPercent.textContent = load === null ? '—%' : `${Math.round(load)}%`;
 
@@ -1447,17 +1514,23 @@ function renderBatteryHealth() {
   // A charger set below what the chemistry wants stops short of full, so its
   // "100%" is not 100% and every capacity measured against it reads light.
   const limited = Boolean(state.charger_limited);
-  set('#health-method', counted ? (limited ? 'Counting · charger-limited' : 'Counting charge') : 'Waiting for an anchor');
+  set('#health-method', counted ? (limited ? 'Counting · charger-limited' : 'Counting charge')
+    : number(batteryState.nominal_ah) === null ? 'No nameplate' : 'Waiting for an anchor');
   document.querySelector('#health-method').classList.toggle('is-limited', counted && limited);
   set('#health-soc', counted ? `${Math.round(state.soc)}%` : '—%');
   set('#health-soc-note', !counted
     ? 'needs a completed absorption or a 30-minute rest first'
     : limited
       ? `as full as a ${state.bulk_setpoint_v.toFixed(1)} V charger gets it — the chemistry wants ${state.recommended_absorption_v.toFixed(1)} V, so true charge is higher`
-      : `${state.ah_out_since_full} Ah out · ${state.ah_in_since_full} Ah in since ${state.last_full_at ? 'full' : 'rest'} ${formatHoursAgo(state.last_anchor_at)}`);
+      : `${state.ah_out_since_full} Ah out · ${state.ah_in_since_full} Ah in since ${
+        state.last_anchor_at === state.last_full_at ? 'full' : 'a rest reading'} ${formatHoursAgo(state.last_anchor_at)}`);
   const cycles = state.capacity_measurements.length;
-  set('#health-capacity', `${state.capacity_is_lower_bound ? '≥ ' : ''}${Math.round(state.capacity_ah)} Ah`);
-  set('#health-capacity-note', state.capacity_source !== 'measured'
+  const nameplateKnown = number(batteryState.nominal_ah) !== null;
+  set('#health-capacity', !nameplateKnown ? '— Ah'
+    : `${state.capacity_is_lower_bound ? '≥ ' : ''}${Math.round(state.capacity_ah)} Ah`);
+  set('#health-capacity-note', !nameplateKnown
+    ? "set the bank's nameplate under Admin → Solar estimate"
+    : state.capacity_source !== 'measured'
     ? 'nameplate · not yet measured by a full-to-rest cycle'
     : state.capacity_is_lower_bound
       ? `lower bound from ${cycles} cycle${cycles === 1 ? '' : 's'} · reads light while absorption is capped low · nameplate ${Math.round(batteryState.nominal_ah)} Ah`
@@ -1482,8 +1555,8 @@ function renderBatteryHealth() {
     set('#health-absorption', 'Not reached');
     set('#health-tail', `bulk setpoint ${batteryState.bulk_setpoint_v.toFixed(1)} V`);
   }
-  set('#health-ah', today ? `${today.ah_in.toFixed(0)} in · ${today.ah_out.toFixed(0)} out` : '— in · — out');
-  set('#health-full', `last full ${formatHoursAgo(state.last_full_at)}`);
+  set('#health-ah', today ? `${today.ah_in.toFixed(0)} / ${today.ah_out.toFixed(0)} Ah` : '— / — Ah');
+  set('#health-full', `in / out · last full ${formatHoursAgo(state.last_full_at)}`);
 
   // Time to the inverter's low-voltage cutoff. On the night of 2026-09-05 the
   // battery tile read a comfortable 82% while the bank had about five hours
@@ -1590,7 +1663,11 @@ async function renderFaultHistory() {
     const rows = await response.json();
     if (!rows.length) {
       const message = document.createElement('p');
-      message.textContent = 'No faults recorded in the last 30 days.';
+      const decoded = latestPayload?.sample && latestPayload.sample.faults != null;
+      message.textContent = decoded
+        ? 'No faults recorded in the last 30 days.'
+        : "This inverter's fault codes are not decoded yet, so none can be recorded. "
+          + 'Every raw frame is kept in the admin portal for when they are.';
       body.appendChild(message);
       return;
     }
@@ -1621,6 +1698,8 @@ async function refreshSystemInfo() {
     if (!response.ok) throw new Error('unavailable');
     const data = await response.json();
     document.querySelector('#pi-uptime').textContent = formatUptime(data.uptime_seconds);
+    // Withheld unless the config opts in; an empty row would read as "none".
+    document.querySelectorAll('#pi-grid [data-network]').forEach(row => { row.hidden = !data.network; });
     document.querySelector('#pi-hostname').textContent = data.network?.hostname || '—';
     document.querySelector('#pi-ip').textContent = data.network?.ip_address || '—';
     const wifi = data.network?.wifi;
@@ -1845,12 +1924,25 @@ refreshToday();
 refreshPeriodTotals();
 refreshSystemInfo();
 refreshBattery();
-setInterval(refreshStatus, 5000);
-setInterval(refreshBattery, 60000);
-setInterval(() => {
+
+// A phone in a pocket or a tab behind another polls nothing: the Pi serving
+// this is small, and nobody is reading. Coming back refreshes everything at
+// once instead of waiting out each interval.
+const whileVisible = (task, milliseconds) => setInterval(() => { if (!document.hidden) task(); }, milliseconds);
+whileVisible(refreshStatus, 10000);
+whileVisible(refreshBattery, 60000);
+whileVisible(() => {
   if (updatedLabel.dataset.time) updatedLabel.textContent = relativeTime(updatedLabel.dataset.time);
 }, 15000);
-setInterval(refreshHistory, 60000);
-setInterval(refreshToday, 60000);
-setInterval(refreshPeriodTotals, 600000);
-setInterval(refreshSystemInfo, 60000);
+whileVisible(refreshHistory, 60000);
+whileVisible(refreshToday, 60000);
+whileVisible(refreshPeriodTotals, 600000);
+whileVisible(refreshSystemInfo, 60000);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  refreshStatus();
+  refreshBattery();
+  refreshHistory();
+  refreshToday();
+  refreshSystemInfo();
+});

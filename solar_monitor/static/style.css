@@ -330,6 +330,7 @@ h1, h2 { margin: 0; color: var(--ink); font-size: 18px; line-height: 1.15; lette
 .system-rows strong { overflow: hidden; font-size: 12px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 #fault-value { color: var(--green); }
 #fault-value.active { color: var(--red); }
+#fault-value.undecoded { color: var(--ink); }
 code { display: block; overflow: hidden; color: var(--quiet); font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .all-data { margin-top: 3px; border-top: 1px solid var(--border); }
 .all-data summary { min-height: 54px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; }
@@ -352,7 +353,11 @@ code { display: block; overflow: hidden; color: var(--quiet); font: 9px ui-monos
 .confidence.experimental { color: var(--color-amber-ink); background: var(--amber-soft); }
 
 .config-note { margin: 10px 0 0; color: var(--quiet); font-size: 11.5px; }
-.config-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--border); }
+.config-groups { display: grid; gap: 14px; margin-top: 12px; }
+.config-group h3 { margin: 0 0 6px; color: var(--muted); font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.config-more { margin-top: 12px; }
+.config-more .config-groups { margin: 2px 0 6px; }
+.config-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--border); }
 .config-grid > div { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px; background: var(--surface); }
 .config-grid > div > span { color: var(--muted); font-size: 10.5px; font-weight: 650; }
 .config-grid > div > strong { font-size: 12px; }
