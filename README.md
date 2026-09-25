@@ -121,10 +121,12 @@ For a permanent install, `deploy/solar-monitor.service` runs it under systemd (i
 
 | Table | Keys |
 | --- | --- |
-| `[serial]` | `port` (`"auto"` picks the first USB adapter; `"sim://"` the simulator), `baudrate`, `timeout_seconds`, `poll_seconds`, `protocol` |
+| `[serial]` | `port` (`"auto"` picks the first USB adapter; `"sim://"` the simulator), `baudrate`, `timeout_seconds`, `poll_seconds`, `protocol`, `require_clock_sync` |
 | `[web]` | `host`, `port`, `expose_network_info` |
 | `[storage]` | `database` (SQLite path; its directory also holds the secret and setup-token files) |
 | `[site]` | `latitude`, `longitude`, `array_capacity_watts`, `performance_ratio`, `tilt_degrees`, `azimuth_degrees`, `dual_slope`, `split_strings`, `array_description`, `module_count`, `module_watts`, `wiring`, `vmp_volts`, `voc_volts`, `imp_amps`, `isc_amps`, `inverter_model`, `charge_limit_amps`, `battery_description`, `battery_nominal_volts`, `battery_capacity_ah` |
+
+`require_clock_sync` (on by default) holds readings back until the clock has been set from the network, because a Pi without a real-time clock boots with a stale one; turn it off on a Pi with a battery-backed RTC that may have no internet.
 
 Every `[site]` key is optional. Without a location and array capacity the estimator is off and the potential page says so. `performance_ratio` is only the fallback until a week of readings exists; after that the level is learned. `dual_slope` splits the array across both faces of a pitched roof; `split_strings` says each series string straddles both faces.
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -255,6 +256,33 @@ class ClockGuardTests(unittest.TestCase):
             self.collector.collect_once()
         self.assertEqual(self.database.configs, [], "a backwards-stamped reading must not be stored")
         self.assertTrue(self.database.raw_frames, "the raw frame is still kept for diagnosis")
+
+    def unsynced_poll(self, collector):
+        """A poll while timesyncd runs but has not synced: its state
+        directory exists, the synchronized flag does not."""
+        from tests.test_safety import REAL_CONFIG_REPLY
+
+        def reply(*_a, **_k):
+            return Exchange("2026-09-05T18:00:00+00:00", "/dev/fake", 9600,
+                            "current_settings_0200", b"", REAL_CONFIG_REPLY, 5)
+
+        with tempfile.TemporaryDirectory() as run_dir:
+            collector._newest_stored = "2026-09-05T07:00:00+00:00"
+            with patch.object(collector_module, "_SYNC_FLAG", Path(run_dir) / "synchronized"), \
+                 patch.object(collector_module, "exchange", reply):
+                collector.collect_once()
+
+    def test_an_unsynced_clock_holds_readings_back_by_default(self):
+        self.unsynced_poll(self.collector)
+        self.assertEqual(self.database.configs, [])
+
+    def test_a_pi_with_an_rtc_can_trust_its_clock_without_a_sync(self):
+        """With an RTC but no internet, timesyncd never syncs; requiring it
+        would discard every reading for good."""
+        collector = Collector(SerialConfig(port="auto", require_clock_sync=False), self.database)
+        collector._port = lambda: "/dev/fake"
+        self.unsynced_poll(collector)
+        self.assertEqual(len(self.database.configs), 1)
 
     def test_a_forward_reading_is_stored_normally(self):
         from tests.test_safety import REAL_CONFIG_REPLY

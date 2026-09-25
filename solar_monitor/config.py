@@ -10,11 +10,22 @@ DEFAULT_PATH = Path("config.toml")
 
 @dataclass(frozen=True)
 class SerialConfig:
+    """The inverter link and how the collector polls it.
+
+    `require_clock_sync` keeps readings out of the database until
+    systemd-timesyncd has set the clock, because a Pi without a real-time
+    clock boots with a stale one. With a battery-backed RTC the clock is
+    right from boot, and a site with no internet would otherwise never
+    sync and never store a reading: turn it off there. Readings stamped
+    earlier than one already stored are refused either way.
+    """
+
     port: str = "auto"
     baudrate: int = 9600
     timeout_seconds: float = 1.0
     poll_seconds: int = 30
     protocol: str = "sumry_8851"
+    require_clock_sync: bool = True
 
 
 @dataclass(frozen=True)

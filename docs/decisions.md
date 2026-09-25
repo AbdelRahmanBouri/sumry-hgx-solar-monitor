@@ -36,6 +36,8 @@ The community structure labels it the equalization on/off flag, and it was decod
 
 A Raspberry Pi has no real-time clock. On a cold boot it restores a stale time until NTP syncs. On 2026-09-05 that stored two genuine readings nearly ten hours in the past, showing 599 W of sun at midnight. The collector now checks the system's own sync flag at `/run/systemd/timesync/synchronized` and refuses any timestamp that goes backwards. Nothing is lost for diagnosis, because the raw exchange is still written.
 
+The sync flag cannot be the whole rule. With a battery-backed RTC and no internet, timesyncd runs but never syncs, the flag never appears, and every reading would be discarded for good. `require_clock_sync` turns that half off for such a Pi; the backwards-timestamp half always applies.
+
 ## A failed exchange counts as a failure
 
 **Rule.** The collector's failure count includes every exchange that returned an error, and the state carries the consecutive streak and when it started.

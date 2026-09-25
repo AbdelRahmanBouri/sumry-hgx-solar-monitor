@@ -236,8 +236,9 @@ class Collector:
         until NTP syncs. On 2026-09-05 that put two real readings nearly ten
         hours in the past, showing 599 W of sun at midnight. Two cheap guards:
         the system's own sync flag, and never accepting a reading stamped
-        before one already stored."""
-        if _SYNC_FLAG.parent.exists() and not _SYNC_FLAG.exists():
+        before one already stored. The first can be switched off for a Pi
+        with an RTC (see SerialConfig); the second always applies."""
+        if self.config.require_clock_sync and _SYNC_FLAG.parent.exists() and not _SYNC_FLAG.exists():
             return False
         if self._newest_stored is None:
             latest = getattr(self.database, "latest_sample", lambda: None)()

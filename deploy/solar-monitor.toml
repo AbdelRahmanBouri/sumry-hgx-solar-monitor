@@ -4,6 +4,10 @@ baudrate = 9600
 timeout_seconds = 1.0
 poll_seconds = 30
 protocol = "sumry_8851"
+# Readings are held back until systemd-timesyncd has set the clock, because
+# a Pi without a real-time clock boots with a stale one. With a battery-backed
+# RTC and no internet, turn this off or nothing is ever stored.
+# require_clock_sync = true
 
 [web]
 host = "127.0.0.1"
