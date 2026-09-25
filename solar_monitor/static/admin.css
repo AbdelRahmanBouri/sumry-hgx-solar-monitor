@@ -103,3 +103,5 @@ details summary{color:var(--green);font-size:11px;font-weight:700;cursor:pointer
   th,td{min-width:90px}
 }
 @media(max-width:380px){.grid{grid-template-columns:1fr}.grid article{min-height:75px}}
+.link-grid article{min-height:0}
+.link-grid strong{margin-top:8px;font-size:15px;overflow-wrap:anywhere}

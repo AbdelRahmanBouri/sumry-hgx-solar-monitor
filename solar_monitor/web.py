@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 import csv
 from functools import wraps
@@ -13,6 +14,7 @@ import time
 from flask import (
     Flask, Response, abort, jsonify, redirect, render_template, request, session, url_for
 )
+import serial
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from . import privileged, system_info
@@ -53,12 +55,11 @@ def create_app(
         MAX_CONTENT_LENGTH=1024 * 1024,
     )
 
+    # The serial link itself -- port, baud, timeout, protocol -- is not here:
+    # the collector opens it from the config file, so a copy in the settings
+    # table could only disagree with what is actually running.
     defaults = {
-        "serial_port": serial_config.port,
-        "baudrate": str(serial_config.baudrate),
-        "timeout_seconds": str(serial_config.timeout_seconds),
         "poll_seconds": str(max(10, serial_config.poll_seconds)),
-        "protocol": serial_config.protocol,
         "writes_enabled": "false",
         "raw_success_days": "7",
         "raw_diagnostic_days": "90",
@@ -558,12 +559,24 @@ def create_app(
     def admin_home():
         return render_template("admin.html", username=session["admin_user"])
 
+    def serial_link() -> SerialConfig:
+        """The link the collector actually runs on, from the config file."""
+        return collector.config if collector is not None else serial_config
+
     @app.get("/api/admin/overview")
     @login_required
     def admin_overview():
         disk = shutil.disk_usage(database.path.parent)
+        link = serial_link()
         return jsonify({
             "ports": discover_usb_serial_ports(),
+            "serial_link": {
+                "configured_port": link.port,
+                "port_in_use": collector.last_port if collector is not None else None,
+                "baudrate": link.baudrate,
+                "timeout_seconds": link.timeout_seconds,
+                "protocol": create_protocol(link.protocol).name,
+            },
             "settings": database.get_settings(),
             "latest_diagnostic": database.latest_diagnostic(),
             "database_bytes": database.path.stat().st_size if database.path.exists() else 0,
@@ -691,8 +704,7 @@ def create_app(
             return jsonify(database.get_settings())
         payload = request.get_json(silent=True) or {}
         allowed = {
-            "serial_port", "baudrate", "timeout_seconds", "poll_seconds", "protocol",
-            "raw_success_days", "raw_diagnostic_days", "history_max_points",
+            "poll_seconds", "raw_success_days", "raw_diagnostic_days", "history_max_points",
             "estimator_latitude", "estimator_longitude",
             "estimator_capacity_watts", "estimator_performance_ratio",
             "estimator_tilt_degrees", "estimator_azimuth_degrees",
@@ -701,14 +713,8 @@ def create_app(
         }
         values = {key: str(value).strip() for key, value in payload.items() if key in allowed}
         try:
-            if "baudrate" in values and int(values["baudrate"]) not in {1200, 2400, 4800, 9600, 19200}:
-                raise ValueError("Unsupported baud rate")
-            if "timeout_seconds" in values and not 0.1 <= float(values["timeout_seconds"]) <= 10:
-                raise ValueError("Timeout must be between 0.1 and 10 seconds")
             if "poll_seconds" in values and not 10 <= int(values["poll_seconds"]) <= 3600:
                 raise ValueError("Polling must be between 10 and 3600 seconds")
-            if "protocol" in values:
-                create_protocol(values["protocol"])
             if "raw_success_days" in values and not 1 <= int(values["raw_success_days"]) <= 30:
                 raise ValueError("Routine frame retention must be between 1 and 30 days")
             if "raw_diagnostic_days" in values and not 7 <= int(values["raw_diagnostic_days"]) <= 365:
@@ -751,32 +757,34 @@ def create_app(
     def admin_serial(mode: str):
         if mode not in {"listen", "probe"}:
             abort(404)
-        settings = database.get_settings()
-        ports = discover_usb_serial_ports()
-        port = settings.get("serial_port", "auto")
+        link = serial_link()
+        port = link.port
         if port == "auto":
+            ports = discover_usb_serial_ports()
             port = ports[0] if ports else ""
         if not port:
             return jsonify({"error": "No USB serial adapter detected"}), 400
-        baudrate = int(settings.get("baudrate", "9600"))
-        timeout = float(settings.get("timeout_seconds", "1"))
-        protocol = create_protocol(settings.get("protocol", "sumry_8851_probe"))
-        if mode == "listen":
-            try:
-                import serial
-                with serial.Serial(port, baudrate, timeout=timeout) as connection:
-                    response = connection.read(4096)
-            except Exception as exc:
-                return jsonify({"error": str(exc)}), 400
-            capture = Exchange(now(), port, baudrate, "listen_only", b"", response, int(timeout * 1000))
-            record = capture.record(protocol.name, "Passive listen-only capture", decoded=False)
-        else:
-            query = protocol.queries[0]
-            result = exchange(port, baudrate, timeout, protocol, query)
-            decoded = protocol.decode(result.response)
-            record = result.record(protocol.name, decoded.note, decoded.valid)
+        protocol = collector.protocol if collector is not None else create_protocol(link.protocol)
+        # The collector's lock, so a diagnostic never opens the port in the
+        # middle of a poll: two handles on one line interleave their bytes,
+        # and both sides read the other's reply as garbage.
+        with collector.lock if collector is not None else nullcontext():
+            if mode == "listen":
+                try:
+                    with serial.Serial(port, link.baudrate, timeout=link.timeout_seconds) as connection:
+                        response = connection.read(4096)
+                except (serial.SerialException, OSError, ValueError) as exc:
+                    return jsonify({"error": str(exc)}), 400
+                capture = Exchange(
+                    now(), port, link.baudrate, "listen_only", b"", response, int(link.timeout_seconds * 1000)
+                )
+                record = capture.record(protocol.name, "Passive listen-only capture", decoded=False)
+            else:
+                result = exchange(port, link.baudrate, link.timeout_seconds, protocol, protocol.queries[0])
+                decoded = protocol.decode(result.response)
+                record = result.record(protocol.name, decoded.note, decoded.valid)
         database.save_raw_frame(record)
-        audit(f"serial.{mode}", f"{port} @ {baudrate}")
+        audit(f"serial.{mode}", f"{port} @ {link.baudrate}")
         return jsonify(record), (400 if record.get("error") else 200)
 
     # --- Inverter settings ---------------------------------------------------
@@ -791,9 +799,7 @@ def create_app(
         return database.get_settings().get("writes_enabled") == "true"
 
     def writable_fields() -> dict:
-        protocol = collector.protocol if collector is not None else create_protocol(
-            database.get_settings().get("protocol", "sumry_8851_probe")
-        )
+        protocol = collector.protocol if collector is not None else create_protocol(serial_config.protocol)
         return {
             name: {
                 "kind": field.kind, "scale": field.scale, "low": field.low,

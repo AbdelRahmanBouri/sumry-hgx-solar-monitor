@@ -7,7 +7,21 @@ const formatTimestamp = iso => { if (!iso) return '—'; const d = new Date(iso)
 async function api(url, options={}) { const response=await fetch(url,{cache:'no-store',headers:{'Content-Type':'application/json'},...options}); const data=await response.json(); if(!response.ok) throw new Error(data.error||`HTTP ${response.status}`); return data; }
 document.querySelectorAll('nav button').forEach(button=>button.onclick=()=>{document.querySelectorAll('nav button,.view').forEach(x=>x.classList.remove('active'));button.classList.add('active');$(`#${button.dataset.view}`).classList.add('active');if(button.dataset.view==='data')loadFrames();if(button.dataset.view==='audit')loadAudit();if(button.dataset.view==='security')loadSecurity();if(button.dataset.view==='inverter')loadInverter();});
 
-async function overview(){const data=await api('/api/admin/overview');$('#port-state').textContent=data.ports.length?data.ports.join(', '):'Not connected';$('#db-size').textContent=formatBytes(data.database_bytes);$('#disk-free').textContent=formatBytes(data.disk_free_bytes);$('#uptime').textContent=formatDuration(data.uptime_seconds);Object.entries(data.settings).forEach(([key,value])=>{const field=document.querySelector(`[name="${key}"]`);if(field)field.value=value;});renderStorageCounts(data.storage_counts);const system=data.system||{};$('#cpu-temp').textContent=system.cpu_temperature_c!=null?`${system.cpu_temperature_c.toFixed(1)}°C`:'—';$('#cpu-load').textContent=system.cpu_load_percent!=null?`${system.cpu_load_percent}%`:'—';$('#mem-used').textContent=system.memory?`${system.memory.used_mb} / ${system.memory.total_mb} MB`:'—';$('#service-state').textContent=system.service_active==null?'Unknown':(system.service_active?'Active':'Stopped');renderPiPanel(system);}
+async function overview(){const data=await api('/api/admin/overview');$('#port-state').textContent=data.ports.length?data.ports.join(', '):'Not connected';$('#db-size').textContent=formatBytes(data.database_bytes);$('#disk-free').textContent=formatBytes(data.disk_free_bytes);$('#uptime').textContent=formatDuration(data.uptime_seconds);Object.entries(data.settings).forEach(([key,value])=>{const field=document.querySelector(`[name="${key}"]`);if(field)field.value=value;});renderStorageCounts(data.storage_counts);renderSerialLink(data.serial_link);const system=data.system||{};$('#cpu-temp').textContent=system.cpu_temperature_c!=null?`${system.cpu_temperature_c.toFixed(1)}°C`:'—';$('#cpu-load').textContent=system.cpu_load_percent!=null?`${system.cpu_load_percent}%`:'—';$('#mem-used').textContent=system.memory?`${system.memory.used_mb} / ${system.memory.total_mb} MB`:'—';$('#service-state').textContent=system.service_active==null?'Unknown':(system.service_active?'Active':'Stopped');renderPiPanel(system);}
+
+// The collector's own link, from the config file. Shown, not edited: a copy
+// the portal could change would only disagree with what is running.
+function renderSerialLink(link){
+  if(!link)return;
+  const port=link.configured_port==='auto'
+    ?`auto${link.port_in_use?` → ${link.port_in_use.split('/').pop()}`:' · no adapter found yet'}`
+    :link.configured_port;
+  $('#link-port').textContent=port;
+  $('#link-port').title=link.port_in_use||link.configured_port;
+  $('#link-line').textContent=`${link.baudrate} baud · 8N1`;
+  $('#link-timeout').textContent=`${link.timeout_seconds} s`;
+  $('#link-protocol').textContent=link.protocol;
+}
 
 function renderStorageCounts(counts){const target=$('#storage-counts');if(!target||!counts)return;target.textContent=`${Number(counts.samples).toLocaleString()} decoded samples · ${Number(counts.raw_frames).toLocaleString()} raw frames · ${Number(counts.config_snapshots).toLocaleString()} configuration snapshots`;}
 

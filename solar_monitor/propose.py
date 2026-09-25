@@ -43,12 +43,14 @@ def parse_value(raw: str):
     return int(number) if number.is_integer() and "." not in raw else number
 
 
-def propose(database: Database, changes: dict, reason: str, requested_by: str) -> dict:
+def propose(
+    database: Database, changes: dict, reason: str, requested_by: str, protocol_name: str = "sumry_8851",
+) -> dict:
     """Validate against the protocol, then queue. Raises ValueError if the
     change could never be written, so bad input fails here rather than
     silently waiting for an approval that would fail later."""
     settings = database.get_settings()
-    protocol = create_protocol(settings.get("protocol", "sumry_8851"))
+    protocol = create_protocol(protocol_name)
     writable = getattr(protocol, "writable_fields", {})
     if not changes:
         raise ValueError("No changes given")
@@ -101,7 +103,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--list", action="store_true", help="show recent requests and exit")
     args = parser.parse_args(argv)
 
-    database = Database(load_config(args.config).storage.database)
+    config = load_config(args.config)
+    database = Database(config.storage.database)
 
     if args.list:
         for request in database.change_requests(15):
@@ -123,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.reason:
         parser.error("--reason is required: the audit log should say why")
     try:
-        outcome = propose(database, changes, args.reason, args.by)
+        outcome = propose(database, changes, args.reason, args.by, config.serial.protocol)
     except ValueError as exc:
         print(f"Refused: {exc}", file=sys.stderr)
         return 1

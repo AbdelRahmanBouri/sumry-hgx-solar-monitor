@@ -371,6 +371,64 @@ class WebTests(unittest.TestCase):
         missing = client.post("/api/admin/inverter/restore", json={"snapshot_id": 999})
         self.assertEqual(missing.status_code, 404)
 
+    def test_admin_probe_waits_for_the_collectors_port_lock(self):
+        """Two handles on one serial line interleave their bytes. The probe
+        must run under the same lock as the background poll."""
+        import threading
+
+        from solar_monitor.config import SerialConfig
+        from solar_monitor.protocols.sumry_8851 import Sumry8851Protocol
+        from solar_monitor.serial_io import Exchange
+        from tests.test_decode import CAPTURE_1
+
+        class FakeCollector:
+            config = SerialConfig(port="/dev/ttyUSB9")
+            protocol = Sumry8851Protocol()
+            lock = threading.Lock()
+            last_port = "/dev/ttyUSB9"
+
+            def state(self):
+                return {"running": True}
+
+            def set_poll_seconds(self, seconds):
+                pass
+
+        collector = FakeCollector()
+        seen = {}
+
+        def fake_exchange(port, baudrate, timeout, protocol, query, settle_seconds=0.15):
+            seen.update(locked=collector.lock.locked(), port=port)
+            return Exchange("t", port, baudrate, query.name, query.frame, CAPTURE_1, 5)
+
+        client = self._admin_client(collector)
+        with patch("solar_monitor.web.exchange", fake_exchange):
+            response = client.post("/api/admin/serial/probe")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(seen, {"locked": True, "port": "/dev/ttyUSB9"})
+        self.assertEqual(response.json["decoded"], 1)
+        self.assertFalse(collector.lock.locked())
+
+    def test_the_serial_link_comes_from_the_config_file_not_the_portal(self):
+        """The collector opens the port from the config file, so the portal
+        shows those values and cannot store a copy that would disagree."""
+        from solar_monitor.config import SerialConfig
+
+        client = create_app(self.db, SerialConfig(port="/dev/ttyUSB7", protocol="sumry_8851_probe")).test_client()
+        self.login(client)
+        response = client.post(
+            "/api/admin/settings",
+            json={"baudrate": "19200", "serial_port": "/dev/other", "poll_seconds": "60"},
+        )
+        self.assertEqual(response.status_code, 200)
+        settings = self.db.get_settings()
+        self.assertNotIn("baudrate", settings)
+        self.assertNotIn("serial_port", settings)
+        self.assertEqual(settings["poll_seconds"], "60")
+        link = client.get("/api/admin/overview").json["serial_link"]
+        self.assertEqual(link["configured_port"], "/dev/ttyUSB7")
+        self.assertEqual(link["baudrate"], 9600)
+        self.assertEqual(link["protocol"], "sumry_8851")
+
     def test_inverter_write_needs_a_collector(self):
         client = self._admin_client()
         client.post("/api/admin/inverter/writes", json={"enabled": True})
