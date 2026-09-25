@@ -20,6 +20,7 @@ Reads the database only. It cannot write to the inverter.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import sqlite3
 import struct
@@ -27,7 +28,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from solar_monitor.config import load_config  # noqa: E402
+from solar_monitor.config import DEFAULT_PATH, load_config  # noqa: E402
 from solar_monitor.protocols.sumry_8851 import WRITABLE_FIELDS  # noqa: E402
 
 KNOWN = {
@@ -44,6 +45,23 @@ WRITABLE_OFFSETS = {field.offset for field in WRITABLE_FIELDS.values()}
 def mark_file(database: str) -> Path:
     """The baseline lives beside the database it was taken from."""
     return Path(database).parent / "register-probe-mark"
+
+
+def read_mark(mark: Path) -> tuple[str, bytes | None]:
+    """(when the baseline was taken, the baseline frame).
+
+    The frame is kept in the mark itself because routine frames age out of
+    the database after a week; a baseline that relied on finding its own
+    frame there would silently become whichever frame came next. A mark
+    written before that holds only the timestamp, and gets the old
+    behaviour: the first frame at or after it.
+    """
+    text = mark.read_text(encoding="utf-8").strip()
+    try:
+        stored = json.loads(text)
+        return stored["captured_at"], bytes.fromhex(stored["response_hex"])
+    except (ValueError, KeyError, TypeError):
+        return text, None
 
 
 def config_frames(database: str, since: str | None):
@@ -77,20 +95,24 @@ def describe(offset: int, before: int, after: int) -> str:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--config", default="config.toml")
+    parser.add_argument("--config", help=f"config file (default: {DEFAULT_PATH}, if present)")
     parser.add_argument("--mark", action="store_true", help="record a baseline and exit")
     parser.add_argument("--diff", action="store_true", help="report every word that moved since the baseline")
     args = parser.parse_args(argv)
 
-    database = load_config(args.config).storage.database
+    try:
+        database = load_config(args.config or DEFAULT_PATH, required=args.config is not None).storage.database
+    except FileNotFoundError as exc:
+        parser.error(str(exc))
     mark = mark_file(database)
     if args.mark:
         frames = config_frames(database, None)
         if not frames:
             print("No configuration frames captured yet.", file=sys.stderr)
             return 1
-        mark.write_text(frames[-1][0], encoding="utf-8")
-        print(f"Baseline marked at {frames[-1][0]}.")
+        when, frame = frames[-1]
+        mark.write_text(json.dumps({"captured_at": when, "response_hex": frame.hex()}), encoding="utf-8")
+        print(f"Baseline marked at {when}.")
         print("Change ONE setting on the front panel, wait about five minutes for a")
         print("configuration poll, then run this again with --diff.")
         return 0
@@ -101,22 +123,25 @@ def main(argv=None) -> int:
         print("No baseline. Run with --mark first.", file=sys.stderr)
         return 1
 
-    since = mark.read_text(encoding="utf-8").strip()
+    since, baseline = read_mark(mark)
     frames = config_frames(database, since)
-    if len(frames) < 2:
-        print(f"Only {len(frames)} frame(s) since {since[:19]}; wait for another poll.", file=sys.stderr)
+    if baseline is None and frames:
+        baseline, frames = frames[0][1], frames[1:]
+    else:
+        frames = [(when, frame) for when, frame in frames if when > since]
+    if not frames:
+        print(f"No configuration poll since the baseline at {since[:19]}; wait for one.", file=sys.stderr)
         return 1
 
-    baseline = frames[0][1]
     moved: dict[int, tuple[int, int]] = {}
-    for _when, frame in frames[1:]:
+    for _when, frame in frames:
         for offset in range(8, len(frame) - 3, 2):
             before = struct.unpack_from("<H", baseline, offset)[0]
             after = struct.unpack_from("<H", frame, offset)[0]
             if before != after:
                 moved[offset] = (before, after)
 
-    span = f"{frames[0][0][:19]} .. {frames[-1][0][:19]} ({len(frames)} frames)"
+    span = f"{since[:19]} .. {frames[-1][0][:19]} ({len(frames)} frame{'' if len(frames) == 1 else 's'} since the baseline)"
     if not moved:
         print(f"Nothing moved between {span}.")
         print("Either the panel change has not been polled yet, or the inverter did not accept it.")
