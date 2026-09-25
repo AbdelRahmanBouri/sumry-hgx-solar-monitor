@@ -87,6 +87,49 @@ WRITABLE_FIELDS: dict[str, WritableField] = {
 }
 
 
+# --- Status frame layout --------------------------------------------------------
+# name -> (byte offset, struct format, divisor). The decoder reads the frame
+# through this table and the simulator writes its frames through it, so the
+# two cannot disagree about where a reading lives.
+STATUS_FIELDS: dict[str, tuple[int, str, int]] = {
+    "output_voltage": (50, "<H", 10),
+    "output_current": (52, "<H", 100),
+    "output_frequency": (54, "<H", 100),
+    "inverter_va": (56, "<H", 1),
+    "ac_load_va": (58, "<H", 1),
+    "ac_load_watts": (62, "<H", 1),
+    "ac_load_current": (68, "<H", 100),
+    "grid_voltage": (74, "<H", 10),
+    # NOT grid_current: offset 76 is deliberately absent. The community
+    # struct labels it utility current, and this project published it until
+    # 2026-09-16, when 4,489 grid-present frames disproved it. It read
+    # exactly 0.00 through two nights while the utility carried 200-400 W of
+    # load on its own (battery flat, PV zero), and rose to 0.4-0.9 A at
+    # midday when the panels were carrying everything and the utility was
+    # delivering nothing. Against the power balance it correlates -0.48;
+    # against PV watts, +0.69. Whatever it counts, it is not utility
+    # current, and no other u16 in the frame tracks utility throughput.
+    # Utility use is derived instead -- see solar_monitor/utility.py.
+    "grid_frequency": (78, "<H", 100),
+    "battery_voltage": (86, "<H", 100),
+    "battery_current": (88, "<h", 10),  # signed: negative is discharge
+    "pv_voltage": (94, "<H", 10),
+    "pv_current": (96, "<H", 100),
+    "pv_watts": (98, "<H", 1),
+    "bus_voltage": (100, "<H", 10),
+    "fan1_percent": (108, "B", 1),
+    "fan2_percent": (109, "B", 1),
+    # These are inverter thermistors in the published community map. The
+    # following byte (113) is the separate BTS input. It is 25 in our
+    # captures, but this installation has no confirmed battery temperature
+    # probe, so it must not be presented as battery temperature.
+    "ntc2_temperature": (110, "B", 1),
+    "ntc3_temperature": (111, "B", 1),
+    "ntc4_temperature": (112, "B", 1),
+    "bts_temperature": (113, "B", 1),
+}
+
+
 def _writable_masks() -> dict[int, int]:
     """Which bits of which bytes a write is allowed to change."""
     masks: dict[int, int] = {}
@@ -137,10 +180,6 @@ def _crc16_modbus(data: bytes) -> int:
 
 def _u16(data: bytes, offset: int) -> int:
     return struct.unpack_from("<H", data, offset)[0]
-
-
-def _s16(data: bytes, offset: int) -> int:
-    return struct.unpack_from("<h", data, offset)[0]
 
 
 class Sumry8851Protocol(Protocol):
@@ -252,42 +291,9 @@ class Sumry8851Protocol(Protocol):
             return invalid
 
         metrics = {
-            "output_voltage": _u16(frame, 50) / 10,
-            "output_current": _u16(frame, 52) / 100,
-            "output_frequency": _u16(frame, 54) / 100,
-            "inverter_va": _u16(frame, 56),
-            "ac_load_va": _u16(frame, 58),
-            "ac_load_watts": _u16(frame, 62),
-            "ac_load_current": _u16(frame, 68) / 100,
-            "grid_voltage": _u16(frame, 74) / 10,
-            # NOT grid_current: offset 76 is deliberately absent. The community
-            # struct labels it utility current, and this project published it
-            # until 2026-09-16, when 4,489 grid-present frames disproved it. It
-            # read exactly 0.00 through two nights while the utility carried
-            # 200-400 W of load on its own (battery flat, PV zero), and rose to
-            # 0.4-0.9 A at midday when the panels were carrying everything and
-            # the utility was delivering nothing. Against the power balance it
-            # correlates -0.48; against PV watts, +0.69. Whatever it counts, it
-            # is not utility current, and no other u16 in the frame tracks
-            # utility throughput. Utility use is derived instead -- see
-            # solar_monitor/utility.py.
-            "grid_frequency": _u16(frame, 78) / 100,
-            "battery_voltage": _u16(frame, 86) / 100,
-            "battery_current": _s16(frame, 88) / 10,
-            "pv_voltage": _u16(frame, 94) / 10,
-            "pv_current": _u16(frame, 96) / 100,
-            "pv_watts": _u16(frame, 98),
-            "bus_voltage": _u16(frame, 100) / 10,
-            "fan1_percent": frame[108],
-            "fan2_percent": frame[109],
-            # These are inverter thermistors in the published community map.
-            # The following byte (113) is the separate BTS input. It is 25 in
-            # our captures, but this installation has no confirmed battery
-            # temperature probe, so it must not be presented as battery temp.
-            "ntc2_temperature": frame[110],
-            "ntc3_temperature": frame[111],
-            "ntc4_temperature": frame[112],
-            "bts_temperature": frame[113],
+            name: value / divisor if divisor != 1 else value
+            for name, (offset, layout, divisor) in STATUS_FIELDS.items()
+            for value in struct.unpack_from(layout, frame, offset)
         }
         return DecodeResult(
             metrics=metrics, valid=True,
