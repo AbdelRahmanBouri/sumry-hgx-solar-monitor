@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from functools import wraps
 import io
 import json
+import logging
 from pathlib import Path
 import secrets
 import shutil
@@ -25,6 +26,7 @@ from .protocols import create_protocol
 from .security import load_or_create_secret
 from .serial_io import Exchange, discover_usb_serial_ports, exchange
 
+LOG = logging.getLogger(__name__)
 MANUAL_REFRESH_COOLDOWN_SECONDS = 5.0
 FORECAST_PREVIEW = timedelta(hours=6)
 
@@ -43,6 +45,11 @@ def create_app(
     private_dir = database.path.parent
     app.secret_key = load_or_create_secret(private_dir, "flask-secret")
     setup_token = load_or_create_secret(private_dir, "setup-token", 24)
+    if not database.admin_count():
+        # Where the token is, never the token itself: the journal is read
+        # more widely than a 0600 file.
+        LOG.info("No administrator yet: open /admin/setup?token=<token> with the token in %s",
+                 private_dir / "setup-token")
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Strict",
@@ -826,7 +833,7 @@ def create_app(
             "collector_available": collector is not None,
             "current": database.latest_inverter_config(),
             "fields": writable_fields(),
-            "snapshots": database.inverter_config_snapshots(30),
+            "snapshots": database.inverter_config_changes(30),
             "requests": database.change_requests(25),
             "auto_apply": settings.get(change_policy.ENABLED_SETTING) == "true",
             "auto_apply_policy": settings.get(change_policy.POLICY_SETTING) or "",

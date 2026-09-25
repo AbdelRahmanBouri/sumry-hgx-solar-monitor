@@ -1,1 +1,21 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin setup required</title><link rel="stylesheet" href="{{ url_for('static', filename='theme.css', v=version('theme.css')) }}"><link rel="stylesheet" href="{{ url_for('static', filename='admin.css', v=version('admin.css')) }}"></head><body class="auth-page"><main class="auth-card"><p class="eyebrow">SOLAR MONITOR ADMIN</p><h1>Setup required</h1><p class="muted">The administrator has not been created. Retrieve the one-time setup link through SSH.</p><a href="/">Return to dashboard</a></main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin setup required · Solar Monitor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='theme.css', v=version('theme.css')) }}">
+  <script src="{{ url_for('static', filename='theme.js', v=version('theme.js')) }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css', v=version('admin.css')) }}">
+</head>
+<body class="auth-page">
+  <main class="auth-card">
+    <p class="eyebrow">SOLAR MONITOR ADMIN</p>
+    <h1>Setup required</h1>
+    <p class="muted">No administrator exists yet. Open <code class="inline">/admin/setup?token=…</code> with the
+      token from the <code class="inline">setup-token</code> file beside the database; the service log names the file
+      when it starts.</p>
+    <a href="/">Return to dashboard</a>
+  </main>
+</body>
+</html>

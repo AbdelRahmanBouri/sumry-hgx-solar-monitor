@@ -47,5 +47,26 @@ class SqliteHygieneTests(unittest.TestCase):
         self.assertEqual([row["action"] for row in self.db.recent_audit(10)], ["second", "first"])
 
 
+
+class ConfigurationChangeTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.db = Database(f"{self.temp.name}/test.sqlite3")
+
+    def test_runs_of_identical_snapshots_collapse_to_when_they_took_effect(self):
+        stamps = [f"2026-09-2{day}T00:00:00+00:00" for day in range(10)]
+        for stamp in stamps[:4]:
+            self.db.save_inverter_config(stamp, {"bulk_charge_voltage_v": 28.2})
+        for stamp in stamps[4:7]:
+            self.db.save_inverter_config(stamp, {"bulk_charge_voltage_v": 28.8})
+        for stamp in stamps[7:]:
+            self.db.save_inverter_config(stamp, {"bulk_charge_voltage_v": 28.2})
+        changes = self.db.inverter_config_changes()
+        self.assertEqual([change["captured_at"] for change in changes], [stamps[7], stamps[4], stamps[0]])
+        self.assertEqual([change["settings"]["bulk_charge_voltage_v"] for change in changes], [28.2, 28.8, 28.2])
+        self.assertEqual(len(self.db.inverter_config_changes(limit=2)), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

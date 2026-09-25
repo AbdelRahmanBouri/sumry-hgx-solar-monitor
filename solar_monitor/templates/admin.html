@@ -8,6 +8,7 @@
   <link rel="manifest" href="/static/solar-dashboard.webmanifest">
   <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="{{ url_for('static', filename='theme.css', v=version('theme.css')) }}">
+  <script src="{{ url_for('static', filename='theme.js', v=version('theme.js')) }}"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='admin.css', v=version('admin.css')) }}">
 </head>
 <body>
@@ -18,6 +19,10 @@
     </div>
     <div class="header-actions">
       <a class="dashboard-link" href="/">Dashboard</a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch between light and dark">
+        <svg class="icon-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v2M12 19.5v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2.5 12h2M19.5 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
       <form method="post" action="/admin/logout"><button class="secondary">Sign out</button></form>
     </div>
   </header>
@@ -37,7 +42,7 @@
       <section id="overview" class="view active">
         <div class="view-heading"><span class="eyebrow">SYSTEM</span><h2>Overview</h2></div>
         <div class="grid">
-          <article><span>Serial adapter</span><strong id="port-state">Checking…</strong></article>
+          <article><span>Serial adapter</span><strong id="port-state">Checking…</strong><small class="muted-line" id="port-detail"></small></article>
           <article><span>Database</span><strong id="db-size">—</strong></article>
           <article><span>Free storage</span><strong id="disk-free">—</strong></article>
           <article><span>System uptime</span><strong id="uptime">—</strong></article>
@@ -59,7 +64,7 @@
           <div class="panel-head"><h2>Power &amp; performance</h2></div>
           <p>Eco mode switches the CPU governor to <code class="inline">powersave</code>. It only affects the Pi itself &mdash; nothing on the inverter changes.</p>
           <div class="actions">
-            <label class="switch-row"><span>Eco mode (CPU power saving)</span><label class="visibility-toggle"><input type="checkbox" id="eco-toggle"><i></i></label></label>
+            <div class="switch-row"><span id="eco-label">Eco mode (CPU power saving)</span><label class="visibility-toggle"><input type="checkbox" id="eco-toggle" aria-labelledby="eco-label"><i></i></label></div>
           </div>
           <p id="eco-result" class="muted"></p>
         </article>
@@ -100,19 +105,19 @@
 
       <section id="serial" class="view">
         <div class="view-heading"><span class="eyebrow">HARDWARE</span><h2>Serial diagnostics</h2></div>
-        <article class="panel"><p>Passive listening transmits nothing. Candidate probe sends only the protocol driver's allow-listed status query.</p><div class="actions"><button id="listen">Listen only</button><button id="probe" class="warning">Send status probe</button></div><pre id="serial-output">No diagnostic run in this session.</pre></article>
+        <article class="panel"><p>Listening transmits nothing. The status probe sends only the protocol's allow-listed status query. Both wait for the collector's poll to finish, so they never share the line with it.</p><div class="actions"><button id="listen">Listen only</button><button id="probe" class="warning">Send status probe</button></div><pre id="serial-output">No diagnostic run in this session.</pre></article>
       </section>
 
       <section id="inverter" class="view">
         <div class="view-heading"><span class="eyebrow">INVERTER</span><h2>Charger &amp; protection settings</h2></div>
 
         <article class="panel">
-          <div class="panel-head"><div><h2>Inverter writes</h2><p class="muted" id="inverter-write-state">Checking…</p></div><label class="visibility-toggle"><input type="checkbox" id="inverter-writes-toggle"><i></i></label></div>
+          <div class="panel-head"><div><h2>Inverter writes</h2><p class="muted" id="inverter-write-state">Checking…</p></div><label class="visibility-toggle"><input type="checkbox" id="inverter-writes-toggle" aria-label="Inverter writes"><i></i></label></div>
           <p>A write sends the inverter's own configuration block back with only the fields below changed, then reads it again and shows what the inverter actually holds. Nothing is reported as applied on the strength of having been sent, and every earlier snapshot can be written back.</p>
         </article>
 
         <article class="panel">
-          <div class="panel-head"><div><h2>Battery charging &amp; behaviour</h2><p class="muted" style="color:var(--amber)">Battery type must be set on the inverter's own panel (menu 05). The protocol bits believed to hold it were disproven on 2026-09-05 and are no longer writable here.</p><p class="muted" id="inverter-current-stamp">Waiting for a configuration snapshot…</p></div><div><button type="button" class="secondary" id="inverter-preset-odyssey">Odyssey AGM preset</button><button type="button" class="secondary" id="inverter-reload">Reload</button></div></div>
+          <div class="panel-head"><div><h2>Battery charging &amp; behaviour</h2><p class="muted" style="color:var(--amber)">Battery type can only be set on the inverter's own panel (menu 05): the serial protocol has no confirmed register for it. Custom charge voltages apply only while that menu reads User-defined.</p><p class="muted" id="inverter-current-stamp">Waiting for a configuration snapshot…</p></div><div><button type="button" class="secondary" id="inverter-preset-odyssey">Odyssey AGM preset</button><button type="button" class="secondary" id="inverter-reload">Reload</button></div></div>
           <form id="inverter-form" class="settings inverter-settings">
             <label>Maximum charge current<div><input name="maximum_charge_current_a" type="number" step="1" min="10" max="130" inputmode="decimal"><small>A · PV and grid combined</small></div></label>
             <label>Bulk / absorption voltage<div><input name="bulk_charge_voltage_v" type="number" step="0.1" min="24" max="29.2" inputmode="decimal"><small>V · only honoured with the User-defined type</small></div></label>
@@ -144,7 +149,7 @@
         </article>
 
         <article class="panel">
-          <div class="panel-head"><div><h2>Automatic application</h2><p class="muted">A proposal is applied without asking only when <em>every</em> field it touches is covered by this policy. Anything else waits for you.</p></div><label class="visibility-toggle"><input type="checkbox" id="auto-apply-toggle"><i></i></label></div>
+          <div class="panel-head"><div><h2>Automatic application</h2><p class="muted">A proposal is applied without asking only when <em>every</em> field it touches is covered by this policy. Anything else waits for you.</p></div><label class="visibility-toggle"><input type="checkbox" id="auto-apply-toggle" aria-label="Automatic application"><i></i></label></div>
           <form id="auto-apply-form" class="settings">
             <label>Policy<textarea name="policy" id="auto-apply-policy" rows="8" spellcheck="false" placeholder='{
   "bulk_charge_voltage_v": {"min": 28.0, "max": 29.2},
@@ -158,8 +163,8 @@
 
         <article class="panel">
           <div class="panel-head"><h2>Previous configurations</h2></div>
-          <p>Each snapshot is what the inverter reported at that moment. Restoring writes its charging, protection and boost values back.</p>
-          <div class="table-wrap"><table><thead><tr><th>Captured</th><th>Type</th><th>Bulk</th><th>Float</th><th>Cut-off</th><th>Low V</th><th>Boost</th><th></th></tr></thead><tbody id="inverter-snapshots"><tr><td colspan="8">Loading…</td></tr></tbody></table></div>
+          <p>One row for each configuration the inverter has held, from when it took effect. Restoring writes its charging, protection and boost values back.</p>
+          <div class="table-wrap"><table><thead><tr><th>In effect from</th><th>Bulk</th><th>Float</th><th>Cut-off</th><th>Low V</th><th>Boost</th><th></th></tr></thead><tbody id="inverter-snapshots"><tr><td colspan="7">Loading…</td></tr></tbody></table></div>
         </article>
       </section>
 

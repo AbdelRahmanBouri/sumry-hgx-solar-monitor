@@ -11,18 +11,18 @@ h1{margin-bottom:0;font-size:23px;line-height:1.1;letter-spacing:-.035em}
 h2{margin-bottom:10px;font-size:18px;letter-spacing:-.025em}
 .muted,article>span{color:var(--muted)}
 button,.button{min-height:38px;padding:0 14px;border:0;border-radius:9px;background:var(--green);color:#fff;font:inherit;font-size:12px;font-weight:750;text-decoration:none;cursor:pointer}
-.secondary{border:1px solid var(--line);background:#fff;color:var(--muted)}
+.secondary{border:1px solid var(--line);background:var(--panel);color:var(--muted)}
 .warning{background:var(--amber);color:#fff}
 .admin-header,.admin-main{width:min(1120px,calc(100% - 28px));margin:auto}
-.admin-header{min-height:78px;display:flex;align-items:center;justify-content:space-between;gap:14px;border-bottom:1px solid rgba(199,213,206,.65)}
+.admin-header{min-height:78px;display:flex;align-items:center;justify-content:space-between;gap:14px;border-bottom:1px solid var(--line)}
 .admin-brand{display:flex;align-items:center;gap:10px}
 .admin-mark{width:38px;height:38px;display:grid;place-items:center;border-radius:11px;background:var(--green-soft);color:var(--green)}
 .admin-mark svg{width:19px;height:19px}
 .header-actions{display:flex;align-items:center;gap:8px}
 .header-actions form{margin:0}
-.dashboard-link{min-height:38px;display:flex;align-items:center;padding:0 13px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--green);font-size:11px;font-weight:750;text-decoration:none}
+.dashboard-link{min-height:38px;display:flex;align-items:center;padding:0 13px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--green);font-size:11px;font-weight:750;text-decoration:none}
 .admin-main{display:grid;grid-template-columns:180px minmax(0,1fr);gap:18px;padding:22px 0 40px}
-.admin-main nav{height:max-content;position:sticky;top:16px;display:flex;flex-direction:column;gap:3px;padding:7px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.86);box-shadow:var(--shadow);backdrop-filter:blur(14px)}
+.admin-main nav{height:max-content;position:sticky;top:16px;display:flex;flex-direction:column;gap:3px;padding:7px;border:1px solid var(--line);border-radius:14px;background:color-mix(in srgb,var(--panel) 86%,transparent);box-shadow:var(--shadow);backdrop-filter:blur(14px)}
 .admin-main nav button{min-height:39px;text-align:left;border:0;background:transparent;color:var(--muted);padding:0 11px;border-radius:8px;font-size:11px;font-weight:650}
 .admin-main nav button.active{background:var(--green-soft);color:var(--green)}
 .view-stack{min-width:0}
@@ -30,16 +30,16 @@ button,.button{min-height:38px;padding:0 14px;border:0;border-radius:9px;backgro
 .view.active{display:block}
 .view-heading{margin:2px 2px 15px}
 .view-heading h2{margin:0;font-size:24px}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:10px}
 .grid article,.panel{padding:17px;border:1px solid var(--line);border-radius:15px;background:var(--panel);box-shadow:var(--shadow)}
 .grid article{min-height:104px}
 .grid article>span{font-size:10px;font-weight:650}
-.grid strong{display:block;margin-top:15px;font-size:18px;letter-spacing:-.025em}
+.grid strong{display:block;margin-top:15px;font-size:18px;letter-spacing:-.025em;overflow-wrap:anywhere}
 .panel{margin-bottom:10px}
 .panel p{color:var(--muted);font-size:12px}
 .badge{display:inline-block;padding:4px 7px;border-radius:99px;background:var(--amber-soft);color:var(--amber);font-size:10px;font-weight:750}
 .actions{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:14px 0}
-pre{min-height:100px;margin:12px 0 0;padding:13px;overflow:auto;border:1px solid var(--line);border-radius:9px;background:#f3f6f4;color:#42564d;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-all}
+pre{min-height:100px;margin:12px 0 0;padding:13px;overflow:auto;border:1px solid var(--line);border-radius:9px;background:var(--color-surface-sunken);color:var(--muted);font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-all}
 code.inline{padding:1px 5px;border-radius:5px;background:var(--soft);font:11px ui-monospace,SFMono-Regular,Menlo,monospace}
 .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .panel-head h2{margin:0}
@@ -56,12 +56,12 @@ label{display:grid;gap:5px;color:var(--muted);font-size:10px;font-weight:650}
    iOS Safari auto-zooming the page when a field gains focus. */
 input,select,textarea{width:100%;min-height:42px;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:var(--soft);color:var(--text);font-size:16px;font-family:inherit}
 input:focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:-1px}
-input:focus,select:focus,textarea:focus{border-color:#8fc6ae;box-shadow:0 0 0 3px rgba(8,125,85,.08)}
+input:focus,select:focus,textarea:focus{border-color:var(--color-green-soft-border);box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 12%,transparent)}
 textarea{resize:vertical}
 #settings-result,#pin-result{color:var(--green);font-size:11px}
 details{margin-top:14px}
 details summary{color:var(--green);font-size:11px;font-weight:700;cursor:pointer}
-.error{padding:10px;border:1px solid #edc4c2;border-radius:9px;background:var(--red-soft);color:var(--red);font-size:11px}
+.error{padding:10px;border:1px solid var(--color-red-soft-border);border-radius:9px;background:var(--red-soft);color:var(--red);font-size:11px}
 .divider{display:flex;align-items:center;gap:10px;margin:17px 0;color:var(--quiet);font-size:10px}
 .divider:before,.divider:after{content:"";height:1px;background:var(--line);flex:1}
 .pin-form input{font-size:22px;letter-spacing:.25em;text-align:center}
@@ -75,7 +75,7 @@ details summary{color:var(--green);font-size:11px;font-weight:700;cursor:pointer
 @media(max-width:760px){.inverter-settings{grid-template-columns:1fr}}
 
 .auth-page{min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 50% 15%,rgba(8,125,85,.09),transparent 24rem),var(--bg)}
-.auth-card{width:min(410px,100%);padding:25px;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:0 18px 50px rgba(25,56,44,.1)}
+.auth-card{width:min(410px,100%);padding:25px;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:var(--shadow-lg)}
 .auth-card:before{content:"";width:42px;height:42px;display:block;margin-bottom:17px;border-radius:12px;background:var(--green-soft) url('/static/solar-app-icon.svg') center/34px no-repeat}
 .auth-card form{display:grid;gap:12px;margin:20px 0}
 .auth-card a{color:var(--green);font-size:11px;font-weight:700}
@@ -83,10 +83,12 @@ details summary{color:var(--green);font-size:11px;font-weight:700;cursor:pointer
 @media(max-width:760px){
   body{padding-bottom:12px}
   .admin-header,.admin-main{width:min(100% - 20px,620px)}
-  .admin-header{min-height:calc(67px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);position:sticky;top:0;z-index:20;background:rgba(244,247,245,.93);backdrop-filter:blur(18px)}
+  .admin-header{min-height:calc(67px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 93%,transparent);backdrop-filter:blur(18px)}
   .admin-mark{width:34px;height:34px}
   h1{font-size:18px}
-  .dashboard-link{display:none}
+  .dashboard-link{min-height:34px;padding:0 10px}
+  .admin-brand h1,.header-actions button{white-space:nowrap}
+  .header-actions{gap:6px}
   .header-actions button{min-height:34px;padding-inline:10px}
   .admin-main{display:block;padding-top:10px}
   .admin-main nav{position:sticky;top:calc(67px + env(safe-area-inset-top));z-index:19;flex-direction:row;overflow-x:auto;margin:0 -10px 15px;padding:6px 10px;border-width:1px 0;border-radius:0;box-shadow:0 5px 15px rgba(25,56,44,.04);scrollbar-width:none}
@@ -103,5 +105,20 @@ details summary{color:var(--green);font-size:11px;font-weight:700;cursor:pointer
   th,td{min-width:90px}
 }
 @media(max-width:380px){.grid{grid-template-columns:1fr}.grid article{min-height:75px}}
+@media(max-width:420px){.admin-mark,.admin-brand .eyebrow{display:none}}
 .link-grid article{min-height:0}
-.link-grid strong{margin-top:8px;font-size:15px;overflow-wrap:anywhere}
+.link-grid strong{margin-top:8px;font-size:15px}
+.header-actions .theme-toggle{min-height:0;border-radius:9px}
+.header-actions .theme-toggle svg{width:16px;height:16px}
+/* Switches. The form rules above size every input as a text field, which
+   drew each switch as a large empty box; these put the switch back. */
+.visibility-toggle{position:relative;display:block;width:40px;height:24px;flex:0 0 auto}
+.visibility-toggle input{position:absolute;inset:0;width:100%;height:100%;min-height:0;margin:0;padding:0;opacity:0;cursor:pointer}
+.visibility-toggle i{position:absolute;inset:0;border-radius:99px;background:var(--line-strong);transition:background .2s;pointer-events:none}
+.visibility-toggle i::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--panel);box-shadow:0 1px 4px rgba(0,0,0,.16);transition:transform .2s}
+.visibility-toggle input:checked+i{background:var(--green)}
+.visibility-toggle input:checked+i::after{transform:translateX(16px)}
+.visibility-toggle input:focus-visible+i{outline:2px solid var(--color-focus);outline-offset:2px}
+.visibility-toggle input:disabled+i{opacity:.45}
+.grid .muted-line{display:block;margin-top:6px;color:var(--quiet);font-size:11px;font-weight:600}
+@media(prefers-reduced-motion:reduce){.visibility-toggle i,.visibility-toggle i::after{transition:none}}

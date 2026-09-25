@@ -233,11 +233,22 @@ class Database:
             return None
         return {"captured_at": row["captured_at"], "settings": json.loads(row["config_json"])}
 
-    def inverter_config_snapshots(self, limit: int = 20) -> list[dict[str, Any]]:
+    def inverter_config_changes(self, limit: int = 30) -> list[dict[str, Any]]:
+        """One snapshot per configuration the inverter has held, newest first:
+        the first snapshot of each run of identical ones, i.e. when that
+        configuration took effect. The collector snapshots the block every
+        few minutes, so the last thirty snapshots are usually thirty copies
+        of one configuration -- no use as a list of points to restore."""
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT id, captured_at, config_json FROM inverter_config_snapshots "
-                "ORDER BY captured_at DESC LIMIT ?", (limit,)
+                "WITH ordered AS ("
+                " SELECT id, captured_at, config_json,"
+                " LAG(config_json) OVER (ORDER BY captured_at) AS previous"
+                " FROM inverter_config_snapshots"
+                ") SELECT id, captured_at, config_json FROM ordered"
+                " WHERE previous IS NULL OR previous <> config_json"
+                " ORDER BY captured_at DESC LIMIT ?",
+                (limit,),
             ).fetchall()
         return [
             {"id": row["id"], "captured_at": row["captured_at"], "settings": json.loads(row["config_json"])}
