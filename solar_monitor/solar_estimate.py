@@ -11,6 +11,7 @@ stays a stdlib-only module.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
@@ -58,6 +59,17 @@ class _Forecast:
 
 
 _weather_cache: dict[str, _Forecast] = {}
+
+# Where cloud cover comes from when it is not Open-Meteo. The simulator sets
+# this so a demo's potential line and its readings share one sky.
+_weather_override: tuple[str, Callable[[float, float], dict[str, float] | None]] | None = None
+
+
+def use_weather(name: str | None, source: Callable[[float, float], dict[str, float] | None] | None = None) -> None:
+    """Take cloud cover from `source` instead of Open-Meteo, reported to the
+    pages as `name`. With no source, Open-Meteo again."""
+    global _weather_override
+    _weather_override = (name, source) if name and source else None
 
 
 def solar_position(lat_deg: float, lon_deg: float, when: datetime) -> tuple[float, float]:
@@ -237,6 +249,8 @@ def fetch_cloud_cover(lat: float, lon: float, *, force: bool = False) -> dict[st
     Before that back-off, a dead link was retried by every caller, and one
     /api/estimate request asks four times.
     """
+    if _weather_override is not None:
+        return _weather_override[1](lat, lon)
     entry = _weather_cache.setdefault(_cache_key(lat, lon), _Forecast())
     now = time.monotonic()
     if not force:
@@ -434,11 +448,13 @@ def estimate_series(
     `learn_efficiency` -- when given, and otherwise from the flat
     `performance_ratio`.
 
-    Returns (points, weather_source) where weather_source is "open-meteo"
-    when live cloud data was used, otherwise "clear-sky-only".
+    Returns (points, weather_source) where weather_source names where the
+    cloud cover came from ("open-meteo", or "simulated" in the demo), or is
+    "clear-sky-only" when there was none.
     """
     cloud_by_hour = fetch_cloud_cover(lat, lon)
-    weather_source = "open-meteo" if cloud_by_hour else "clear-sky-only"
+    source_name = _weather_override[0] if _weather_override is not None else "open-meteo"
+    weather_source = source_name if cloud_by_hour else "clear-sky-only"
     now = datetime.now(UTC)
     geometry = {
         "tilt_degrees": tilt_degrees, "azimuth_degrees": azimuth_degrees,

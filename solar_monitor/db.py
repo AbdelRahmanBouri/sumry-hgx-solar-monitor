@@ -203,12 +203,18 @@ class Database:
             )
 
     def save_sample(self, captured_at: str, metrics: dict[str, Any]) -> None:
-        values = {key: value for key, value in metrics.items() if key in SAMPLE_METRIC_COLUMNS}
-        values["captured_at"] = captured_at
-        columns = ", ".join(values)
-        placeholders = ", ".join(f":{key}" for key in values)
+        self.save_samples([(captured_at, metrics)])
+
+    def save_samples(self, readings: list[tuple[str, dict[str, Any]]]) -> None:
+        """Store (captured_at, metrics) pairs in one transaction. Only the
+        allow-listed metric columns are written."""
         with self.connect() as connection:
-            connection.execute(f"INSERT INTO samples ({columns}) VALUES ({placeholders})", values)
+            for captured_at, metrics in readings:
+                values = {key: value for key, value in metrics.items() if key in SAMPLE_METRIC_COLUMNS}
+                values["captured_at"] = captured_at
+                columns = ", ".join(values)
+                placeholders = ", ".join(f":{key}" for key in values)
+                connection.execute(f"INSERT INTO samples ({columns}) VALUES ({placeholders})", values)
 
     def save_inverter_config(self, captured_at: str, settings: dict[str, Any]) -> None:
         with self.connect() as connection:

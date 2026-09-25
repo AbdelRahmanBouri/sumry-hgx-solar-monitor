@@ -92,7 +92,10 @@ Settings changed in the admin portal (polling rate, retention, chart point cap, 
 .venv/bin/python run.py --config config.toml          # serves with waitress
 .venv/bin/python run.py --config config.toml --dev    # Flask's development server
 .venv/bin/python run.py --no-collector                # web UI only, no serial polling
+.venv/bin/python run.py --demo                        # no hardware: a simulated inverter
 ```
+
+`--demo` runs everything against a simulated HGX reached through a pyserial `sim://` port, with a week of generated history, at `http://127.0.0.1:5000`. The admin portal login is `demo` / `demo-password`.
 
 Open `http://solar-monitor.local:5000`, or `http://solar-monitor.local` behind nginx. On first run visit `/admin/setup?token=...` with the token from the `setup-token` file next to the database to create the admin account.
 

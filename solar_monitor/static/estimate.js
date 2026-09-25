@@ -616,9 +616,10 @@ async function refresh() {
     const configured = Boolean(state.estimate.configured);
     $('#estimator-offline').hidden = configured;
     $('#model-notice').hidden = !configured;
+    const weatherLabels = {'open-meteo': 'Open-Meteo weather', simulated: 'Simulated weather'};
     $('#weather-source').textContent = !configured
       ? 'Estimate not configured'
-      : state.estimate.weather_source === 'open-meteo' ? 'Open-Meteo weather' : 'Clear-sky fallback';
+      : weatherLabels[state.estimate.weather_source] || 'Clear-sky fallback';
     const rows = mergedHistory();
     updateNow(rows);
     drawPotentialChart();

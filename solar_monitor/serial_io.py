@@ -11,6 +11,11 @@ import serial
 
 from .protocols.base import Protocol, Query
 
+# Lets a port named `sim://` open the simulated inverter; see
+# solar_monitor/serial_handlers. Every other name opens a real device.
+if "solar_monitor.serial_handlers" not in serial.protocol_handler_packages:
+    serial.protocol_handler_packages.append("solar_monitor.serial_handlers")
+
 
 @dataclass(frozen=True)
 class Exchange:
@@ -97,8 +102,8 @@ def _transact(
     started = time.monotonic()
     timestamp = datetime.now(UTC).isoformat()
     try:
-        with serial.Serial(
-            port=port,
+        with serial.serial_for_url(
+            port,
             baudrate=baudrate,
             bytesize=serial.EIGHTBITS,
             parity=serial.PARITY_NONE,
@@ -127,7 +132,7 @@ def _transact(
                 timestamp, port, baudrate, name, frame, response,
                 round((time.monotonic() - started) * 1000),
             )
-    except (serial.SerialException, OSError) as exc:
+    except (serial.SerialException, OSError, ValueError) as exc:
         return Exchange(
             timestamp, port, baudrate, name, frame, b"",
             round((time.monotonic() - started) * 1000), str(exc),
