@@ -66,6 +66,12 @@
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+/* The hidden attribute always wins. Any rule that sets display -- a flex
+   row, a grid cell -- otherwise overrides it silently, which is how the
+   utility reading stayed on screen, reading "—", at every installation
+   without a grid connection. */
+[hidden] { display: none !important; }
+
 /* A visible, consistent keyboard-focus indicator. Both stylesheets set
    outline:none on a few custom-styled inputs; this is what replaces it. */
 :focus-visible {
