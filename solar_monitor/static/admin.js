@@ -402,7 +402,7 @@ async function loadInverter() {
       : data.writes_enabled ? 'Writes are on. Changes below go to the inverter after review.' : 'Writes are off. Switch on to enable the form below.';
     $('#writes-badge').textContent = `Inverter writes: ${data.writes_enabled ? 'on' : 'off'}`;
     $('#inverter-form').querySelectorAll('input,select,button').forEach(el => { el.disabled = !data.writes_enabled || !data.collector_available; });
-    $('#inverter-preset-odyssey').disabled = !data.writes_enabled;
+    $('#inverter-preset-agm').disabled = !data.writes_enabled;
     if (inverterState.current) {
       fillInverterForm(inverterState.current);
       $('#inverter-current-stamp').textContent = `Inverter reported these at ${formatTimestamp(data.current.captured_at)}.`;
@@ -431,14 +431,15 @@ $('#inverter-writes-toggle').addEventListener('change', async event => {
 
 $('#inverter-reload').onclick = () => { $('#inverter-review').hidden = true; loadInverter(); };
 
-// Odyssey ODX-AGM31 at room temperature: 14.6 V/12 V absorption (the menu's
-// 29.2 V ceiling), 13.6 V float, absorption held until 2 A, and a 22 V floor.
-$('#inverter-preset-odyssey').onclick = () => {
+// A common 24 V AGM profile at room temperature: 14.6 V/12 V absorption (the
+// menu's 29.2 V ceiling), 13.6 V float and absorption held until 2 A. The floor
+// is 11.5 V/12 V: 11.0 V, the menu's lowest, is a near-total discharge.
+$('#inverter-preset-agm').onclick = () => {
   const set = (name, value) => { const f = $(`#inverter-form [name="${name}"]`); if (f) f.value = String(value); };
   set('bulk_charge_voltage_v', 29.2);
   set('float_charge_voltage_v', 27.2);
   set('charge_cutoff_current_a', 2);
-  set('low_battery_cutoff_v', 22.0);
+  set('low_battery_cutoff_v', 23.0);
   set('overload_auto_restart', 'true');
   $('#inverter-result').textContent = 'Preset filled in — nothing is written until you review and confirm.';
 };
