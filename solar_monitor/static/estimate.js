@@ -324,15 +324,20 @@ function updateNow(rows) {
   const today = prepareOpportunity(rows);
   const capturedEnergy = integrate(today, 'pv_watts');
   const unusedEnergy = integrate(today, 'opportunity_high_watts');
-  $('#captured-energy').textContent = kwh(capturedEnergy);
-  $('#unused-energy').textContent = kwh(unusedEnergy);
   $('#opportunity-total').textContent = kwh(unusedEnergy);
-  const total = capturedEnergy + unusedEnergy;
-  const capturedShare = total ? (capturedEnergy / total) * 100 : 100;
-  $('#captured-share').style.width = `${capturedShare}%`;
-  $('#unused-share').style.width = `${100 - capturedShare}%`;
+  $('#energy-summary').textContent = energySummary(capturedEnergy, unusedEnergy);
 
   if (!$('#available-solar').dataset.touched) useLiveValues();
+}
+
+// One sentence instead of a captured/unused split bar: the unused share is
+// usually zero or a sliver, so the bar read as a solid green progress meter.
+function energySummary(captured, unused) {
+  if (captured + unused <= 0) return 'No solar recorded yet today.';
+  if (unused <= 0) return `No high-confidence losses today · ${kwh(captured)} captured.`;
+  const percent = (unused / (captured + unused)) * 100;
+  const share = percent < 1 ? 'under 1%' : `${Math.round(percent)}%`;
+  return `≈ ${kwh(unused)} lost — ${share} of the ${kwh(captured + unused)} available today (${kwh(captured)} captured).`;
 }
 
 function canvasSetup(canvas) {

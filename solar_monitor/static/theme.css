@@ -76,7 +76,7 @@
 
 /* Cards clip their content, so a ring drawn outside a control at the card's
    edge gets sliced. Inside those, draw it inward instead. */
-:where(.summary-card, .trend-card, .intro-panel, .spec-grid, .energy-bar) :focus-visible {
+:where(.summary-card, .trend-card, .intro-panel, .spec-grid) :focus-visible {
   outline-offset: -2px;
 }
 

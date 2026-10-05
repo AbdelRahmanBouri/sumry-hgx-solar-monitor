@@ -10,9 +10,9 @@
   <meta name="description" content="Forecast and uncaptured solar estimates for the SUMRY solar system">
   <title>Solar Potential</title>
   <link rel="icon" href="/static/solar-app-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/theme.css?v=4">
+  <link rel="stylesheet" href="/static/theme.css?v=5">
   <script src="/static/theme.js?v=1"></script>
-  <link rel="stylesheet" href="/static/estimate.css?v=14">
+  <link rel="stylesheet" href="/static/estimate.css?v=15">
 </head>
 <body>
   <header class="potential-bar">
@@ -87,10 +87,7 @@
         <canvas id="opportunity-chart" aria-label="Hourly possible uncaptured solar energy"></canvas>
         <div class="chart-empty" id="opportunity-empty" hidden>No high-confidence opportunity detected yet.</div>
       </div>
-      <div class="energy-breakdown">
-        <div class="energy-bar" aria-hidden="true"><i id="captured-share"></i><b id="unused-share"></b></div>
-        <div><span><i class="captured-key"></i>Captured today<strong id="captured-energy">— kWh</strong></span><span><i class="unused-key"></i>Possible unused<strong id="unused-energy">— kWh</strong></span></div>
-      </div>
+      <p class="energy-summary" id="energy-summary">Totalling today’s solar…</p>
     </section>
 
     <section class="losses-panel panel" id="recoverable" hidden>
@@ -183,6 +180,6 @@
   </nav>
 
   <script src="/static/chart-core.js?v=2"></script>
-  <script src="/static/estimate.js?v=12"></script>
+  <script src="/static/estimate.js?v=13"></script>
 </body>
 </html>

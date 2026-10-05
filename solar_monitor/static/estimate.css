@@ -99,12 +99,11 @@ h2 { font-size: 20px; line-height: 1.1; letter-spacing: -.035em; }
 .range-tabs button { min-width: 42px; min-height: 34px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--quiet); font-size: 11.5px; font-weight: 800; cursor: pointer; }
 .range-tabs button.active { background: var(--color-surface); color: var(--green); box-shadow: 0 3px 9px rgba(19,33,28,.08); }
 .legend { display: flex; flex-wrap: wrap; gap: 15px; margin: 15px 0 2px; color: var(--muted); font-size: 11.5px; font-weight: 700; }
-.legend span, .energy-breakdown span { display: flex; align-items: center; gap: 6px; }
-.legend i, .energy-breakdown i { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; }
+.legend span { display: flex; align-items: center; gap: 6px; }
+.legend i { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; }
 .captured-key { background: var(--green); }
 .potential-key { border: 2px solid var(--amber); background: var(--color-surface); }
 .future-key { width: 16px !important; height: 0 !important; border-top: 2px dashed var(--amber); border-radius: 0 !important; }
-.unused-key { background: var(--amber); }
 .chart-shell { height: 264px; position: relative; margin-top: 3px; touch-action: pan-y; }
 #potential-chart, #opportunity-chart { width: 100%; height: 100%; display: block; }
 /* The inspected reading sits above the plot rather than floating over the
@@ -126,13 +125,10 @@ h2 { font-size: 20px; line-height: 1.1; letter-spacing: -.035em; }
 .section-note { margin-top: 8px; color: var(--muted); font-size: 11.5px; }
 .opportunity-total { color: var(--amber); font-size: 20px; letter-spacing: -.04em; white-space: nowrap; }
 .hourly-shell { height: 150px; position: relative; margin-top: 12px; }
-.energy-breakdown { margin-top: 11px; padding-top: 12px; border-top: 1px solid var(--border); }
-.energy-bar, .result-meter { height: 9px; display: flex; overflow: hidden; border-radius: 99px; background: var(--color-surface-sunken); }
-.energy-bar i, .result-meter i { display: block; width: 100%; background: linear-gradient(90deg, var(--green-2), var(--green)); }
-.energy-bar b, .result-meter b { display: block; width: 0; background: var(--amber); }
-.energy-breakdown > div:last-child { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 9px; }
-.energy-breakdown span { color: var(--muted); font-size: 10.5px; }
-.energy-breakdown strong { margin-left: auto; color: var(--ink); font-size: 12px; }
+.energy-summary { margin-top: 11px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.result-meter { height: 9px; display: flex; overflow: hidden; border-radius: 99px; background: var(--color-surface-sunken); }
+.result-meter i { display: block; width: 100%; background: linear-gradient(90deg, var(--green-2), var(--green)); }
+.result-meter b { display: block; width: 0; background: var(--amber); }
 
 .live-preset { min-height: 38px; padding: 0 13px; border: 1px solid var(--border-strong); border-radius: 11px; background: var(--color-surface); color: var(--green); font-size: 11.5px; font-weight: 800; cursor: pointer; }
 .calculator-layout { display: grid; gap: 16px; margin-top: 17px; }
