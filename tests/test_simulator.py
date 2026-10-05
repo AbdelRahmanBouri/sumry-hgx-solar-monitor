@@ -40,7 +40,10 @@ class SimulatedInverterTests(unittest.TestCase):
 
     def test_the_sun_shines_at_noon_and_not_at_midnight(self):
         noon = self.decode(NOON)
-        self.assertGreater(noon["pv_watts"], 500)
+        # A full bank curtails the panels to the load, so the sun is shown by
+        # carrying the house, not by any fixed wattage.
+        self.assertGreater(noon["pv_watts"], 300)
+        self.assertGreater(noon["pv_watts"], noon["ac_load_watts"])
         midnight = self.decode(MIDNIGHT)
         self.assertEqual(midnight["pv_watts"], 0)
         self.assertLess(midnight["battery_current"], 0, "the bank carries the night")

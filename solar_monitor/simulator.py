@@ -13,7 +13,8 @@ The model is small but physical rather than a recording:
   for the demo site, dimmed by weather seeded per calendar day -- every day
   differs, and the same day always looks the same.
 * The household draws a base load, a fridge that cycles, lights in the
-  evening and a few short heavy appliances.
+  evening, a few short heavy appliances, and on hot clear days a
+  variable-speed air conditioner through the afternoon.
 * The bank is 24 V lead-acid with an open-circuit voltage curve, charge
   polarisation, and a three-stage charger (bulk, absorption, float) that
   follows the configuration block. When the bank is full the charger stops
@@ -247,8 +248,12 @@ class SimulatedInverter:
         elif 6 * 60 + 30 <= minute < 8 * 60:          # the morning
             watts += 90.0
         day = self._day(local.date())
-        if day.cooling and 11 * 60 + 30 <= minute < 17 * 60 and (seconds / 60) % 35 < 25:
-            watts += 650.0                             # air conditioner, cycling
+        if day.cooling and 11 * 60 + 30 <= minute < 17 * 60:
+            # A variable-speed mini-split, the usual choice off grid: it
+            # modulates with the afternoon's heat rather than cycling a
+            # fixed compressor, so it peaks mid-afternoon and never steps.
+            heat = math.sin(math.pi * (minute - 11 * 60 - 30) / (5.5 * 60))
+            watts += 220.0 + 430.0 * heat
         for start, length, extra in day.events:
             if start <= minute < start + length and (extra < 1000 or self._soc > 35):
                 watts += extra
