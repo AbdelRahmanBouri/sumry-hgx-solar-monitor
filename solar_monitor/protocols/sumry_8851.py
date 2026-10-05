@@ -31,7 +31,8 @@ _CONFIG_DATA_LENGTH = 94
 # listed below, within their ranges. Everything else goes back byte for byte.
 #
 # Ranges are the 24 V limits of the inverter's own menu (confirmed by the
-# community 8851 integration); values it would refuse are refused here first.
+# community 8851 map, include/inv8851.h in github.com/leodesigner/powmr4500_comm);
+# values it would refuse are refused here first.
 
 
 @dataclass(frozen=True)

@@ -74,7 +74,7 @@ Writes are whole-block rewrites because the inverter has no per-register write: 
 
 Some choices a reviewer may want to find quickly:
 
-- **The register map is treated as a claim, not a fact.** Three labels in the community map turned out to be wrong for this firmware, and each was disproven against data: offset 76 read 0.00 across 4,489 frames while mains carried the house; the "battery type" bits decoded User-defined while the front panel read AGM; register 82 held 4 where the map promised a boolean. [docs/decisions.md](docs/decisions.md) records each rule the code follows and the evidence behind it, including a full front-panel dump that the decoder matches field for field.
+- **The register map is treated as a claim, not a fact.** The decoder started from the community register map, [`inv8851.h`](https://github.com/leodesigner/powmr4500_comm/blob/main/include/inv8851.h) from leodesigner's [powmr4500_comm](https://github.com/leodesigner/powmr4500_comm), which lufton's [esphome-inv-8851](https://github.com/lufton/esphome-inv-8851) also builds on. Three of its labels turned out to be wrong for this firmware, and each was disproven against data: offset 76 read 0.00 across 4,489 frames while mains carried the house; the "battery type" bits decoded User-defined while the front panel read AGM; register 82 held 4 where the map promised a boolean. [docs/decisions.md](docs/decisions.md) records each rule the code follows and the evidence behind it, including a full front-panel dump that the decoder matches field for field.
 - **Retention is decided by a flag, not by searching prose.** Raw frames used to be classified by substrings of their decode notes. Every good frame's note contained "fault" or "not decoded", so no routine frame was ever pruned, while the raw frames of all six configuration writes were. `tests/test_retention.py` uses the decoder's real notes so that cannot pass again.
 - **The simulator is a pyserial URL handler** (`solar_monitor/serial_handlers/protocol_sim.py`). The tests run the real collector, transport and write path against it, and it encodes frames through the decoder's own layout table, so the two cannot drift apart.
 - **No bundler, and static checks stand in for a browser.** The Pi has no JavaScript engine, so the suite checks that every template supplies the DOM ids its script needs, that scripts balance their brackets and load in order, and, when Node.js is present, parses them with V8 and runs the charting unit tests. `tools/screenshot.py` drives headless Chromium over the DevTools protocol (standard library only) to render every page and report page errors.
@@ -248,6 +248,10 @@ docs/decisions.md                        why the code is the way it is, with the
 - Utility current is not in the frame. The utility watts and amps shown are derived from the power balance and are a lower bound, not a metered reading.
 - Battery type can be neither read nor written over the protocol; it is set on the inverter's own panel.
 - The models were calibrated on one installation: a 24 V AGM bank, a 2.64 kW array split across a gable roof, a desert site. The chemistry curve, anchor thresholds and ground albedo are constants in the code, and the voltage thresholds assume a 24 V bank.
+
+## Acknowledgements
+
+The 0x8851 protocol was reverse-engineered by others first. The frame layouts this decoder started from are leodesigner's [powmr4500_comm](https://github.com/leodesigner/powmr4500_comm) register map (`include/inv8851.h`), with protocol notes from lufton's [esphome-inv-8851](https://github.com/lufton/esphome-inv-8851). This project re-implements the decoding in Python and checks each field against this inverter's panel; where the two disagree, [docs/decisions.md](docs/decisions.md) has the evidence.
 
 ## License
 
