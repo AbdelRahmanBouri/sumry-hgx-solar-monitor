@@ -28,6 +28,8 @@ from .serial_io import Exchange, discover_usb_serial_ports, exchange
 
 LOG = logging.getLogger(__name__)
 MANUAL_REFRESH_COOLDOWN_SECONDS = 5.0
+PASSWORD_ATTEMPTS = 5
+PASSWORD_LOCKOUT_SECONDS = 15 * 60
 FORECAST_PREVIEW = timedelta(hours=6)
 
 
@@ -509,6 +511,29 @@ def create_app(
                 return redirect(url_for("admin_home"))
         return render_template("admin_setup.html", token=supplied, error=error)
 
+    # Password guesses per account. The PIN locks for good after three
+    # failures because the password stays as the way back in; the password
+    # has no way back, so it locks for a while instead: long enough to make
+    # guessing hopeless, short enough that the only admin is never shut out.
+    # Past the limit every further wrong password locks it again, so after
+    # the first lock a guesser gets one try per lock; a correct password
+    # clears the count. Held in memory, so a restart clears it -- and restarting the service
+    # already takes access an attacker would not be guessing for.
+    password_failures: dict[str, tuple[int, float]] = {}
+
+    def password_locked_for(username: str) -> float:
+        failures, locked_until = password_failures.get(username, (0, 0.0))
+        return max(0.0, locked_until - time.monotonic()) if failures >= PASSWORD_ATTEMPTS else 0.0
+
+    def record_password_failure(username: str) -> None:
+        failures, _ = password_failures.get(username, (0, 0.0))
+        failures += 1
+        locked_until = time.monotonic() + PASSWORD_LOCKOUT_SECONDS if failures >= PASSWORD_ATTEMPTS else 0.0
+        password_failures[username] = (failures, locked_until)
+        if failures == PASSWORD_ATTEMPTS:
+            database.audit(now(), username, "auth.locked",
+                           f"{failures} wrong passwords; locked for {PASSWORD_LOCKOUT_SECONDS // 60} minutes")
+
     @app.route("/admin/login", methods=["GET", "POST"])
     def admin_login():
         if not database.admin_count():
@@ -518,7 +543,14 @@ def create_app(
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
             user = database.admin_by_username(username)
-            if user and check_password_hash(user["password_hash"], password):
+            wait = password_locked_for(username) if user else 0.0
+            if wait:
+                # Refused before the hash is checked, so a locked account
+                # cannot be probed for its password at all.
+                minutes = max(1, round(wait / 60))
+                error = f"Too many wrong passwords. Try again in {minutes} minute{'s' if minutes != 1 else ''}."
+            elif user and check_password_hash(user["password_hash"], password):
+                password_failures.pop(username, None)
                 session.clear()
                 session["admin_user"] = username
                 session["auth_method"] = "password"
@@ -528,8 +560,11 @@ def create_app(
                 audit("auth.login")
                 target = request.args.get("next", "")
                 return redirect(target if target.startswith("/admin") else url_for("admin_home"))
-            database.audit(now(), username or None, "auth.failed", request.remote_addr or "")
-            error = "Incorrect username or password."
+            else:
+                database.audit(now(), username or None, "auth.failed", request.remote_addr or "")
+                if user:
+                    record_password_failure(username)
+                error = "Incorrect username or password."
         pin_admin = database.pin_admin()
         return render_template(
             "admin_login.html", error=error,

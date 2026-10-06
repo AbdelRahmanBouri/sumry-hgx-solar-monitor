@@ -1,9 +1,11 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
+from solar_monitor import web
 from solar_monitor.config import SiteConfig
 from solar_monitor.db import Database
 from solar_monitor.web import create_app
@@ -246,6 +248,30 @@ class WebTests(unittest.TestCase):
                   "confirmation": "correct-horse-1"},
         )
         self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.client.get("/api/admin/overview").status_code, 200)
+
+    def test_wrong_passwords_lock_the_account_for_a_while(self):
+        token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
+        self.client.post(f"/admin/setup?token={token}", data={
+            "token": token, "username": "admin", "password": "correct-horse-1",
+            "confirmation": "correct-horse-1"})
+        self.client.post("/admin/logout")
+
+        def login(password):
+            return self.client.post("/admin/login", data={"username": "admin", "password": password})
+
+        for _ in range(web.PASSWORD_ATTEMPTS):
+            self.assertIn(b"Incorrect username or password", login("wrong").data)
+        # Locked: even the right password is refused, without being checked.
+        refused = login("correct-horse-1")
+        self.assertEqual(refused.status_code, 200)
+        self.assertIn(b"Too many wrong passwords", refused.data)
+        self.assertEqual(self.client.get("/api/admin/overview").status_code, 401)
+        self.assertIn("auth.locked", [event["action"] for event in self.db.recent_audit(20)])
+        # The lock expires on its own, and the right password then works.
+        later = time.monotonic() + web.PASSWORD_LOCKOUT_SECONDS + 1
+        with patch.object(web.time, "monotonic", return_value=later):
+            self.assertEqual(login("correct-horse-1").status_code, 302)
         self.assertEqual(self.client.get("/api/admin/overview").status_code, 200)
 
     def test_setup_rejects_bad_token(self):
