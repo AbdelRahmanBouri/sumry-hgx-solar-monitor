@@ -428,7 +428,7 @@ function renderConfig() {
     return;
   }
   note.textContent = `Captured ${relativeTime(config.captured_at)} · ${
-    latestPayload?.writes_enabled === true ? 'writable from the admin portal' : 'read-only, never written back to the inverter'}`;
+    latestPayload?.writes_enabled === true ? 'writable from the admin portal' : 'read-only: writes are switched off'}`;
   // Status refreshes every few seconds but the block changes every few
   // minutes; rebuilding it each time would snap "More settings" shut.
   if (renderedConfigAt === config.captured_at) return;
@@ -1898,8 +1898,12 @@ async function refreshPeriodTotals() {
     set('#solar-30d', kwh(daily, 'pv_kwh'));
     set('#load-30d', kwh(daily, 'load_kwh'));
     if (daily.length) {
-      document.querySelector('#period-note').textContent =
-        `${withData(last7)} of 7 and ${withData(daily)} of 30 days with data · a day without readings counts as zero`;
+      const week = withData(last7), month = withData(daily);
+      const ofLast = (count, total) => (count === total ? `all of the last ${total}` : `${count} of the last ${total}`);
+      document.querySelector('#period-note').textContent = week === last7.length && month === daily.length
+        ? "Summed from every day's readings."
+        : `Readings on ${ofLast(week, last7.length)} days and ${ofLast(month, daily.length)}. `
+          + 'The totals cover only those days.';
     }
   } catch (_) {
     // leave placeholders

@@ -43,7 +43,12 @@ pre{min-height:100px;margin:12px 0 0;padding:13px;overflow:auto;border:1px solid
 code.inline{padding:1px 5px;border-radius:5px;background:var(--soft);font:11px ui-monospace,SFMono-Regular,Menlo,monospace}
 .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .panel-head h2{margin:0}
-.panel-head>div{display:flex;flex-wrap:wrap;gap:6px}
+/* A header is a title block (heading over its description) and, after it, a
+   row of controls. Only the controls are a flex row. */
+.panel-head>div:first-child{display:block}
+.panel-head>div:first-child p{margin:4px 0 0}
+.panel-head>div:not(:first-child){display:flex;flex-wrap:wrap;gap:6px;flex:0 0 auto}
+.panel-head>div:not(:first-child)>*{white-space:nowrap}
 .panel-head .button{min-height:34px;display:flex;align-items:center;font-size:10px}
 .switch-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;font-size:12px;font-weight:650;color:var(--text)}
 .table-wrap{overflow:auto}
@@ -101,7 +106,7 @@ details summary{color:var(--green);font-size:11px;font-weight:700;cursor:pointer
   .grid strong{margin-top:11px;font-size:15px}
   .panel{padding:15px;border-radius:14px}
   .panel-head{display:block}
-  .panel-head>div{margin-top:10px}
+  .panel-head>div:not(:first-child){margin-top:10px}
   th,td{min-width:90px}
 }
 @media(max-width:380px){.grid{grid-template-columns:1fr}.grid article{min-height:75px}}
