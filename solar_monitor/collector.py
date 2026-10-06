@@ -231,14 +231,26 @@ class Collector:
             outcomes.append({"id": request["id"], "status": status, "result": result})
         return outcomes
 
-    def _timestamp_is_trustworthy(self, timestamp: str) -> bool:
+    def _clock_synced(self) -> bool:
+        """Whether timesyncd has set the clock, or the check is switched off
+        (a Pi with an RTC, see SerialConfig). Once set, the flag stays for
+        the rest of the boot."""
+        return not (self.config.require_clock_sync and _SYNC_FLAG.parent.exists() and not _SYNC_FLAG.exists())
+
+    def _timestamp_is_trustworthy(self, timestamp: str, synced_when_stamped: bool) -> bool:
         """A Raspberry Pi has no RTC: on a cold boot it restores a stale clock
         until NTP syncs. On 2026-09-05 that put two real readings nearly ten
         hours in the past, showing 599 W of sun at midnight. Two cheap guards:
         the system's own sync flag, and never accepting a reading stamped
         before one already stored. The first can be switched off for a Pi
-        with an RTC (see SerialConfig); the second always applies."""
-        if self.config.require_clock_sync and _SYNC_FLAG.parent.exists() and not _SYNC_FLAG.exists():
+        with an RTC (see SerialConfig); the second always applies.
+
+        The flag must have been up before the reading was stamped, not merely
+        by the time it is checked: an exchange takes ~1.6 s, and on
+        2026-10-06 one that began just before NTP stepped the clock 15 h 44 m
+        forward was checked just after, and stored this morning's 543 W of
+        sun at 19:20 the night before."""
+        if not (synced_when_stamped and self._clock_synced()):
             return False
         if self._newest_stored is None:
             latest = getattr(self.database, "latest_sample", lambda: None)()
@@ -271,12 +283,14 @@ class Collector:
         return result
 
     def _collect_query(self, port, query) -> bool:
+        # Read before the exchange stamps its timestamp; see _timestamp_is_trustworthy.
+        synced_when_stamped = self._clock_synced()
         result = exchange(
             port, self.config.baudrate, self.config.timeout_seconds, self.protocol, query
         )
         decoded = self.protocol.decode(result.response)
         self._save_frame(result, decoded)
-        if decoded.metrics and not self._timestamp_is_trustworthy(result.timestamp):
+        if decoded.metrics and not self._timestamp_is_trustworthy(result.timestamp, synced_when_stamped):
             LOG.warning(
                 "Discarding a reading stamped %s: the clock is not yet trustworthy",
                 result.timestamp,

@@ -279,6 +279,33 @@ class ClockGuardTests(unittest.TestCase):
         self.unsynced_poll(self.collector)
         self.assertEqual(self.database.configs, [])
 
+    def test_a_reading_that_straddles_the_sync_is_discarded(self):
+        """2026-10-06: an exchange stamped on the stale clock, during which
+        NTP synced, passed a check made only afterwards and stored this
+        morning's sun at 19:20 the night before."""
+        from tests.test_decode import CAPTURE_1
+        from tests.test_safety import REAL_CONFIG_REPLY
+        with tempfile.TemporaryDirectory() as run_dir:
+            flag = Path(run_dir) / "synchronized"
+
+            def sync_during_exchange(_port, _baud, _timeout, _protocol, query):
+                # The status exchange is stamped on the stale clock and the
+                # sync lands while the inverter replies; the configuration
+                # read that follows on a first poll is stamped after it.
+                stamp = "2026-10-06T18:05:37+00:00" if flag.exists() else "2026-10-06T02:20:42+00:00"
+                flag.touch()
+                reply = REAL_CONFIG_REPLY if query.name == "current_settings_0200" else CAPTURE_1
+                return Exchange(stamp, "/dev/fake", 9600, query.name, b"", reply, 1600)
+
+            self.collector._newest_stored = "2026-10-06T02:20:12+00:00"
+            with patch.object(collector_module, "_SYNC_FLAG", flag), \
+                 patch.object(collector_module, "exchange", sync_during_exchange):
+                self.collector.collect_once()
+        self.assertEqual(self.database.samples, [], "stamped before the sync, so not trusted")
+        self.assertEqual([stamp for stamp, _ in self.database.configs], ["2026-10-06T18:05:37+00:00"],
+                         "the read stamped after the sync is kept")
+        self.assertEqual(len(self.database.raw_frames), 2, "both raw frames are kept for diagnosis")
+
     def test_a_pi_with_an_rtc_can_trust_its_clock_without_a_sync(self):
         """With an RTC but no internet, timesyncd never syncs; requiring it
         would discard every reading for good."""
