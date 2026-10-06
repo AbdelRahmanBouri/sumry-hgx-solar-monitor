@@ -130,7 +130,7 @@ For a permanent install, `deploy/solar-monitor.service` runs it under systemd (i
 
 Every `[site]` key is optional. Without a location and array capacity the estimator is off and the potential page says so. `performance_ratio` is only the fallback until a week of readings exists; after that the level is learned. `dual_slope` splits the array across both faces of a pitched roof; `split_strings` says each series string straddles both faces.
 
-The dashboard needs no login, so `/api/system` leaves out the hostname, address and Wi-Fi network unless `expose_network_info` is set; the admin portal shows them either way. The polling rate, retention windows, chart point cap, estimator inputs, writes switch and auto-apply policy are changed in the admin portal, stored in SQLite, and take effect without a restart. The serial link itself is read from the config file at startup.
+The dashboard needs no login, so `/api/system` leaves out the hostname, address and Wi-Fi network unless `expose_network_info` is set; the admin portal shows them either way. The polling rate, retention windows, estimator inputs, writes switch and auto-apply policy are changed in the admin portal, stored in SQLite, and take effect without a restart. The serial link itself is read from the config file at startup.
 
 ## API
 

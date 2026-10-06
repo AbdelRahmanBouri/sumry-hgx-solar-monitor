@@ -50,6 +50,7 @@ const storageKey = name => `solar-dashboard-${name}`;
 // which on a phone is the difference between the chart appearing and the page
 // looking stuck while it parses.
 const HISTORY_FIELDS = ['pv_watts', 'ac_load_watts', 'battery_voltage', 'battery_current'].join(',');
+const HISTORY_POINTS = 5000;  // the server's ceiling; see refreshHistory
 // The two sparklines plot only their last 60 readings, so they fetch one hour
 // of their own columns rather than dragging them through the whole day.
 const SPARKLINE_FIELDS = [
@@ -1708,8 +1709,13 @@ async function refreshHistory() {
       dailyRows = await response.json();
       historyRows = [];
     } else {
+      // Every reading, not the server's default 1,500: the server thins by
+      // taking every nth row, which can step over a short spike, and the
+      // chart's own thinning can only keep the extremes it is given. At the
+      // default 30 s polling a day is ~2,900 rows, under the 5,000 cap.
       const response = await fetch(
-        `/api/history?hours=${Math.max(selectedHours, 24)}&fields=${HISTORY_FIELDS}`, {cache: 'no-store'});
+        `/api/history?hours=${Math.max(selectedHours, 24)}&fields=${HISTORY_FIELDS}&points=${HISTORY_POINTS}`,
+        {cache: 'no-store'});
       if (!response.ok) throw new Error('History unavailable');
       historyRows = await response.json();
       // The 24-hour fetch already covers today, so today's tiles reuse it

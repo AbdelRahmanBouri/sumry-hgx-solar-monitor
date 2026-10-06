@@ -28,6 +28,9 @@ from .serial_io import Exchange, discover_usb_serial_ports, exchange
 
 LOG = logging.getLogger(__name__)
 MANUAL_REFRESH_COOLDOWN_SECONDS = 5.0
+# What /api/history returns when a caller does not say; the dashboard and the
+# potential page both ask for what they need.
+DEFAULT_HISTORY_POINTS = 1500
 PASSWORD_ATTEMPTS = 5
 PASSWORD_LOCKOUT_SECONDS = 15 * 60
 FORECAST_PREVIEW = timedelta(hours=6)
@@ -67,7 +70,6 @@ def create_app(
         "writes_enabled": "false",
         "raw_success_days": "7",
         "raw_diagnostic_days": "90",
-        "history_max_points": "1500",
     }
     # The site profile seeds the estimator and the battery nameplate. Only the
     # config file knows them, so with no profile nothing site-specific is
@@ -248,10 +250,7 @@ def create_app(
     def history():
         hours = _bounded_int("hours", 24, 1, 24 * 30)
         since = datetime.now(UTC) - timedelta(hours=hours)
-        settings = database.get_settings()
-        max_points = _bounded_int(
-            "points", int(settings.get("history_max_points", "1500")), 250, 5000
-        )
+        max_points = _bounded_int("points", DEFAULT_HISTORY_POINTS, 250, 5000)
         rows = [public_sample(sample) for sample in database.history(since.isoformat(), max_points=max_points)]
         # A caller may ask for only the columns it draws. The full row carries
         # 29 fields; a chart reads five of them, and at 1,400 rows the other
@@ -752,7 +751,7 @@ def create_app(
             return jsonify(database.get_settings())
         payload = request.get_json(silent=True) or {}
         allowed = {
-            "poll_seconds", "raw_success_days", "raw_diagnostic_days", "history_max_points",
+            "poll_seconds", "raw_success_days", "raw_diagnostic_days",
             "estimator_latitude", "estimator_longitude",
             "estimator_capacity_watts", "estimator_performance_ratio",
             "estimator_tilt_degrees", "estimator_azimuth_degrees",
@@ -770,8 +769,6 @@ def create_app(
             merged = {**database.get_settings(), **values}
             if int(merged.get("raw_diagnostic_days", "90")) < int(merged.get("raw_success_days", "7")):
                 raise ValueError("Diagnostic retention cannot be shorter than routine retention")
-            if "history_max_points" in values and not 250 <= int(values["history_max_points"]) <= 5000:
-                raise ValueError("Chart point limit must be between 250 and 5000")
             if values.get("estimator_latitude") and not -90 <= float(values["estimator_latitude"]) <= 90:
                 raise ValueError("Latitude must be between -90 and 90")
             if values.get("estimator_longitude") and not -180 <= float(values["estimator_longitude"]) <= 180:

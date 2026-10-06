@@ -560,7 +560,7 @@ class WebTests(unittest.TestCase):
     def test_no_site_profile_seeds_nothing_site_specific(self):
         # setUp built the app without a site; the non-site defaults still land.
         settings = self.db.get_settings()
-        self.assertEqual(settings["history_max_points"], "1500")
+        self.assertEqual(settings["raw_success_days"], "7")
         self.assertEqual(settings["writes_enabled"], "false")
         self.assertEqual([key for key in settings if key.startswith("estimator_")], [])
         self.assertNotIn("battery_capacity_ah", settings)
