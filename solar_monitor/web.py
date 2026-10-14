@@ -762,12 +762,19 @@ def create_app(
         try:
             if "poll_seconds" in values and not 10 <= int(values["poll_seconds"]) <= 3600:
                 raise ValueError("Polling must be between 10 and 3600 seconds")
-            if "raw_success_days" in values and not 1 <= int(values["raw_success_days"]) <= 30:
-                raise ValueError("Routine frame retention must be between 1 and 30 days")
-            if "raw_diagnostic_days" in values and not 7 <= int(values["raw_diagnostic_days"]) <= 365:
-                raise ValueError("Diagnostic retention must be between 7 and 365 days")
+            # 0 days is "keep forever", longer than any window.
+            if "raw_success_days" in values and not 0 <= int(values["raw_success_days"]) <= 30:
+                raise ValueError("Routine frame retention must be 1 to 30 days, or 0 to keep forever")
+            if "raw_diagnostic_days" in values and not (
+                int(values["raw_diagnostic_days"]) == 0 or 7 <= int(values["raw_diagnostic_days"]) <= 365
+            ):
+                raise ValueError("Diagnostic retention must be 7 to 365 days, or 0 to keep forever")
             merged = {**database.get_settings(), **values}
-            if int(merged.get("raw_diagnostic_days", "90")) < int(merged.get("raw_success_days", "7")):
+
+            def window(key: str, default: str) -> float:
+                days = int(merged.get(key, default))
+                return float("inf") if days == 0 else days
+            if window("raw_diagnostic_days", "90") < window("raw_success_days", "7"):
                 raise ValueError("Diagnostic retention cannot be shorter than routine retention")
             if values.get("estimator_latitude") and not -90 <= float(values["estimator_latitude"]) <= 90:
                 raise ValueError("Latitude must be between -90 and 90")

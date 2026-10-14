@@ -679,6 +679,23 @@ class WebTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_raw_frames_can_be_kept_forever(self):
+        token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
+        self.client.post(f"/admin/setup?token={token}", data={
+            "token": token, "username": "admin", "password": "correct-horse-1",
+            "confirmation": "correct-horse-1"})
+
+        def save(**values):
+            return self.client.post("/api/admin/settings", json=values)
+
+        # Routine forever while diagnostics still age out would keep routine
+        # frames longer than errors.
+        self.assertEqual(save(raw_success_days="0").status_code, 400)
+        self.assertEqual(save(raw_success_days="0", raw_diagnostic_days="0").status_code, 200)
+        self.assertEqual(self.db.get_settings()["raw_success_days"], "0")
+        self.assertEqual(save(raw_diagnostic_days="5").status_code, 400)
+        self.assertEqual(save(raw_success_days="7", raw_diagnostic_days="90").status_code, 200)
+
     def test_pin_locks_after_three_failures_and_password_resets_it(self):
         token = Path(f"{self.temp.name}/setup-token").read_text(encoding="utf-8")
         self.client.post(

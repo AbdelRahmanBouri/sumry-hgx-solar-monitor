@@ -118,6 +118,9 @@ SAMPLE_METRIC_COLUMNS = {
 # in the note, and "not decoded" and "fault" both occur in the note of a
 # perfectly good status frame, so no frame ever counted as routine and the
 # short window never deleted anything.
+# A retention window of 0 days keeps frames for good.
+KEEP_FOREVER = 0
+
 _ROUTINE_FRAME_SQL = (
     "(COALESCE(TRIM(error), '') = '' "
     "AND COALESCE(decoded, decode_note LIKE 'CRC-validated%', 0) = 1)"
@@ -400,36 +403,30 @@ class Database:
         diagnostic_days: int = 90,
         reference_time=None,
     ) -> dict[str, int]:
-        """Prune bulky protocol captures without deleting decoded samples."""
-        success_days = max(1, int(success_days))
-        diagnostic_days = max(success_days, int(diagnostic_days))
+        """Prune raw protocol captures. Either window may be KEEP_FOREVER.
+
+        Decoded samples and configuration snapshots are never deleted: they
+        are the history itself. A raw frame holds what the decoder does not
+        read yet -- the operating-state and fault bytes, unidentified words --
+        so keeping them lets a later decoder be run over the whole past, at
+        about 1 KB a poll (~1 GB a year at 30 s).
+        """
+        success_days, diagnostic_days = int(success_days), int(diagnostic_days)
+        if success_days <= KEEP_FOREVER:
+            # Diagnostics are never kept for less time than routine frames.
+            return {"raw_frames_deleted": 0}
         reference_time = reference_time or datetime.now(UTC)
         normal_cutoff = (reference_time - timedelta(days=success_days)).isoformat()
-        diagnostic_cutoff = (reference_time - timedelta(days=diagnostic_days)).isoformat()
+        if diagnostic_days <= KEEP_FOREVER:
+            condition, parameters = _ROUTINE_FRAME_SQL, (normal_cutoff,)
+        else:
+            diagnostic_cutoff = (reference_time - timedelta(days=max(success_days, diagnostic_days))).isoformat()
+            condition, parameters = f"(captured_at < ? OR {_ROUTINE_FRAME_SQL})", (normal_cutoff, diagnostic_cutoff)
         with self.connect() as connection:
-            before_raw = int(connection.execute("SELECT COUNT(*) FROM raw_frames").fetchone()[0])
-            before_config = int(connection.execute(
-                "SELECT COUNT(*) FROM inverter_config_snapshots"
-            ).fetchone()[0])
-            connection.execute(
-                f"DELETE FROM raw_frames WHERE captured_at < ? "
-                f"AND (captured_at < ? OR {_ROUTINE_FRAME_SQL})",
-                (normal_cutoff, diagnostic_cutoff),
-            )
-            # Configuration snapshots are also bulky and mostly repetitive;
-            # keeping the same long diagnostic window is ample for comparison.
-            connection.execute(
-                "DELETE FROM inverter_config_snapshots WHERE captured_at < ?",
-                (diagnostic_cutoff,),
-            )
-            after_raw = int(connection.execute("SELECT COUNT(*) FROM raw_frames").fetchone()[0])
-            after_config = int(connection.execute(
-                "SELECT COUNT(*) FROM inverter_config_snapshots"
-            ).fetchone()[0])
-        return {
-            "raw_frames_deleted": before_raw - after_raw,
-            "config_snapshots_deleted": before_config - after_config,
-        }
+            deleted = connection.execute(
+                f"DELETE FROM raw_frames WHERE captured_at < ? AND {condition}", parameters
+            ).rowcount
+        return {"raw_frames_deleted": deleted}
 
     def storage_counts(self) -> dict[str, int]:
         with self.connect() as connection:

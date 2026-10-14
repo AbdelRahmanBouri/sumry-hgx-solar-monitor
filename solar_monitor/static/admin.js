@@ -261,13 +261,12 @@ async function loadFrames() {
 
 $('#cleanup-data').onclick = async () => {
   const result = $('#cleanup-result');
-  result.textContent = 'Cleaning old diagnostic records…';
+  result.textContent = 'Removing old raw frames…';
   try {
     const data = await api('/api/admin/data/cleanup', {method: 'POST', body: '{}'});
     renderStorageCounts(data.counts);
     const plural = count => (count === 1 ? '' : 's');
-    result.textContent = `Complete · removed ${data.raw_frames_deleted} raw frame${plural(data.raw_frames_deleted)} `
-      + `and ${data.config_snapshots_deleted} old configuration snapshot${plural(data.config_snapshots_deleted)}.`;
+    result.textContent = `Complete · removed ${data.raw_frames_deleted} raw frame${plural(data.raw_frames_deleted)}.`;
     overview();
     loadFrames();
   } catch (error) {

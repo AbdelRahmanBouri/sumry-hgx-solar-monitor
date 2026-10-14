@@ -3,7 +3,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from solar_monitor.db import Database
+from solar_monitor.db import KEEP_FOREVER, Database
 from solar_monitor.protocols.sumry_8851 import Sumry8851Protocol
 from solar_monitor.serial_io import Exchange
 from tests.test_decode import CAPTURE_1
@@ -64,6 +64,30 @@ class RetentionTests(unittest.TestCase):
             [name for _, name in self.remaining()],
             ["status_candidate_0003", "status_candidate_0003", "write_settings_0200"],
         )
+
+    def test_keep_forever_deletes_nothing(self):
+        self.read(ANCIENT, CAPTURE_1)
+        self.read(OLD, b"", error="I/O error")
+        result = self.db.cleanup_retention(KEEP_FOREVER, KEEP_FOREVER, reference_time=REFERENCE)
+        self.assertEqual(result, {"raw_frames_deleted": 0})
+        self.assertEqual(len(self.remaining()), 2)
+
+    def test_routine_kept_forever_keeps_diagnostics_too(self):
+        # A diagnostic is never kept for less time than a routine frame.
+        self.read(ANCIENT, b"", error="I/O error")
+        self.assertEqual(self.db.cleanup_retention(KEEP_FOREVER, 90, reference_time=REFERENCE)["raw_frames_deleted"], 0)
+
+    def test_diagnostics_kept_forever_while_routine_frames_age_out(self):
+        self.read(ANCIENT, CAPTURE_1)
+        self.read(ANCIENT, b"", error="I/O error")
+        self.read(RECENT, CAPTURE_1)
+        self.assertEqual(self.db.cleanup_retention(7, KEEP_FOREVER, reference_time=REFERENCE)["raw_frames_deleted"], 1)
+        self.assertEqual(self.remaining(), [(ANCIENT, "status_candidate_0003"), (RECENT, "status_candidate_0003")])
+
+    def test_configuration_history_is_never_deleted(self):
+        self.db.save_inverter_config(ANCIENT, {"bulk_charge_voltage_v": 28.8})
+        self.cleanup()
+        self.assertEqual(len(self.db.inverter_config_changes(10)), 1)
 
     def test_rows_from_before_the_flag_are_classified_by_their_note(self):
         legacy = {"port": "/dev/test", "baudrate": 9600, "protocol": "sumry_8851",
