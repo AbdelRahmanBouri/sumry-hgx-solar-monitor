@@ -1,6 +1,6 @@
 # SUMRY HGX Solar Monitor
 
-[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
+[![CI](https://github.com/AbdelRahmanBouri/sumry-hgx-solar-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/AbdelRahmanBouri/sumry-hgx-solar-monitor/actions/workflows/ci.yml)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab)
 ![No build step](https://img.shields.io/badge/front%20end-no%20build%20step-087d55)
 [![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -20,7 +20,7 @@ A local-first monitor for a SUMRY HGX 4 kW 24 V off-grid inverter, running on a 
 ## Try it without the hardware
 
 ```sh
-git clone https://github.com/OWNER/REPO.git solar-monitor && cd solar-monitor
+git clone https://github.com/AbdelRahmanBouri/sumry-hgx-solar-monitor.git solar-monitor && cd solar-monitor
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python run.py --demo
 ```
