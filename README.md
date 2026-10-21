@@ -5,7 +5,7 @@
 ![No build step](https://img.shields.io/badge/front%20end-no%20build%20step-087d55)
 [![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
-A local-first monitor for a SUMRY HGX 4 kW 24 V off-grid inverter, running on a Raspberry Pi. It speaks the inverter's reverse-engineered RS-232 protocol, keeps every reading in SQLite, tracks the battery bank by counting charge, and learns the solar array's real potential from its own output. No cloud account, no build step, three runtime dependencies.
+A local-first monitor for a SUMRY HGX 4 kW 24 V off-grid inverter, running on a Raspberry Pi. It speaks the inverter's reverse-engineered RS-232 protocol, keeps every reading in SQLite, estimates battery charge by integrating current, and models solar potential using the array's observed output. No cloud account, no build step, three runtime dependencies.
 
 <p>
   <img src="docs/screenshots/dashboard-phone.png" alt="The dashboard on a phone: live power flow and the last 24 hours" width="300">
@@ -27,15 +27,15 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 Then open <http://127.0.0.1:5000>. The admin portal is at `/admin`, login `demo` / `demo-password`.
 
-`--demo` runs the whole application against a simulated inverter with a week of generated history. The simulation sits below the serial transport, not beside it: `sim://` is a pyserial port, so the collector sends the same allow-listed queries and decodes the same CRC-checked frames it would from the real inverter, and a configuration written from the admin portal must pass the same write gate before the simulated charger follows it. The model behind it is physical rather than recorded: sun position and clear-sky irradiance for the site, weather seeded per day, a household routine, and a 24 V lead-acid bank with a three-stage charger that curtails the panels once it is full.
+`--demo` runs the whole application against a simulated inverter with a week of generated history. The simulation sits below the serial transport, not beside it: `sim://` is a pyserial port, so the collector sends the same allow-listed queries and decodes the same CRC-checked frames it would from the real inverter, and a configuration written from the admin portal must pass the same write gate before the simulated charger follows it. Host controls such as reboot, Wi-Fi changes and service restart are disabled in the demo. The model behind it is physical rather than recorded: sun position and clear-sky irradiance for the site, weather seeded per day, a household routine, and a 24 V lead-acid bank with a three-stage charger that curtails the panels once it is full.
 
 ## What it does
 
 - **Live power flow.** PV, battery, load and utility every 30 seconds, with the inverter's output stage, bus voltage, temperatures and fans.
 - **History.** One hour to a day as a canvas chart that you can read, pan and zoom; a week or a month as energy per day. Thinning keeps every column's extremes, so the drawn peaks are the real peaks and agree with the summary tiles.
-- **Battery bank health.** State of charge by counting charge, re-anchored when the bank is full (a plateau held at a trickle after a real absorption) and when it rests (under C/50 with no charge current). Each full-to-rest stretch measures the bank's effective capacity, which replaces the nameplate. Pre-dawn voltage, absorption time and tail current are tracked per day as recovery gauges.
+- **Battery bank health.** State of charge by counting charge, re-anchored when the bank is full (a plateau held at a trickle after a real absorption) and when it rests (under C/50 with no charge current). Each uninterrupted full-to-rest stretch estimates the bank's effective capacity, blended with the previous estimate. Pre-dawn voltage, absorption time and tail current are tracked per day as recovery gauges.
 - **Time to the low-voltage cutoff.** Hours left at the recent draw, down to the inverter's configured cutoff rather than to empty, with a warning when there is no utility to fall back on.
-- **Solar potential.** Sun position for the site, clear-sky irradiance, Open-Meteo cloud cover and transposition onto one or two roof faces. The level is learned per band of sun elevation from the array's own unconstrained output, so the page can show how much a full battery made the inverter leave on the roof, and what rewiring would recover.
+- **Solar potential.** Sun position for the site, clear-sky irradiance, Open-Meteo cloud cover and transposition onto one or two roof faces. The level is learned per band of sun elevation from the array's own unconstrained output, so the page can show how much a full battery made the inverter leave on the roof, and compare estimated wiring scenarios.
 - **Utility detection.** The frame carries no trustworthy utility current, so mains use is derived from the transfer relay (the inverter's own output collapses while the load stays) and from the power balance.
 - **Admin portal.** Password plus an optional PIN. Serial diagnostics, retention, estimator inputs, an audit log, exports, and Raspberry Pi controls through a scoped sudo helper.
 - **Gated inverter writes.** Off by default. A write is the inverter's own configuration block sent back with only allow-listed fields changed, then read back; nothing is reported as applied on the strength of having been sent.
@@ -64,7 +64,7 @@ Flask serves a JSON API and three pages: the dashboard, the solar potential page
 
 Polling is read-only. Writes are opt-in, and every write passes three gates before it reaches the port:
 
-1. **Policy.** The writes switch defaults to off. A proposal from tooling is applied without a person only when every field it touches is inside the auto-apply policy, which is off and empty by default.
+1. **Policy.** The writes switch defaults to off and is enforced inside the collector before reading a write template and again before transmission. A proposal from tooling is applied without a person only when every field it touches is inside the auto-apply policy, which is off and empty by default. Queued automatic approvals are checked against the current policy, and pending or approved proposals expire after twelve hours.
 2. **Writable-field table.** Each field has a byte offset, a scale and the range of the inverter's own menu. Anything outside the table or its range is refused before a frame is built, and a quantity never accepts a switch value.
 3. **Frame assertion.** `assert_write_frame` compares the outbound frame with the reply it was built from and rejects any byte that differs outside the writable masks, any wrong length or command, and any bad checksum.
 
@@ -74,10 +74,10 @@ Writes are whole-block rewrites because the inverter has no per-register write: 
 
 Some choices a reviewer may want to find quickly:
 
-- **The register map is treated as a claim, not a fact.** The decoder started from the community register map, [`inv8851.h`](https://github.com/leodesigner/powmr4500_comm/blob/main/include/inv8851.h) from leodesigner's [powmr4500_comm](https://github.com/leodesigner/powmr4500_comm), which lufton's [esphome-inv-8851](https://github.com/lufton/esphome-inv-8851) also builds on. Three of its labels turned out to be wrong for this firmware, and each was disproven against data: offset 76 read 0.00 across 4,489 frames while mains carried the house; the "battery type" bits decoded User-defined while the front panel read AGM; register 82 held 4 where the map promised a boolean. [docs/decisions.md](docs/decisions.md) records each rule the code follows and the evidence behind it, including a full front-panel dump that the decoder matches field for field.
+- **The register map is treated as a claim, not a fact.** The decoder started from the community register map, [`inv8851.h`](https://github.com/leodesigner/powmr4500_comm/blob/main/include/inv8851.h) from leodesigner's [powmr4500_comm](https://github.com/leodesigner/powmr4500_comm), which lufton's [esphome-inv-8851](https://github.com/lufton/esphome-inv-8851) also builds on. Three of its labels turned out to be wrong for this firmware, and each was disproven against data: offset 76 read 0.00 across 4,489 frames while mains carried the house; the "battery type" bits decoded User-defined while the front panel read AGM; register 82 held 4 where the map promised a boolean. [docs/decisions.md](docs/decisions.md) records each rule the code follows and the evidence behind it, including recorded comparisons with the front-panel settings.
 - **Retention is decided by a flag, not by searching prose.** Raw frames used to be classified by substrings of their decode notes. Every good frame's note contained "fault" or "not decoded", so no routine frame was ever pruned, while the raw frames of all six configuration writes were. `tests/test_retention.py` uses the decoder's real notes so that cannot pass again.
 - **The simulator is a pyserial URL handler** (`solar_monitor/serial_handlers/protocol_sim.py`). The tests run the real collector, transport and write path against it, and it encodes frames through the decoder's own layout table, so the two cannot drift apart.
-- **No bundler, and static checks stand in for a browser.** The Pi has no JavaScript engine, so the suite checks that every template supplies the DOM ids its script needs, that scripts balance their brackets and load in order, and, when Node.js is present, parses them with V8 and runs the charting unit tests. `tools/screenshot.py` drives headless Chromium over the DevTools protocol (standard library only) to render every page and report page errors.
+- **No bundler, with static and browser checks.** The Pi has no JavaScript engine, so the suite checks that every template supplies the DOM ids its script needs, that scripts balance their brackets and load in order, and, when Node.js is present, parses them with V8 and runs the charting unit tests. `tools/screenshot.py` drives headless Chromium over the DevTools protocol (standard library only) to render every page and report page errors. CI also boots the demo, checks authentication and a simulated write/restore, renders the pages, and builds the package.
 
 ## Install on a Raspberry Pi
 
@@ -145,7 +145,7 @@ The dashboard needs no login, so `/api/system` leaves out the hostname, address 
 | GET | `/api/history?hours=N&fields=a,b&points=N` | samples for the last N hours (max 720), optionally only the named columns |
 | GET | `/api/history/daily?days=N` | per-day energy, averages, peaks and minimum battery voltage |
 | GET | `/api/history/faults?days=N` | rows with a non-empty faults field |
-| GET | `/api/battery` | charge count, anchors, measured capacity, runtime to cutoff, 14 days of health |
+| GET | `/api/battery` | charge count, anchors, estimated capacity, runtime to cutoff, 14 days of health |
 | GET | `/api/estimate?hours=N` | modelled output for the window plus six hours ahead, calibration, scenarios |
 | GET | `/api/system` | Pi uptime, CPU temperature, throttling, eco mode (and network, if exposed) |
 | GET | `/health` | process and collector health; 503 when the serial link has gone quiet |
@@ -200,13 +200,14 @@ Without this setup the buttons return a clear error instead of hanging.
 node --test tests/js/*.test.js                   # charting unit tests, if Node.js is installed
 ```
 
-CI runs the suite on Python 3.11, 3.12 and 3.13 with Node available, and ruff as a blocking check.
+CI runs the suite on Python 3.11, 3.12 and 3.13 with Node available, ruff as a blocking check, and a separate demo/browser/package job. See [validation and limits](docs/validation.md) for what these checks establish.
 
 To look at the pages, run the demo and render them with headless Chromium:
 
 ```sh
 .venv/bin/python run.py --demo &
 .venv/bin/python tools/screenshot.py --out docs/screenshots          # the README's three views
+.venv/bin/python tools/check_demo.py                     # simulated write and restore
 .venv/bin/python tools/screenshot.py --all --login demo:demo-password --out /tmp/shots
 ```
 
@@ -247,6 +248,8 @@ docs/decisions.md                        why the code is the way it is, with the
 - The status frame's `operating_state` and `faults` bytes are not identified yet, so the dashboard says "Not decoded" rather than claiming there are no faults.
 - Utility current is not in the frame. The utility watts and amps shown are derived from the power balance and are a lower bound, not a metered reading.
 - Battery type can be neither read nor written over the protocol; it is set on the inverter's own panel.
+- Battery capacity and runtime are estimates, not independent capacity tests. A telemetry gap longer than five minutes invalidates charge counting until the next anchor.
+- Daily energy uses trapezoidal integration with gaps capped at five minutes and splits intervals at midnight. Calendar boundaries use the server's current UTC offset; a window crossing a daylight-saving change is approximate.
 - The models were calibrated on one installation: a 24 V AGM bank, a 2.64 kW array split across a gable roof, a desert site. The chemistry curve, anchor thresholds and ground albedo are constants in the code, and the voltage thresholds assume a 24 V bank.
 
 ## Acknowledgements

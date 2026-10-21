@@ -16,6 +16,9 @@ class FakeDatabase:
         self.samples = []
         self.configs = []
 
+    def get_settings(self):
+        return {"writes_enabled": "true"}
+
     def save_raw_frame(self, values):
         self.raw_frames.append(values)
 
@@ -197,14 +200,14 @@ class FailureVisibilityTests(unittest.TestCase):
         self.assertEqual(state["failing_since"], "2026-09-05T12:00:00+00:00")
 
     def test_a_success_clears_the_streak(self):
-        from tests.test_safety import REAL_CONFIG_REPLY
+        from tests.test_decode import CAPTURE_1
         with patch.object(collector_module, "exchange", self._failing):
             self.collector.collect_once()
         # The first poll runs two queries (status and config), so two failures.
         self.assertGreater(self.collector.state()["consecutive_failures"], 0)
 
         def ok(*_a, **_k):
-            return Exchange("2026-09-05T12:01:00+00:00", "/dev/fake", 9600, "q", b"", REAL_CONFIG_REPLY, 5)
+            return Exchange("2026-09-05T12:01:00+00:00", "/dev/fake", 9600, "q", b"", CAPTURE_1, 5)
 
         with patch.object(collector_module, "exchange", ok):
             self.collector.collect_once()
@@ -212,7 +215,7 @@ class FailureVisibilityTests(unittest.TestCase):
         self.assertIsNone(self.collector.state()["failing_since"])
 
     def test_last_success_age_counts_from_the_last_answer(self):
-        from tests.test_safety import REAL_CONFIG_REPLY
+        from tests.test_decode import CAPTURE_1
         self.assertIsNone(self.collector.state()["last_success_age_seconds"])
         with patch.object(collector_module, "exchange", self._failing):
             self.collector.collect_once()
@@ -220,7 +223,7 @@ class FailureVisibilityTests(unittest.TestCase):
                           "a link that has never answered has no age to report")
 
         def ok(*_a, **_k):
-            return Exchange("2026-09-05T12:01:00+00:00", "/dev/fake", 9600, "q", b"", REAL_CONFIG_REPLY, 5)
+            return Exchange("2026-09-05T12:01:00+00:00", "/dev/fake", 9600, "q", b"", CAPTURE_1, 5)
 
         with patch.object(collector_module.time, "monotonic", return_value=1000.0), \
              patch.object(collector_module, "exchange", ok):

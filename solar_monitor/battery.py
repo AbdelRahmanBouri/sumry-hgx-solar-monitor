@@ -193,6 +193,10 @@ def count_charge(
             # Data gap: the runs cannot be trusted across it.
             full_run_start = rest_run_start = None
             full_anchored = rest_anchored = False
+            full_seen = False
+            out_since_full = in_since_full = 0.0
+            last_absorption = None
+            soc = None
 
         if absorption_floor is not None and volts >= absorption_floor:
             last_absorption = now
@@ -248,9 +252,11 @@ def count_charge(
                 soc = rested
                 state["last_rest_at"] = now.isoformat()
                 state["last_anchor_at"] = now.isoformat()
-                # A rest anchor restarts the learning stretch from a known point.
+                # The next learning stretch must start at a new full anchor.
+                # This rest may be partial, so its charge totals cannot be
+                # divided by a depth measured from 100%.
                 out_since_full = in_since_full = 0.0
-                full_seen = full_seen or rested >= 99
+                full_seen = False
         else:
             rest_run_start = None
             rest_anchored = False

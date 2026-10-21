@@ -19,6 +19,7 @@ dev = ["ruff>=0.6,<1"]
 
 [tool.setuptools]
 packages = ["solar_monitor", "solar_monitor.protocols", "solar_monitor.serial_handlers"]
+include-package-data = false
 
 [tool.setuptools.package-data]
 solar_monitor = ["templates/*.html", "static/*"]

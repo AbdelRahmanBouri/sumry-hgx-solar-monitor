@@ -90,6 +90,7 @@ class SimulatorIntegrationTests(unittest.TestCase):
         collector = Collector(SerialConfig(port="sim://"), self.database)
         self.assertTrue(collector.collect_once())
         self.assertIsNotNone(self.database.latest_sample())
+        self.database.set_settings({"writes_enabled": "true"}, "now")
         outcome = collector.apply_config({"charge_cutoff_current_a": 5}, settle_seconds=0)
         self.assertTrue(outcome["verified"], outcome["mismatches"])
 

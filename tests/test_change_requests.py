@@ -47,6 +47,12 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(change_policy.evaluate({"overload_auto_restart": True}, policy)[0])
         self.assertFalse(change_policy.evaluate({"overload_auto_restart": False}, policy)[0])
 
+    def test_numeric_choices_match_without_treating_switches_as_numbers(self):
+        self.assertTrue(change_policy.evaluate({"bulk_charge_voltage_v": 28.0},
+                                              {"bulk_charge_voltage_v": [28]})[0])
+        self.assertFalse(change_policy.evaluate({"equalization_interval_days": True},
+                                               {"equalization_interval_days": [1]})[0])
+
     def test_the_policy_is_ignored_unless_switched_on(self):
         settings = {change_policy.POLICY_SETTING: '{"buzzer": [true, false]}'}
         self.assertEqual(change_policy.load_policy(settings), {})
@@ -72,12 +78,14 @@ class ProposalTests(unittest.TestCase):
         self.assertEqual(self.db.change_request(outcome["id"])["status"], "pending")
 
     def test_an_unwritable_field_is_refused_at_proposal_time(self):
-        for changes in ({"output_voltage_v": 110}, {"bulk_charge_voltage_v": 31}, {}):
+        for changes in ({"output_voltage_v": 110}, {"bulk_charge_voltage_v": 31},
+                        {"equalization_interval_days": True}, {}):
             with self.assertRaises(ValueError):
                 propose.propose(self.db, changes, "testing", "automation")
         self.assertEqual(self.db.change_requests(10), [])
 
     def test_the_policy_can_release_a_proposal(self):
+        self.db.set_settings({"writes_enabled": "true"}, "now")
         self.db.set_settings({
             change_policy.ENABLED_SETTING: "true",
             change_policy.POLICY_SETTING: '{"bulk_charge_voltage_v": {"min": 28.0, "max": 29.2}}',
@@ -111,6 +119,7 @@ class CollectorApplicationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.db = Database(f"{self.temp.name}/test.sqlite3")
+        self.db.set_settings({"writes_enabled": "true"}, "now")
         self.collector = Collector(SerialConfig(port="auto"), self.db)
         self.collector._port = lambda: "/dev/fake"
 

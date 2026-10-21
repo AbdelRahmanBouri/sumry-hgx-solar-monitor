@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import logging
 from pathlib import Path
 import threading
 import time
 
+from . import change_policy
 from .config import SerialConfig
 from .db import Database
+from .propose import PROPOSAL_TTL_HOURS
 from .protocols import create_protocol
+from .protocols.base import DecodeResult
 from .serial_io import discover_usb_serial_ports, exchange, write_exchange
 
 LOG = logging.getLogger(__name__)
@@ -124,7 +127,7 @@ class Collector:
             self.last_poll_at = _now()
             port = self._port()
             if port is None:
-                self.last_error = "No /dev/ttyUSB* or /dev/serial/by-id device found"
+                self._record_failure("No /dev/ttyUSB* or /dev/serial/by-id device found", self.last_poll_at)
                 LOG.warning("%s", self.last_error)
                 return False
             if port != self.last_port:
@@ -135,11 +138,20 @@ class Collector:
             query = self.protocol.queries[0]
             success = self._collect_query(port, query)
             if self.polls == 1 or self.polls % 10 == 0:
-                self._collect_query(port, self.protocol.query("current_settings_0200"))
+                self._collect_query(port, self.protocol.query("current_settings_0200"), update_health=False)
             self._run_maintenance_if_due()
             return success
 
-    def apply_config(self, changes: dict, settle_seconds: float = 0.6) -> dict:
+    def _check_write_permission(self, changes: dict, automatic: bool) -> None:
+        settings = self.database.get_settings()
+        if settings.get("writes_enabled") != "true":
+            raise PermissionError("Inverter writes are switched off")
+        if automatic:
+            allowed, reasons = change_policy.evaluate(changes, change_policy.load_policy(settings))
+            if not allowed:
+                raise PermissionError("Automatic approval no longer applies: " + "; ".join(reasons))
+
+    def apply_config(self, changes: dict, settle_seconds: float = 0.6, *, automatic: bool = False) -> dict:
         """Change inverter settings: read the current block, write it back
         with `changes`, then read again and report what the inverter now
         says. Holds the port lock throughout so no poll can interleave.
@@ -151,6 +163,7 @@ class Collector:
         if not hasattr(self.protocol, "build_config_write"):
             raise ValueError(f"Protocol {self.protocol.name} does not support writes")
         with self.lock:
+            self._check_write_permission(changes, automatic)
             port = self._port()
             if port is None:
                 raise ValueError("No /dev/ttyUSB* or /dev/serial/by-id device found")
@@ -165,6 +178,7 @@ class Collector:
                 )
 
             frame = self.protocol.build_config_write(before.response, changes)
+            self._check_write_permission(changes, automatic)
             written = write_exchange(
                 port, self.config.baudrate, self.config.timeout_seconds, self.protocol, frame, before.response
             )
@@ -211,12 +225,17 @@ class Collector:
         """
         if not hasattr(self.database, "change_requests"):
             return []
+        self.database.expire_change_requests(
+            (datetime.now(UTC) - timedelta(hours=PROPOSAL_TTL_HOURS)).isoformat()
+        )
         outcomes = []
         for request in reversed(self.database.change_requests(20, statuses=("approved",))):
             if not self.database.claim_change_request(request["id"]):
                 continue  # someone else took it
             try:
-                result = self.apply_config(request["changes"])
+                result = self.apply_config(
+                    request["changes"], automatic=request.get("decided_by") == "auto-apply policy",
+                )
                 status = "applied" if result["verified"] else "unverified"
             except (ValueError, PermissionError) as exc:
                 result = {"error": str(exc)}
@@ -282,13 +301,21 @@ class Collector:
         LOG.info("Storage maintenance complete: %s", result)
         return result
 
-    def _collect_query(self, port, query) -> bool:
+    def _record_failure(self, error: str, timestamp: str) -> None:
+        self.last_error = error
+        self.failures += 1
+        self.consecutive_failures += 1
+        self.failing_since = self.failing_since or timestamp
+
+    def _collect_query(self, port, query, *, update_health: bool = True) -> bool:
         # Read before the exchange stamps its timestamp; see _timestamp_is_trustworthy.
         synced_when_stamped = self._clock_synced()
         result = exchange(
             port, self.config.baudrate, self.config.timeout_seconds, self.protocol, query
         )
         decoded = self.protocol.decode(result.response)
+        if decoded.valid and result.response[4:6] != query.frame[4:6]:
+            decoded = DecodeResult({}, False, "Reply address does not match the query")
         self._save_frame(result, decoded)
         if decoded.metrics and not self._timestamp_is_trustworthy(result.timestamp, synced_when_stamped):
             LOG.warning(
@@ -301,14 +328,14 @@ class Collector:
         elif decoded.metrics:
             self.database.save_sample(result.timestamp, decoded.metrics)
             self._newest_stored = max(self._newest_stored or "", result.timestamp)
-        if result.error:
-            self.last_error = result.error
-            self.failures += 1
-            self.consecutive_failures += 1
-            self.failing_since = self.failing_since or result.timestamp
+        error = result.error or (decoded.note if not decoded.valid else None)
+        if not update_health:
+            return error is None
+        if error:
+            self._record_failure(error, result.timestamp)
             LOG.warning(
                 "Serial exchange failed on %s (%d in a row since %s): %s",
-                port, self.consecutive_failures, self.failing_since, result.error,
+                port, self.consecutive_failures, self.failing_since, error,
             )
         else:
             self.last_error = None
@@ -321,7 +348,7 @@ class Collector:
                 len(result.response), port,
                 "decoded" if decoded.metrics else f"not decoded: {decoded.note}",
             )
-        return bool(result.response)
+        return error is None
 
     def run_forever(self) -> None:
         self.started_at = _now()
@@ -336,8 +363,7 @@ class Collector:
                 # non-reentrant lock, so nesting them would deadlock.
                 self.apply_approved_changes()
             except Exception as exc:  # never let one bad cycle kill the poller
-                self.failures += 1
-                self.last_error = f"{type(exc).__name__}: {exc}"
+                self._record_failure(f"{type(exc).__name__}: {exc}", _now())
                 LOG.exception("Collector cycle failed; continuing")
             self.settings_event.wait(self.interval_seconds)
             self.settings_event.clear()

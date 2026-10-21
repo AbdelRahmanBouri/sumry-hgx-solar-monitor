@@ -192,8 +192,10 @@ def plane_of_array_irradiance(
 # 96-cell modules wired 4S2P with two modules per face: the shared string
 # current is pinned by the shaded pair, so the sunlit pair cannot deliver what
 # it is capable of. The curve is worst near a 0.45 ratio and recovers below it,
-# where the bypass diodes give up on the weak pair entirely. It depends only on
-# the ratio, not the absolute irradiance (verified to within 0.1%).
+# where the bypass diodes give up on the weak pair entirely. This lookup
+# assumes that ratio alone describes the loss. The original model generator
+# is not included, so these values are a scenario assumption, not validation
+# of another array or its wiring.
 SERIES_MISMATCH_RETAINED = (
     (0.00, 0.963), (0.05, 0.923), (0.10, 0.884), (0.15, 0.847), (0.20, 0.812),
     (0.25, 0.780), (0.30, 0.750), (0.35, 0.722), (0.40, 0.696), (0.45, 0.672),
@@ -298,8 +300,8 @@ def array_irradiance(
     With no tilt or azimuth the array is treated as flat. `dual_slope` splits
     it evenly over both faces of a pitched roof -- `azimuth_degrees` and its
     opposite -- which is how a flush-mounted gable installation sits. The
-    two faces largely cancel, so a symmetric gable collects within a couple
-    of percent of a flat array whatever the pitch.
+    average depends on pitch, sun position, diffuse light and ground
+    reflection. Opposing faces do not make the array equivalent to a flat one.
 
     `split_strings` says each series string straddles both faces rather than
     living on one, and applies the resulting mismatch loss.

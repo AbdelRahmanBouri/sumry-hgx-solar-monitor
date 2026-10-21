@@ -24,9 +24,11 @@ import http.cookiejar
 import json
 import os
 from pathlib import Path
+import select
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.parse
 import urllib.request
@@ -51,6 +53,9 @@ def find_chromium() -> str | None:
         found = shutil.which(name)
         if found:
             return found
+    mac_chrome = Path('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
+    if mac_chrome.is_file():
+        return str(mac_chrome)
     return None
 
 
@@ -58,13 +63,15 @@ class Browser:
     """One headless Chromium, spoken to over --remote-debugging-pipe."""
 
     def __init__(self, binary: str):
+        self.profile = tempfile.TemporaryDirectory(prefix="solar-browser-")
         read_parent, write_child = os.pipe()
         read_child, write_parent = os.pipe()
         flags = ("--headless=new --remote-debugging-pipe --no-sandbox --disable-gpu --hide-scrollbars "
                  "--no-first-run --mute-audio --disable-extensions about:blank")
         # The pipe protocol wants Chromium to read on fd 3 and write on fd 4.
         self.process = subprocess.Popen(
-            ["sh", "-c", f'exec "{binary}" {flags} 3<&{read_child} 4>&{write_child}'],
+            ["sh", "-c", f'exec "$@" 3<&{read_child} 4>&{write_child}', "chromium", binary,
+             f"--user-data-dir={self.profile.name}", *flags.split()],
             pass_fds=(read_child, write_child),
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
@@ -76,8 +83,12 @@ class Browser:
         self.last_id = 0
         self.events: list[dict] = []
 
-    def _message(self) -> dict:
+    def _message(self, timeout: float = 60) -> dict:
+        deadline = time.monotonic() + timeout
         while b"\0" not in self.buffer:
+            ready, _, _ = select.select([self.reader], [], [], max(0, deadline - time.monotonic()))
+            if not ready:
+                raise TimeoutError("Chromium did not reply")
             chunk = self.reader.read(65536)
             if not chunk:
                 raise RuntimeError("Chromium closed the pipe")
@@ -94,7 +105,7 @@ class Browser:
         self.writer.write(json.dumps(message).encode() + b"\0")
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            reply = self._message()
+            reply = self._message(max(0, deadline - time.monotonic()))
             if reply.get("id") == self.last_id:
                 if "error" in reply:
                     raise RuntimeError(f"{method}: {reply['error'].get('message')}")
@@ -107,7 +118,7 @@ class Browser:
             return
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            message = self._message()
+            message = self._message(max(0, deadline - time.monotonic()))
             self.events.append(message)
             if message.get("method") == event:
                 return
@@ -118,7 +129,15 @@ class Browser:
             self.send("Browser.close", timeout=5)
         except (RuntimeError, TimeoutError, OSError):
             pass
-        self.process.wait(timeout=10)
+        try:
+            self.process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait(timeout=5)
+        finally:
+            self.reader.close()
+            self.writer.close()
+            self.profile.cleanup()
 
 
 def session_cookie(base: str, credentials: str) -> str:

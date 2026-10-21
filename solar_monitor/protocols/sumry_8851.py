@@ -61,7 +61,7 @@ WRITABLE_FIELDS: dict[str, WritableField] = {
     # value written on 2026-09-04 can be restored to 0; they must not be used
     # to select a battery type until the real register is identified.
     "unknown_flag_byte8_bits34": WritableField(
-        "bits", 8, shift=3, mask=0x03, choices=("0", "1", "2", "3"),
+        "bits", 8, shift=3, mask=0x03, choices=("0",),
     ),
     "bulk_charge_voltage_v": WritableField("u16", 48, 100, 24.0, 29.2),
     "float_charge_voltage_v": WritableField("u16", 52, 100, 24.0, 29.2),
@@ -148,6 +148,8 @@ _WRITABLE_MASKS = _writable_masks()
 
 def _encode(field: WritableField, value: Any) -> int:
     if field.kind == "bits":
+        if field.choices == ("0",) and type(value) is int and value == 0:
+            value = "0"
         if isinstance(value, bool):
             value = "true" if value else "false"
         if isinstance(value, str) and value in field.choices:
@@ -257,6 +259,8 @@ class Sumry8851Protocol(Protocol):
         fields. Anything else is refused before it reaches the port."""
         if len(frame) != _CONFIG_FRAME_LENGTH or len(template) != _CONFIG_FRAME_LENGTH:
             raise PermissionError("Outbound write rejected: wrong frame length")
+        if template[:2] != _HEADER or template[4:6] != _CONFIG_ADDRESS or not self._decode_config(template).valid:
+            raise PermissionError("Outbound write rejected: invalid configuration template")
         if frame[:2] != _HEADER or frame[2:4] != _WRITE_COMMAND or frame[4:6] != _CONFIG_ADDRESS:
             raise PermissionError("Outbound write rejected: not a configuration write")
         if _u16(frame, 6) != _CONFIG_DATA_LENGTH:
@@ -269,6 +273,14 @@ class Sumry8851Protocol(Protocol):
                 raise PermissionError(
                     f"Outbound write rejected: byte {index} is not a writable setting"
                 )
+        unknown_mask = 0x03 << 3
+        if (frame[8] ^ template[8]) & unknown_mask and frame[8] & unknown_mask:
+            raise PermissionError("Unidentified bits may only be restored to zero")
+        for name, field in WRITABLE_FIELDS.items():
+            if field.kind == "u16" and frame[field.offset:field.offset + 2] != template[field.offset:field.offset + 2]:
+                value = _u16(frame, field.offset) / field.scale
+                if not field.low <= value <= field.high:
+                    raise PermissionError(f"Outbound write rejected: {name} is outside its range")
 
     def _validate(self, frame: bytes, expected_length: int, kind: str) -> DecodeResult | None:
         if len(frame) != expected_length:
@@ -290,6 +302,8 @@ class Sumry8851Protocol(Protocol):
         invalid = self._validate(frame, _FRAME_LENGTH, "status")
         if invalid:
             return invalid
+        if frame[2:6] != bytes.fromhex("00030000") or _u16(frame, 6) != _FRAME_LENGTH - 10:
+            return DecodeResult({}, False, "Unexpected HGX status response header")
 
         metrics = {
             name: value / divisor if divisor != 1 else value

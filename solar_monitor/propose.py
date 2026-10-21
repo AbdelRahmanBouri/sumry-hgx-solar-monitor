@@ -65,6 +65,9 @@ def propose(
             if str(value).lower() not in allowed:
                 problems.append(f"{name} must be one of {', '.join(field.choices)}")
         else:
+            if isinstance(value, bool):
+                problems.append(f"{name} must be a number, not a switch")
+                continue
             try:
                 number = float(value)
             except (TypeError, ValueError):
@@ -77,6 +80,9 @@ def propose(
 
     database.expire_change_requests((datetime.now(UTC) - timedelta(hours=PROPOSAL_TTL_HOURS)).isoformat())
     automatic, blocked = change_policy.evaluate(changes, change_policy.load_policy(settings))
+    if settings.get("writes_enabled") != "true":
+        automatic = False
+        blocked.append("inverter writes are switched off")
     request_id = database.create_change_request(
         _now(), requested_by, reason, changes,
         status="approved" if automatic else "pending",

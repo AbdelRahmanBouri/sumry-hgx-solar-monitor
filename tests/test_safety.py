@@ -94,7 +94,7 @@ class ConfigurationWriteTests(unittest.TestCase):
 
     def test_the_inverter_would_read_the_new_values_back(self):
         changes = {
-            "unknown_flag_byte8_bits34": "2", "bulk_charge_voltage_v": 29.2,
+            "unknown_flag_byte8_bits34": "0", "bulk_charge_voltage_v": 29.2,
             "float_charge_voltage_v": 27.2, "charge_cutoff_current_a": 2,
             "low_battery_cutoff_v": 22.0, "overload_auto_restart": True,
             "equalization_voltage_v": 29.5,
@@ -102,7 +102,7 @@ class ConfigurationWriteTests(unittest.TestCase):
         frame = self.protocol.build_config_write(REAL_CONFIG_REPLY, changes)
         decoded = self.protocol.decode(as_reply(frame))
         self.assertTrue(decoded.valid, decoded.note)
-        self.assertEqual(decoded.metrics["unknown_flag_byte8_bits34"], 2)
+        self.assertEqual(decoded.metrics["unknown_flag_byte8_bits34"], 0)
         self.assertEqual(decoded.metrics["bulk_charge_voltage_v"], 29.2)
         self.assertEqual(decoded.metrics["float_charge_voltage_v"], 27.2)
         self.assertEqual(decoded.metrics["charge_cutoff_current_a"], 2.0)

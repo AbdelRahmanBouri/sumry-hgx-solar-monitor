@@ -11,6 +11,7 @@ from pathlib import Path
 import secrets
 import shutil
 import time
+from urllib.parse import urlsplit
 
 from flask import Flask, Response, abort, jsonify, redirect, render_template, request, session, url_for
 import serial
@@ -61,6 +62,29 @@ def create_app(
         PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
         MAX_CONTENT_LENGTH=1024 * 1024,
     )
+
+    @app.before_request
+    def reject_cross_origin_mutations():
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            origin = request.headers.get("Origin")
+            if origin is not None:
+                try:
+                    source = urlsplit(origin)
+                except ValueError:
+                    return jsonify({"error": "Invalid request origin"}), 403
+                if source.scheme not in {"http", "https"} or source.netloc != request.host:
+                    return jsonify({"error": "Cross-origin changes are not allowed"}), 403
+            if request.headers.get("Sec-Fetch-Site") == "cross-site":
+                return jsonify({"error": "Cross-site changes are not allowed"}), 403
+
+    @app.after_request
+    def response_security_headers(response):
+        response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "same-origin"
+        if request.path.startswith(("/admin", "/api/admin")):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     # The serial link itself -- port, baud, timeout, protocol -- is not here:
     # the collector opens it from the config file, so a copy in the settings
@@ -146,6 +170,9 @@ def create_app(
                 if request.path.startswith("/api/"):
                     return jsonify({"error": "authentication required"}), 401
                 return redirect(url_for("admin_login", next=request.path))
+            if request.path.startswith("/api/admin/system/") and serial_link().port == "sim://":
+                if request.method != "GET" or request.path.endswith("/wifi"):
+                    return jsonify({"error": "Host controls are disabled for the simulated inverter"}), 403
             return function(*args, **kwargs)
         return wrapped
 
@@ -250,7 +277,7 @@ def create_app(
     def history():
         hours = _bounded_int("hours", 24, 1, 24 * 30)
         since = datetime.now(UTC) - timedelta(hours=hours)
-        max_points = _bounded_int("points", DEFAULT_HISTORY_POINTS, 250, 5000)
+        max_points = _bounded_int("points", DEFAULT_HISTORY_POINTS, 250, 10000)
         rows = [public_sample(sample) for sample in database.history(since.isoformat(), max_points=max_points)]
         # A caller may ask for only the columns it draws. The full row carries
         # 29 fields; a chart reads five of them, and at 1,400 rows the other
@@ -883,6 +910,9 @@ def create_app(
     def admin_decide_request(request_id: int, decision: str):
         if decision not in {"approve", "reject"}:
             abort(404)
+        database.expire_change_requests(
+            (datetime.now(UTC) - timedelta(hours=propose.PROPOSAL_TTL_HOURS)).isoformat()
+        )
         request_row = database.change_request(request_id)
         if request_row is None:
             return jsonify({"error": "No such change request"}), 404
@@ -906,9 +936,13 @@ def create_app(
     @login_required
     def admin_auto_apply():
         payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
+            return jsonify({"error": "enabled must be a boolean"}), 400
         values = {change_policy.ENABLED_SETTING: "true" if payload.get("enabled") else "false"}
         if "policy" in payload:
-            raw = (payload.get("policy") or "").strip()
+            if not isinstance(payload["policy"], str):
+                return jsonify({"error": "policy must be a JSON string"}), 400
+            raw = payload["policy"].strip()
             if raw:
                 try:
                     parsed = json.loads(raw)
@@ -919,9 +953,14 @@ def create_app(
                 unknown = sorted(set(parsed) - set(writable_fields()))
                 if unknown:
                     return jsonify({"error": f"Not writable settings: {', '.join(unknown)}"}), 400
+                try:
+                    change_policy.validate_policy(parsed, writable_fields())
+                except ValueError as exc:
+                    return jsonify({"error": str(exc)}), 400
                 raw = json.dumps(parsed, sort_keys=True, indent=2)
             values[change_policy.POLICY_SETTING] = raw
-        database.set_settings(values, now())
+        with collector.lock if collector is not None else nullcontext():
+            database.set_settings(values, now())
         audit("inverter.auto_apply", json.dumps(values, sort_keys=True))
         return jsonify({
             "auto_apply": values[change_policy.ENABLED_SETTING] == "true",
@@ -932,8 +971,11 @@ def create_app(
     @login_required
     def admin_inverter_writes():
         payload = request.get_json(silent=True) or {}
-        enabled = bool(payload.get("enabled"))
-        database.set_settings({"writes_enabled": "true" if enabled else "false"}, now())
+        if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
+            return jsonify({"error": "enabled must be a boolean"}), 400
+        enabled = payload["enabled"]
+        with collector.lock if collector is not None else nullcontext():
+            database.set_settings({"writes_enabled": "true" if enabled else "false"}, now())
         audit("inverter.writes", "enabled" if enabled else "disabled")
         return jsonify({"writes_enabled": enabled})
 

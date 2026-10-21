@@ -50,7 +50,7 @@ const storageKey = name => `solar-dashboard-${name}`;
 // which on a phone is the difference between the chart appearing and the page
 // looking stuck while it parses.
 const HISTORY_FIELDS = ['pv_watts', 'ac_load_watts', 'battery_voltage', 'battery_current'].join(',');
-const HISTORY_POINTS = 5000;  // the server's ceiling; see refreshHistory
+const HISTORY_POINTS = 10000;  // a full day at the fastest supported 10-second interval
 // The two sparklines plot only their last 60 readings, so they fetch one hour
 // of their own columns rather than dragging them through the whole day.
 const SPARKLINE_FIELDS = [

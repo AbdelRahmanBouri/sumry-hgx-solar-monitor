@@ -3,6 +3,13 @@ __pycache__/
 .venv/
 instance/
 *.log
+.DS_Store
+.coverage
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+demo-screenshots/
 
 .register-probe-mark
 
