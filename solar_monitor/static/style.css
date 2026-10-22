@@ -311,7 +311,7 @@ h1, h2 { margin: 0; color: var(--ink); font-size: 18px; line-height: 1.15; lette
 .chart-data summary strong { font-size: 12px; }
 .chart-data summary small { color: var(--quiet); font-size: 11.5px; font-weight: 500; }
 .chart-data-actions { display: flex; align-items: center; gap: 8px; }
-.chart-data-actions button { min-height: 38px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--color-surface); color: var(--green); font-size: 12px; font-weight: 750; cursor: pointer; }
+#chart-export { min-height: 38px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--color-surface); color: var(--green); font-size: 12px; font-weight: 750; cursor: pointer; }
 .chart-data-actions svg { width: 17px; height: 17px; color: var(--muted); transition: transform .2s; }
 .chart-data[open] .chart-data-actions svg { transform: rotate(180deg); }
 .chart-table-wrap { max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 11px; }
@@ -497,7 +497,7 @@ code { display: block; overflow: hidden; color: var(--quiet); font: 9px ui-monos
   .trend-stats strong { font-size: 14px; }
   .chart-data summary strong { font-size: 13px; }
   .chart-data summary small { font-size: 12px; }
-  .chart-data-actions button { min-height: 44px; }
+  #chart-export { min-height: 44px; }
 }
 
 @media (max-width: 380px) {
@@ -513,3 +513,5 @@ code { display: block; overflow: hidden; color: var(--quiet); font: 9px ui-monos
   .pull-now.spinning svg { animation: none; }
   * { transition-duration: 0s !important; }
 }
+
+.visibility-toggle:focus-within { outline: 2px solid var(--color-focus); outline-offset: 3px; }

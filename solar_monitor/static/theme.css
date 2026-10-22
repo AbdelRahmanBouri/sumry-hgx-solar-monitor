@@ -16,13 +16,13 @@
   --color-border: #dce5e0;
   --color-border-strong: #c7d5ce;
   --color-ink: #13211c;
-  --color-muted: #66776f;
-  --color-quiet: #6b7a73;   /* 4.63:1 on white; was #8a9992 at 2.98:1 */
+  --color-muted: #56675f;
+  --color-quiet: #596960;
   --color-green: #087d55;
-  --color-green-2: #24a775;
+  --color-green-2: #08754e;
   --color-green-soft: #e6f5ee;
   --color-green-soft-border: #b9ddcd;
-  --color-amber: #c9780a;
+  --color-amber: #965700;
   --color-amber-soft: #fff3dc;
   --color-amber-soft-border: #eeddbb;
   --color-amber-ink: #765119;
@@ -150,3 +150,13 @@
 .theme-toggle .icon-sun { display: none; }
 :root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
 :root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+.skip-link { position: fixed; left: 1rem; top: -5rem; z-index: 1000; padding: .75rem;
+  background: var(--color-surface); color: var(--color-ink); }
+.skip-link:focus { top: 1rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important;
+    scroll-behavior: auto !important; }
+}

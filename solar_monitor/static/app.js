@@ -189,9 +189,9 @@ function renderCardControls() {
 
     const toggle = document.createElement('label');
     toggle.className = 'visibility-toggle';
-    toggle.setAttribute('aria-label', `Show ${cardNames[id]}`);
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
+    checkbox.setAttribute('aria-label', `Show ${cardNames[id]}`);
     checkbox.checked = !cardPreferences.hidden.includes(id);
     checkbox.addEventListener('change', () => {
       cardPreferences.hidden = checkbox.checked
@@ -214,6 +214,9 @@ function moveCard(index, direction) {
   saveCardPreferences();
   applyCardPreferences();
   renderCardControls();
+  const buttons = cardControls.children[target].querySelectorAll('button');
+  const preferred = direction < 0 ? 0 : 1;
+  (buttons[preferred].disabled ? buttons[1 - preferred] : buttons[preferred]).focus();
 }
 
 function format(value, digits = 1) {
@@ -1628,9 +1631,11 @@ document.querySelector('#chart-export').addEventListener('click', event => {
 document.querySelectorAll('.legend-toggle').forEach(button => {
   const key = button.dataset.series;
   button.classList.toggle('active', seriesVisible[key]);
+  button.setAttribute('aria-pressed', String(seriesVisible[key]));
   button.addEventListener('click', () => {
     seriesVisible[key] = !seriesVisible[key];
     button.classList.toggle('active', seriesVisible[key]);
+  button.setAttribute('aria-pressed', String(seriesVisible[key]));
     saveSeriesVisibility();
     // The model is fetched only when someone asks to see it.
     if (key === 'potential' && seriesVisible.potential && !potentialRows.length) refreshHistory();
@@ -2125,7 +2130,10 @@ function initializeDashboardSettings() {
 document.querySelectorAll('.range-control button').forEach(button => {
   button.addEventListener('click', () => {
     selectedHours = Number(button.dataset.hours);
-    document.querySelectorAll('.range-control button').forEach(item => item.classList.toggle('active', item === button));
+    document.querySelectorAll('.range-control button').forEach(item => {
+      item.classList.toggle('active', item === button);
+      item.setAttribute('aria-pressed', String(item === button));
+    });
     viewWindow = null;
     updateZoomResetVisibility();
     syncAdvancedLegend();
@@ -2201,4 +2209,8 @@ document.addEventListener('visibilitychange', () => {
   refreshHistory();
   refreshToday();
   refreshSystemInfo();
+});
+
+document.querySelectorAll('.range-control button').forEach(button => {
+  button.setAttribute('aria-pressed', String(button.classList.contains('active')));
 });

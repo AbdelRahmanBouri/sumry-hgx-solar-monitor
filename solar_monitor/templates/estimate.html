@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="/static/estimate.css?v={{ version('estimate.css') }}">
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="potential-bar">
     <a class="back-button" href="/" aria-label="Back to live dashboard">
       <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
@@ -27,7 +28,7 @@
     </button>
   </header>
 
-  <main>
+  <main id="main-content" tabindex="-1">
     <section class="intro-panel panel">
       <div class="intro-copy">
         <span class="eyebrow" data-array-headline>YOUR ARRAY</span>
@@ -61,17 +62,17 @@
           <button type="button" data-hours="48">48H</button>
         </div>
       </div>
-      <div class="legend" aria-label="Chart series">
+      <div class="legend" role="group" aria-label="Chart series">
         <span><i class="captured-key"></i>Captured</span>
         <span><i class="potential-key"></i>Potential</span>
         <span><i class="future-key"></i>Forecast</span>
       </div>
       <div class="chart-readout" aria-live="polite">
-        <span class="chart-hint" id="potential-hint">Drag across the chart for exact values</span>
+        <span class="chart-hint" id="potential-hint">Drag across the chart or focus it and use the arrow keys for exact values</span>
         <div class="chart-reading" id="potential-reading" hidden></div>
       </div>
       <div class="chart-shell">
-        <canvas id="potential-chart" aria-label="Captured and estimated solar potential chart"></canvas>
+        <canvas id="potential-chart" tabindex="0" role="img" aria-describedby="potential-hint" aria-label="Captured and estimated solar potential chart"></canvas>
         <div class="chart-empty" id="potential-empty" hidden>No solar data in this window yet.</div>
       </div>
       <div class="chart-footer"><span id="calibration-note">Learning from your readings</span><span id="weather-source">Weather loading</span></div>
@@ -84,10 +85,18 @@
       </div>
       <p class="section-note">Hourly gaps are counted only while the battery is near its charging ceiling. Pale bars are lower-confidence periods and are not added to the total.</p>
       <div class="hourly-shell">
-        <canvas id="opportunity-chart" aria-label="Hourly possible uncaptured solar energy"></canvas>
+        <canvas id="opportunity-chart" role="img" aria-describedby="solar-table-help" aria-label="Hourly possible uncaptured solar energy"></canvas>
         <div class="chart-empty" id="opportunity-empty" hidden>No high-confidence opportunity detected yet.</div>
       </div>
       <p class="energy-summary" id="energy-summary">Totalling today’s solar…</p>
+      <details id="solar-data">
+        <summary>Solar chart values as tables</summary>
+        <p id="solar-table-help">Potential values follow the chart window. Captured power is interpolated from reported readings; future values are forecasts. Opportunity values are estimates, with lower-confidence gaps listed separately.</p>
+        <div class="solar-table-wrap" tabindex="0" role="region" aria-label="Solar chart tables">
+          <table><caption>Captured and potential solar power</caption><thead><tr><th scope="col">Time</th><th scope="col">Captured (W)</th><th scope="col">Potential (W)</th><th scope="col">Period</th></tr></thead><tbody id="potential-data"></tbody></table>
+          <table><caption>Hourly possible uncaptured solar</caption><thead><tr><th scope="col">Hour</th><th scope="col">Higher confidence (kWh)</th><th scope="col">Lower confidence (kWh)</th></tr></thead><tbody id="opportunity-data"></tbody></table>
+        </div>
+      </details>
     </section>
 
     <section class="losses-panel panel" id="recoverable" hidden>
@@ -131,7 +140,7 @@
             <span><b>Conditions last</b><output id="duration-value">1.0 h</output></span>
             <input id="duration" type="range" min="0.25" max="8" step="0.25" value="1">
           </label>
-          <div class="preset-row" aria-label="Calculator presets">
+          <div class="preset-row" role="group" aria-label="Calculator presets">
             <button type="button" data-preset="full">Battery full</button>
             <button type="button" data-preset="max">Max charging</button>
             <button type="button" data-preset="quiet">Low-load home</button>
