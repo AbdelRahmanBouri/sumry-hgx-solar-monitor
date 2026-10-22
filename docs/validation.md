@@ -21,12 +21,15 @@ The numerical observations recorded in `decisions.md` describe the original inst
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m unittest discover -v
+.venv/bin/python -m coverage run --branch --source=solar_monitor -m unittest discover -v
+.venv/bin/python -m coverage report
 .venv/bin/ruff check .
 node --test tests/js/*.test.js
 ```
 
-The Python suite runs without a physical inverter. Node adds JavaScript syntax and chart checks. CI tests Python 3.11–3.13 and runs a separate demo job:
+The Python suite runs without a physical inverter. Node adds JavaScript syntax and chart checks. CI tests Python 3.11–3.13 and requires at least 95% combined line and branch coverage **for each** of `collector.py`, `change_policy.py`, `propose.py`, `serial_io.py`, `protocols/base.py` and `protocols/sumry_8851.py`. The report measures application code only and is retained as a CI artifact. Coverage shows which paths ran; assertions about results, audit records and prevented transmissions establish their expected behaviour.
+
+The focused tests include every single-bit mutation of the captured status and configuration fixtures, valid-CRC structural errors, failed transmission/read-back, policy revocation during a read, competing claims and proposal commands that never open a port. CI also runs a separate demo job:
 
 ```sh
 .venv/bin/python run.py --demo

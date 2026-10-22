@@ -26,8 +26,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: pip install -r requirements.txt
-      - run: python -m unittest discover -v
+      - run: pip install -r requirements-dev.txt
+      - run: python -m coverage run --branch --source=solar_monitor -m unittest discover -v
+      - name: Require coverage of the serial and write boundaries
+        run: |
+          for module in collector.py change_policy.py propose.py serial_io.py protocols/base.py protocols/sumry_8851.py; do
+            python -m coverage report --fail-under=95 --include="solar_monitor/$module"
+          done
+      - name: Save coverage report
+        if: always()
+        run: python -m coverage xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-python-${{ matrix.python-version }}
+          path: coverage.xml
       - run: node --test tests/js/*.test.js
 
   lint:
