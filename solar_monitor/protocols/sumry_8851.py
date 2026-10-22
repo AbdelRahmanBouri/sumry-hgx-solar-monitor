@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 import struct
 from typing import Any
 
@@ -162,11 +163,14 @@ def _encode(field: WritableField, value: Any) -> int:
         raise ValueError("must be a number")
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise ValueError("must be a number") from None
     if not field.low <= number <= field.high:
         raise ValueError(f"must be between {field.low:g} and {field.high:g}")
-    return int(round(number * field.scale))
+    encoded = round(number * field.scale)
+    if not math.isclose(number * field.scale, encoded, rel_tol=0, abs_tol=1e-8):
+        raise ValueError(f"must use increments of {1 / field.scale:g}")
+    return int(encoded)
 
 
 def _crc16_modbus(data: bytes) -> int:
@@ -216,6 +220,24 @@ class Sumry8851Protocol(Protocol):
             return self._decode_config(frame)
         return self._decode_state(frame)
 
+    def validate_config_changes(self, changes: dict[str, Any]) -> dict[str, int]:
+        """Validate intent without I/O; never round an approved value on the wire."""
+        if not changes:
+            raise ValueError("No settings to change")
+        encoded, problems = {}, []
+        for name, value in changes.items():
+            field = WRITABLE_FIELDS.get(name)
+            if field is None:
+                problems.append(f"{name}: not a writable setting")
+                continue
+            try:
+                encoded[name] = _encode(field, value)
+            except ValueError as exc:
+                problems.append(f"{name}: {exc}")
+        if problems:
+            raise ValueError("; ".join(problems))
+        return encoded
+
     def build_config_write(self, reply: bytes, changes: dict[str, Any]) -> bytes:
         """The inverter's own configuration reply with `changes` applied and
         the command switched to write. Raises ValueError for a reply that is
@@ -226,28 +248,16 @@ class Sumry8851Protocol(Protocol):
             raise ValueError(f"Cannot write from this reply: {invalid.note}")
         if reply[2:4] != _READ_COMMAND or reply[4:6] != _CONFIG_ADDRESS:
             raise ValueError("Cannot write from this reply: not a configuration read")
-        if not changes:
-            raise ValueError("No settings to change")
+        encoded_changes = self.validate_config_changes(changes)
         frame = bytearray(reply)
         frame[2:4] = _WRITE_COMMAND
-        problems = []
-        for name, value in changes.items():
-            field = WRITABLE_FIELDS.get(name)
-            if field is None:
-                problems.append(f"{name}: not a writable setting")
-                continue
-            try:
-                encoded = _encode(field, value)
-            except ValueError as exc:
-                problems.append(f"{name}: {exc}")
-                continue
+        for name, encoded in encoded_changes.items():
+            field = WRITABLE_FIELDS[name]
             if field.kind == "u16":
                 struct.pack_into("<H", frame, field.offset, encoded)
             else:
                 cleared = frame[field.offset] & ~(field.mask << field.shift)
                 frame[field.offset] = cleared | ((encoded & field.mask) << field.shift)
-        if problems:
-            raise ValueError("; ".join(problems))
         struct.pack_into("<H", frame, len(frame) - 2, _crc16_modbus(bytes(frame[:-2])))
         built = bytes(frame)
         self.assert_write_frame(built, reply)

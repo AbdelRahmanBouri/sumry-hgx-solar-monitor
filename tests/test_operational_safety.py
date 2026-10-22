@@ -59,6 +59,23 @@ class WriteBoundaryTests(DatabaseTestCase):
                 self.collector.apply_config({"buzzer": False}, settle_seconds=0)
         write.assert_not_called()
 
+    def test_ignored_one_register_step_is_not_verified(self):
+        self.db.set_settings({"writes_enabled": "true"}, "now")
+        current = self.collector.protocol.decode(REAL_CONFIG_REPLY).metrics["bulk_charge_voltage_v"]
+        with patch.object(collector_module, "exchange", return_value=
+                          Exchange("t", "sim://", 9600, "current_settings_0200", b"", REAL_CONFIG_REPLY, 0)):
+            result = self.collector.apply_config({"bulk_charge_voltage_v": current - 0.01}, settle_seconds=0)
+        self.assertFalse(result["verified"])
+        self.assertIn("bulk_charge_voltage_v", result["mismatches"])
+
+    def test_unrepresentable_values_cannot_be_rounded_outside_approval(self):
+        self.db.set_settings({"writes_enabled": "true"}, "now")
+        for field, value in (("bulk_charge_voltage_v", 28.405), ("charge_cutoff_current_a", 5.04)):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                propose.propose(self.db, {field: value}, "precision", "test")
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.collector.protocol.build_config_write(REAL_CONFIG_REPLY, {field: value})
+
     def test_policy_cannot_approve_while_writes_are_off(self):
         self.db.set_settings({
             change_policy.ENABLED_SETTING: "true",
@@ -112,6 +129,21 @@ class CapacityContinuityTests(unittest.TestCase):
         second = battery.count_charge(rows, 200)
         self.assertEqual(len(second["rest_events"]), 2)
         self.assertEqual(second["capacity_measurements"], first["capacity_measurements"])
+
+    def test_absorption_cannot_span_missing_telemetry(self):
+        rows = readings(T0, 4, 29.2, 10)
+        rows += readings(T0 + timedelta(hours=3), 4, 29.2, 3)
+        day = battery.daily_health(rows, 29.2)[0]
+        self.assertFalse(day["absorption_reached"])
+        self.assertIsNone(day["absorption_minutes"])
+
+    def test_gap_after_an_absorption_hold_does_not_prove_it_completed(self):
+        rows = readings(T0, 30, 29.2, 10)
+        rows += readings(T0 + timedelta(hours=3), 4, 27.2, 3)
+        day = battery.daily_health(rows, 29.2)[0]
+        self.assertTrue(day["absorption_reached"])
+        self.assertFalse(day["absorption_ended"])
+        self.assertEqual(day["absorption_minutes"], 29)
 
     def test_unobserved_discharge_invalidates_capacity_learning(self):
         rows = readings(T0, 15, 27.2, 3)
@@ -178,6 +210,19 @@ class AdminBoundaryTests(DatabaseTestCase):
         with client.session_transaction() as session:
             session["admin_user"] = "admin"
         return client
+
+    def test_write_endpoints_reject_non_object_payloads(self):
+        client = self.client()
+        for route in ('settings', 'restore', 'writes', 'auto-apply'):
+            for payload in ([1], "invalid", 1):
+                with self.subTest(route=route, payload=payload):
+                    self.assertEqual(client.post('/api/admin/inverter/' + route, json=payload).status_code, 400)
+
+    def test_oversized_numbers_are_rejected_as_invalid_input(self):
+        with self.assertRaises(ValueError):
+            Sumry8851Protocol().build_config_write(REAL_CONFIG_REPLY, {"bulk_charge_voltage_v": 10 ** 400})
+        self.assertFalse(change_policy.evaluate({"bulk_charge_voltage_v": 10 ** 400},
+                                                {"bulk_charge_voltage_v": {"min": 24, "max": 29.2}})[0])
 
     def test_string_false_cannot_enable_writes_or_automation(self):
         client = self.client()

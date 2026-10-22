@@ -11,6 +11,28 @@ import urllib.parse
 import urllib.request
 
 
+def require(condition, message="Demo check failed"):
+    if not condition:
+        raise AssertionError(message)
+
+
+def check_write(call):
+    original = call("/api/admin/inverter")["current"]["settings"]["charge_cutoff_current_a"]
+    target = 5 if original != 5 else 6
+    call("/api/admin/inverter/writes", {"enabled": True})
+    try:
+        result = call("/api/admin/inverter/settings", {"changes": {"charge_cutoff_current_a": target}})
+        require(result["verified"] and result["after"]["charge_cutoff_current_a"] == target,
+                "Simulated change was not verified")
+    finally:
+        try:
+            result = call("/api/admin/inverter/settings", {"changes": {"charge_cutoff_current_a": original}})
+            require(result["verified"] and result["after"]["charge_cutoff_current_a"] == original,
+                    "Original simulated value was not restored")
+        finally:
+            call("/api/admin/inverter/writes", {"enabled": False})
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", default="http://127.0.0.1:5000")
@@ -36,30 +58,21 @@ def main() -> None:
     status = call("/api/status")
     if status["collector"]["configured_port"] != "sim://":
         raise RuntimeError("This check only runs against a simulated inverter")
-    assert status["sample"] and status["read_only"]
-    assert call("/health")["ok"]
-    assert call("/api/history?hours=24&points=10000")
-    assert call("/api/history/daily?days=7")
-    assert call("/api/battery")["state"]["soc"] is not None
-    assert call("/api/estimate")["configured"]
+    require(status["sample"] and status["read_only"])
+    require(call("/health")["ok"])
+    require(call("/api/history?hours=24&points=10000"))
+    require(call("/api/history/daily?days=7"))
+    require(call("/api/battery")["state"]["soc"] is not None)
+    require(call("/api/estimate")["configured"])
     call("/api/admin/inverter", expected=401)
     form = urllib.parse.urlencode({"username": "demo", "password": "demo-password"}).encode()
     with client.open(base + "/admin/login", data=form, timeout=30) as response:
-        assert response.status == 200
-    assert any(cookie.name == "session" for cookie in jar)
+        require(response.status == 200)
+    require(any(cookie.name == "session" for cookie in jar))
     call("/api/admin/system/reboot", {}, expected=403)
     call("/api/admin/inverter/settings", {"changes": {"charge_cutoff_current_a": 5}}, expected=403)
-    original = call("/api/admin/inverter")["current"]["settings"]["charge_cutoff_current_a"]
-    target = 5 if original != 5 else 6
-    call("/api/admin/inverter/writes", {"enabled": True})
-    try:
-        result = call("/api/admin/inverter/settings", {"changes": {"charge_cutoff_current_a": target}})
-        assert result["verified"] and result["after"]["charge_cutoff_current_a"] == target
-        result = call("/api/admin/inverter/settings", {"changes": {"charge_cutoff_current_a": original}})
-        assert result["verified"]
-    finally:
-        call("/api/admin/inverter/writes", {"enabled": False})
-    assert call("/api/status")["read_only"]
+    check_write(call)
+    require(call("/api/status")["read_only"])
     print("Demo passed: telemetry, history, estimates, authentication, write refusal, verified write and restore")
 
 

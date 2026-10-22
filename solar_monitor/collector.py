@@ -26,7 +26,7 @@ def _now() -> str:
 
 def _same_setting(requested, reported) -> bool:
     """A requested value matches a decoded read-back: numbers to the
-    resolution the inverter stores, switches by truth, names exactly."""
+    exact requested precision, switches by truth, names exactly."""
     def truth(value):
         if isinstance(value, bool):
             return value
@@ -40,7 +40,7 @@ def _same_setting(requested, reported) -> bool:
     if isinstance(requested, bool) or isinstance(reported, bool):
         return truth(requested) is not None and truth(requested) == truth(reported)
     try:
-        return abs(float(requested) - float(reported)) < 0.051
+        return abs(float(requested) - float(reported)) < 1e-9
     except (TypeError, ValueError):
         return str(requested) == str(reported)
 

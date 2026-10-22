@@ -294,11 +294,9 @@ def create_app(
     @app.get("/api/history/daily")
     def history_daily():
         days = _bounded_int("days", 30, 1, 90)
-        # Calendar days are the reader's, not UTC's: the window ends on the
-        # local date today and each day is cut at local midnight.
+        # Calendar days follow the server timezone, including historical DST.
         local_now = datetime.now().astimezone()
-        offset_minutes = int((local_now.utcoffset() or timedelta(0)).total_seconds() // 60)
-        return jsonify(database.daily_summary(local_now.date().isoformat(), days, offset_minutes))
+        return jsonify(database.daily_summary(local_now.date().isoformat(), days, utc_offset_minutes=None))
 
     @app.get("/api/estimate")
     def estimate():
@@ -446,7 +444,6 @@ def create_app(
             bulk = 28.2
         since = datetime.now(UTC) - timedelta(days=14)
         samples = database.history(since.isoformat(), max_points=8000)
-        local_offset = datetime.now().astimezone().utcoffset() or timedelta(0)
         try:
             cutoff = float((config.get("settings") or {}).get("low_battery_cutoff_v") or 21.0)
         except (TypeError, ValueError):
@@ -464,7 +461,7 @@ def create_app(
             "runtime": battery_model.runtime_to_cutoff(samples, state, cutoff, grid_available),
             "cutoff_volts": cutoff,
             "grid_available": grid_available,
-            "days": battery_model.daily_health(samples, bulk, int(local_offset.total_seconds() // 60))[-14:],
+            "days": battery_model.daily_health(samples, bulk, utc_offset_minutes=None)[-14:],
             "nominal_ah": nominal,
             "bulk_setpoint_v": bulk,
             "computed_at": now(),
@@ -1005,6 +1002,8 @@ def create_app(
     @login_required
     def admin_inverter_write():
         payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Expected a JSON object"}), 400
         changes = payload.get("changes")
         if not isinstance(changes, dict):
             return jsonify({"error": "Expected a 'changes' object"}), 400
@@ -1014,6 +1013,8 @@ def create_app(
     @login_required
     def admin_inverter_restore():
         payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Expected a JSON object"}), 400
         try:
             snapshot = database.inverter_config_snapshot(int(payload.get("snapshot_id")))
         except (TypeError, ValueError):

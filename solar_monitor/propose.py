@@ -51,32 +51,9 @@ def propose(
     silently waiting for an approval that would fail later."""
     settings = database.get_settings()
     protocol = create_protocol(protocol_name)
-    writable = getattr(protocol, "writable_fields", {})
-    if not changes:
-        raise ValueError("No changes given")
-    problems = []
-    for name, value in changes.items():
-        field = writable.get(name)
-        if field is None:
-            problems.append(f"{name} is not a writable setting")
-            continue
-        if field.kind == "bits":
-            allowed = {c.lower() for c in field.choices}
-            if str(value).lower() not in allowed:
-                problems.append(f"{name} must be one of {', '.join(field.choices)}")
-        else:
-            if isinstance(value, bool):
-                problems.append(f"{name} must be a number, not a switch")
-                continue
-            try:
-                number = float(value)
-            except (TypeError, ValueError):
-                problems.append(f"{name} must be a number")
-                continue
-            if not field.low <= number <= field.high:
-                problems.append(f"{name} must be between {field.low:g} and {field.high:g}")
-    if problems:
-        raise ValueError("; ".join(problems))
+    if not hasattr(protocol, "validate_config_changes"):
+        raise ValueError(f"Protocol {protocol.name} does not support writes")
+    protocol.validate_config_changes(changes)
 
     database.expire_change_requests((datetime.now(UTC) - timedelta(hours=PROPOSAL_TTL_HOURS)).isoformat())
     automatic, blocked = change_policy.evaluate(changes, change_policy.load_policy(settings))

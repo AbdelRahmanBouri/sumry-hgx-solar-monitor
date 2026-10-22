@@ -1,5 +1,6 @@
 const $ = selector => document.querySelector(selector);
 const number = value => {
+  if (value == null || value === '' || typeof value === 'boolean') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
@@ -129,7 +130,7 @@ function renderScenarios(scenarios) {
   $('#scenario-asbuilt').textContent = kwh(built);
   $('#scenario-perface').textContent = kwh(perFace);
   $('#scenario-oneslope').textContent = kwh(onePlane);
-  const gain = (value) => built > 0 ? `+${((value / built - 1) * 100).toFixed(0)}%` : '—';
+  const gain = (value) => built > 0 ? `${value >= built ? "+" : ""}${((value / built - 1) * 100).toFixed(0)}%` : '—';
   $('#scenario-perface-gain').textContent = gain(perFace);
   $('#scenario-oneslope-gain').textContent = gain(onePlane);
   $('#recoverable-total').textContent = `${(onePlane - built).toFixed(2)} kWh`;
@@ -246,41 +247,34 @@ function prepareOpportunity(rows) {
   return today;
 }
 
-/* How well the model tracks reality *where the system was free to follow it*.
-   Hours when the bank is full tell you nothing about the model's accuracy --
-   the inverter is throttling, not the estimate failing -- so they are excluded.
-   Publishing this is the honest answer to "how much should I trust the gap?" */
+/* A descriptive comparison on lower-voltage readings. These can also be
+   training data; battery voltage alone does not prove absence of curtailment. */
 function modelAccuracy(rows) {
   const usable = rows.filter(row => {
     if (timeOf(row) < startOfToday()) return false;
     const volts = number(row.battery_voltage);
     const potential = number(row.potential_watts);
     const captured = number(row.pv_watts);
-    return volts !== null && volts < 26.9        // bank could still accept charge
-      && potential !== null && potential > 150   // enough sun to be meaningful
-      && captured !== null;
+    return volts !== null && volts < 26.9
+      && potential !== null && potential > 150
+      && captured !== null && captured >= 0;
   });
   if (usable.length < 12) return null;
-  const mean = usable.reduce((total, row) => total + row.pv_watts / row.potential_watts, 0) / usable.length;
-  return {samples: usable.length, ratio: mean};
+  const difference = usable.reduce((total, row) =>
+    total + Math.abs(number(row.pv_watts) - number(row.potential_watts)) / number(row.potential_watts), 0);
+  return {samples: usable.length, absolutePercent: 100 * difference / usable.length};
 }
 
 function renderAccuracy(rows) {
   const node = $('#model-accuracy');
   if (!node) return;
-  const accuracy = modelAccuracy(rows);
-  if (!accuracy) {
+  const comparison = modelAccuracy(rows);
+  if (!comparison) {
     node.hidden = true;
     return;
   }
-  const off = Math.abs(1 - accuracy.ratio) * 100;
-  const direction = accuracy.ratio < 1 ? 'above' : 'below';
   node.hidden = false;
-  // The line is an envelope of demonstrated output, so sitting a little
-  // above the average unconstrained reading is by design, not drift.
-  node.textContent = off < 3
-    ? `Checked against today: while the battery could still accept charge, the line matched measured output within ${Math.max(1, off).toFixed(0)}% across ${accuracy.samples} readings.`
-    : `Checked against today: while the battery could still accept charge, the line ran ${off.toFixed(0)}% ${direction} measured output across ${accuracy.samples} readings. The larger midday gap is the battery refusing charge, not the model drifting.`;
+  node.textContent = `Today's comparison: average absolute difference was ${comparison.absolutePercent.toFixed(0)}% of modelled output across ${comparison.samples} readings below 26.9 V. These readings may also train the model; this is not independent validation.`;
 }
 
 function setLiveState(sample) {
@@ -336,7 +330,7 @@ function energySummary(captured, unused) {
   if (unused <= 0) return `No high-confidence losses today · ${kwh(captured)} captured.`;
   const percent = (unused / (captured + unused)) * 100;
   const share = percent < 1 ? 'under 1%' : `${Math.round(percent)}%`;
-  return `≈ ${kwh(unused)} lost — ${share} of the ${kwh(captured + unused)} available today (${kwh(captured)} captured).`;
+  return `≈ ${kwh(unused)} possibly unused — ${share} of the ${kwh(captured + unused)} modelled total today (${kwh(captured)} captured).`;
 }
 
 function canvasSetup(canvas) {

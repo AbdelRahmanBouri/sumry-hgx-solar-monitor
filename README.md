@@ -249,7 +249,7 @@ docs/decisions.md                        why the code is the way it is, with the
 - Utility current is not in the frame. The utility watts and amps shown are derived from the power balance and are a lower bound, not a metered reading.
 - Battery type can be neither read nor written over the protocol; it is set on the inverter's own panel.
 - Battery capacity and runtime are estimates, not independent capacity tests. A telemetry gap longer than five minutes invalidates charge counting until the next anchor.
-- Daily energy uses trapezoidal integration with gaps capped at five minutes and splits intervals at midnight. Calendar boundaries use the server's current UTC offset; a window crossing a daylight-saving change is approximate.
+- Daily energy uses trapezoidal integration with gaps capped at five minutes and splits intervals at midnight. Calendar boundaries follow the server's timezone rules for each date, including daylight-saving transitions.
 - The models were calibrated on one installation: a 24 V AGM bank, a 2.64 kW array split across a gable roof, a desert site. The chemistry curve, anchor thresholds and ground albedo are constants in the code, and the voltage thresholds assume a 24 V bank.
 
 ## Acknowledgements

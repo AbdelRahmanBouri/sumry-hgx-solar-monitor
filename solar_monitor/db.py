@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
 import json
 from pathlib import Path
 import sqlite3
@@ -438,39 +438,50 @@ class Database:
                 ).fetchone()[0]),
             }
 
-    def daily_summary(self, today: str, days: int, utc_offset_minutes: int = 0) -> list[dict[str, Any]]:
+    def daily_summary(
+        self, today: str, days: int, utc_offset_minutes: int | None = 0, *, local_timezone: tzinfo | None = None,
+    ) -> list[dict[str, Any]]:
         """The last `days` local calendar days ending on `today`, oldest first.
 
         `today` is a local date ("2026-09-16") and `utc_offset_minutes` the
-        local clock's offset from UTC; captured_at is stored in UTC. Every
-        day in the window comes back, zeroed where it has no samples, so a
+        local clock's offset from UTC; None uses the server's historical local
+        timezone rules. An explicit local_timezone overrides the fixed offset.
+        captured_at is stored in UTC. Every day in the window comes back, zeroed where it has no samples, so a
         caller can sum a true window rather than the last N days that
         happened to have data.
 
         Energy is the trapezoid between consecutive readings with the gap
-        capped at five minutes -- the rule the dashboard's own integrator
-        and battery.daily_health use -- and coverage_hours is the sum of
-        those capped gaps. Intervals crossing midnight are split between the
+        capped at five minutes, as in the dashboard's energy integrator.
+        coverage_hours is the sum of those capped gaps. Intervals crossing midnight are split between the
         two days, interpolating power at the boundary. A day with thirty minutes
-        of readings therefore
-        reports thirty minutes and the energy in them, not a whole day
+        of readings reports thirty minutes and the energy in them, not a whole day
         extrapolated from its average.
         """
         max_gap_hours = 5 / 60
-        local = f"{utc_offset_minutes:+d} minutes"
-        # The scan starts at the first day's local midnight in UTC, less one
-        # gap so the window's first reading still has its predecessor.
-        lead = f"{-(utc_offset_minutes + 5):+d} minutes"
+        zone = local_timezone
+        if zone is None and utc_offset_minutes is not None:
+            zone = timezone(timedelta(minutes=utc_offset_minutes))
+        first = datetime.fromisoformat(today) - timedelta(days=max(1, int(days)) - 1)
+        calendar = []
+        parameters = {"max_gap": max_gap_hours}
+        for index in range(max(1, int(days))):
+            day = first + timedelta(days=index)
+            # Convert each local midnight separately: a civil day may be 23 or
+            # 25 hours. Naive astimezone uses the system's rules for that date.
+            start = day.replace(tzinfo=zone).astimezone(UTC)
+            end = (day + timedelta(days=1)).replace(tzinfo=zone).astimezone(UTC)
+            parameters.update({f"day{index}": day.date().isoformat(),
+                               f"start{index}": start.isoformat(), f"end{index}": end.isoformat()})
+            calendar.append(f"(:day{index}, julianday(:start{index}), julianday(:end{index}))")
+            if index == 0:
+                parameters["scan_start"] = start.strftime("%Y-%m-%dT%H:%M:%S")
+        parameters["scan_end"] = (end + timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%S")
         with self.connect() as connection:
             rows = connection.execute(
+                "WITH calendar(day, start_day, end_day) AS (VALUES " + ",".join(calendar) + ")," +
                 """
-                WITH RECURSIVE calendar(day) AS (
-                    SELECT date(:today, :first_day)
-                    UNION ALL SELECT date(day, '+1 day') FROM calendar WHERE day < :today
-                ),
                 stepped AS (
-                    SELECT date(captured_at, :local) AS day,
-                        julianday(captured_at) AS end_day,
+                    SELECT julianday(captured_at) AS end_day,
                         julianday(LAG(captured_at) OVER w) AS previous_day,
                         pv_watts, ac_load_watts, battery_voltage,
                         LAG(pv_watts) OVER w AS previous_pv,
@@ -478,25 +489,21 @@ class Database:
                     FROM samples
                     WHERE captured_at >= COALESCE(
                         (SELECT MAX(captured_at) FROM samples
-                         WHERE captured_at < strftime('%Y-%m-%dT%H:%M:%S', :today, :first_day, :lead)),
-                        strftime('%Y-%m-%dT%H:%M:%S', :today, :first_day, :lead))
-                        AND captured_at < strftime('%Y-%m-%dT%H:%M:%S', :today, '+1 day', :tail)
+                         WHERE captured_at < :scan_start),
+                        :scan_start)
+                        AND captured_at < :scan_end
                     WINDOW w AS (ORDER BY captured_at)
                 ),
                 intervals AS (
                     SELECT *, MAX(previous_day, end_day - :max_gap / 24) AS start_day
                     FROM stepped WHERE previous_day IS NOT NULL AND end_day > previous_day
                 ),
-                bounds AS (
-                    SELECT day, julianday(day, :utc) AS start_day,
-                        julianday(day, '+1 day', :utc) AS end_day FROM calendar
-                ),
                 overlaps AS (
-                    SELECT bounds.day, intervals.*,
-                        MAX(intervals.start_day, bounds.start_day) AS left_day,
-                        MIN(intervals.end_day, bounds.end_day) AS right_day
-                    FROM bounds JOIN intervals
-                        ON intervals.end_day > bounds.start_day AND intervals.start_day < bounds.end_day
+                    SELECT calendar.day, intervals.*,
+                        MAX(intervals.start_day, calendar.start_day) AS left_day,
+                        MIN(intervals.end_day, calendar.end_day) AS right_day
+                    FROM calendar JOIN intervals
+                        ON intervals.end_day > calendar.start_day AND intervals.start_day < calendar.end_day
                 ),
                 slices AS (
                     SELECT *, (right_day - left_day) * 24 AS hours,
@@ -514,7 +521,9 @@ class Database:
                         AVG(pv_watts) AS avg_pv_watts, MAX(pv_watts) AS peak_pv_watts,
                         AVG(ac_load_watts) AS avg_load_watts, MAX(ac_load_watts) AS peak_load_watts,
                         MIN(battery_voltage) AS min_battery_voltage
-                    FROM stepped GROUP BY day
+                    FROM calendar JOIN stepped
+                        ON stepped.end_day >= calendar.start_day AND stepped.end_day < calendar.end_day
+                    GROUP BY day
                 )
                 SELECT calendar.day, COALESCE(samples, 0) AS samples,
                     ROUND(COALESCE(coverage_hours, 0), 2) AS coverage_hours,
@@ -524,10 +533,7 @@ class Database:
                 FROM calendar LEFT JOIN statistics USING (day) LEFT JOIN energy USING (day)
                 ORDER BY calendar.day
                 """,
-                {"today": today, "first_day": f"-{max(1, int(days)) - 1} days",
-                 "local": local, "lead": lead, "max_gap": max_gap_hours,
-                 "utc": f"{-utc_offset_minutes:+d} minutes",
-                 "tail": f"{5 - utc_offset_minutes:+d} minutes"},
+                parameters,
             ).fetchall()
         return [dict(row) for row in rows]
 

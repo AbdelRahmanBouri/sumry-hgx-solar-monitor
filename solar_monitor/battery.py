@@ -329,16 +329,16 @@ def runtime_to_cutoff(
     return result
 
 
-def _local_day(stamp: datetime, offset: timedelta) -> str:
-    return (stamp + offset).strftime("%Y-%m-%d")
+def _local_day(stamp: datetime, offset: timedelta | None) -> str:
+    return (stamp.astimezone() if offset is None else stamp + offset).strftime("%Y-%m-%d")
 
 
-def daily_health(samples: list[dict], bulk_setpoint_v: float, utc_offset_minutes: int = 0) -> list[dict]:
+def daily_health(samples: list[dict], bulk_setpoint_v: float, utc_offset_minutes: int | None = 0) -> list[dict]:
     """Per local day: pre-dawn voltage, absorption held and its tail
     current, and charge in and out. These are the recovery gauges: a bank
     that is being brought back rests higher each morning and finishes
     absorption at a smaller current."""
-    offset = timedelta(minutes=utc_offset_minutes)
+    offset = None if utc_offset_minutes is None else timedelta(minutes=utc_offset_minutes)
     rows = [row for row in samples if _number(row.get("battery_voltage")) is not None]
     rows.sort(key=_when)
     by_day: dict[str, list[dict]] = {}
@@ -368,14 +368,18 @@ def daily_health(samples: list[dict], bulk_setpoint_v: float, utc_offset_minutes
         # up, and taking that transient reported minutes and a bulk-current
         # tail for a hold that actually ran an hour and tapered to 4 A.
         runs: list[list[dict]] = []
+        completed_runs: list[list[dict]] = []
         current_run: list[dict] = []
         for row in day_rows:
+            if current_run and (_when(row) - _when(current_run[-1])).total_seconds() / 3600 > MAX_GAP_HOURS:
+                runs.append(current_run)
+                current_run = []
             if _number(row["battery_voltage"]) >= bulk_setpoint_v - ABSORPTION_BAND:
                 current_run.append(row)
             elif current_run:
                 runs.append(current_run)
+                completed_runs.append(current_run)
                 current_run = []
-        open_ended = bool(current_run)  # still holding at the end of the data
         if current_run:
             runs.append(current_run)
 
@@ -390,7 +394,7 @@ def daily_health(samples: list[dict], bulk_setpoint_v: float, utc_offset_minutes
         if longest is not None and run_minutes(longest) >= MIN_ABSORPTION_MINUTES:
             absorption_reached = True
             absorption_minutes = round(run_minutes(longest))
-            absorption_ended = not (open_ended and longest is runs[-1])
+            absorption_ended = any(longest is run for run in completed_runs)
             # The tail is the current the hold ended at, taken over the last
             # few readings so one noisy sample cannot define it.
             tail = [

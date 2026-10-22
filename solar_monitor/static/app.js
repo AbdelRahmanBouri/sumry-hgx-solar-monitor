@@ -1773,7 +1773,7 @@ function renderBatteryHealth() {
   set('#health-soc-note', !counted
     ? 'needs a completed absorption or a 30-minute rest first'
     : limited
-      ? `as full as a ${state.bulk_setpoint_v.toFixed(1)} V charger gets it — the chemistry wants ${state.recommended_absorption_v.toFixed(1)} V, so true charge is higher`
+      ? `as full as a ${state.bulk_setpoint_v.toFixed(1)} V charger gets it — the chemistry wants ${state.recommended_absorption_v.toFixed(1)} V, so the anchor may overstate charge`
       : `${state.ah_out_since_full} Ah out · ${state.ah_in_since_full} Ah in since ${
         state.last_anchor_at === state.last_full_at ? 'full' : 'a rest reading'} ${formatHoursAgo(state.last_anchor_at)}`);
   const cycles = state.capacity_measurements.length;
@@ -1783,10 +1783,10 @@ function renderBatteryHealth() {
   set('#health-capacity-note', !nameplateKnown
     ? "set the bank's nameplate under Admin → Solar estimate"
     : state.capacity_source !== 'measured'
-    ? 'nameplate · not yet measured by a full-to-rest cycle'
+    ? 'nameplate · waiting for a full-to-rest estimate'
     : state.capacity_is_lower_bound
       ? `lower bound from ${cycles} cycle${cycles === 1 ? '' : 's'} · reads light while absorption is capped low · nameplate ${Math.round(batteryState.nominal_ah)} Ah`
-      : `measured over ${cycles} cycle${cycles === 1 ? '' : 's'} · nameplate ${Math.round(batteryState.nominal_ah)} Ah`);
+      : `estimated over ${cycles} cycle${cycles === 1 ? '' : 's'} · nameplate ${Math.round(batteryState.nominal_ah)} Ah`);
 
   const today = days.at(-1);
   const withPredawn = days.filter(day => day.predawn_volts !== null);
@@ -1801,7 +1801,7 @@ function renderBatteryHealth() {
 
   if (today?.absorption_reached) {
     const minutes = today.absorption_minutes ?? 0;
-    set('#health-absorption', `${Math.floor(minutes / 60)}h ${minutes % 60}m${today.absorption_ended ? '' : ' so far'}`);
+    set('#health-absorption', `${Math.floor(minutes / 60)}h ${minutes % 60}m${today.absorption_ended ? '' : ' observed'}`);
     set('#health-tail', today.tail_amps === null ? 'tail current —' : `tail current ${today.tail_amps.toFixed(1)} A`);
   } else {
     set('#health-absorption', 'Not reached');

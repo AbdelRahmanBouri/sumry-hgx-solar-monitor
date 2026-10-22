@@ -44,7 +44,7 @@ def _allows(rule: Any, value: Any) -> bool:
         try:
             number = float(value)
             bounds = [float(bound) for bound in rule.values()]
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return False
         if isinstance(value, bool) or not all(math.isfinite(n) for n in [number, *bounds]):
             return False

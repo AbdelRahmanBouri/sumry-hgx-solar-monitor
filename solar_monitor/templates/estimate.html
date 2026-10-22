@@ -48,7 +48,7 @@
 
     <section class="model-notice" id="model-notice">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
-      <p><strong>Planning estimate, not a meter.</strong> The line's shape comes from the sun's path over each roof face; its height is learned from what this array actually delivered, by sun height, while nothing was holding it back. Midday is extrapolated from the highest sun it has been free to show.</p>
+      <p><strong>Planning estimate, not a meter.</strong> The line's shape comes from the sun's path over each roof face; its height is learned from what this array actually delivered, by sun height, on readings selected as likely unconstrained. Midday is extrapolated from the highest sun elevation represented by those readings.</p>
       <p id="model-accuracy" class="accuracy-note" hidden></p>
     </section>
 
@@ -92,14 +92,14 @@
 
     <section class="losses-panel panel" id="recoverable" hidden>
       <div class="panel-heading">
-        <div><span class="eyebrow">RECOVERABLE LOSSES</span><h2>What the install costs you</h2></div>
+        <div><span class="eyebrow">MODELLED SCENARIOS</span><h2>Compare array layouts</h2></div>
         <strong class="opportunity-total" id="recoverable-total">— kWh</strong>
       </div>
-      <p class="section-note">Unlike a full battery, these are losses in how the array is wired and mounted — they cost labour, not hardware. Modelled over the same window as the chart above.</p>
+      <p class="section-note">Estimated output over the chart window using the stored mismatch lookup. These comparisons do not establish achievable gains, cost or electrical suitability for a wiring change.</p>
       <div class="recoverable-list">
         <div><span>As wired and mounted today</span><strong id="scenario-asbuilt">— kWh</strong></div>
-        <div><span>Re-land each string on one roof face</span><strong id="scenario-perface">— kWh</strong><em id="scenario-perface-gain">—</em></div>
-        <div><span>…and move every module to the sunnier slope</span><strong id="scenario-oneslope">— kWh</strong><em id="scenario-oneslope-gain">—</em></div>
+        <div><span>Strings grouped by roof face</span><strong id="scenario-perface">— kWh</strong><em id="scenario-perface-gain">—</em></div>
+        <div><span>All modules on the sunnier slope</span><strong id="scenario-oneslope">— kWh</strong><em id="scenario-oneslope-gain">—</em></div>
       </div>
     </section>
 
@@ -153,7 +153,7 @@
     </section>
 
     <section class="system-panel panel">
-      <div class="panel-heading"><div><span class="eyebrow">MODEL INPUTS</span><h2>Your confirmed system</h2></div></div>
+      <div class="panel-heading"><div><span class="eyebrow">MODEL INPUTS</span><h2>Configured system</h2></div></div>
       <div class="spec-grid">
         <div><span>Solar modules</span><strong id="spec-modules">Not set</strong><small id="spec-modules-detail">set in the config file's [site] table</small></div>
         <div><span>Array wiring</span><strong id="spec-wiring">Not set</strong><small id="spec-wiring-detail">—</small></div>
@@ -165,7 +165,7 @@
       <details class="method-details">
         <summary>How this estimate works <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
         <div>
-          <p><strong>Potential</strong> is built in three steps. The sun's position for your coordinates gives clear-sky sunlight on each roof face; the cloud-cover forecast scales it; and the array's own efficiency — the share of that sunlight it has actually delivered at each sun height while the battery could still take charge, over the last week — sets the level. Nothing is hand-tuned: heat, glass reflection at low sun, haze and the string wiring are all in what the array demonstrated. Where the sun climbs higher than the array has yet been free to show, the last learned band is held.</p>
+          <p><strong>Potential</strong> is built in three steps. The sun's position for your coordinates gives clear-sky sunlight on each roof face; the cloud-cover forecast scales it; and the array's own efficiency — the share of that sunlight it has actually delivered at each sun height while the battery could still take charge, over the last week — sets the level. The observed output includes heat, reflection, haze and wiring effects, which this calibration cannot independently separate. Where the sun climbs higher than the array has yet been free to show, the last learned band is held.</p>
           <p><strong>Possible unused solar</strong> is the positive gap between modelled potential and inverter-captured PV only when battery voltage indicates the bank is near absorption or float. It can reveal curtailment, but it is not a utility-grade measurement.</p>
           <p><strong>Calculator</strong> assumes 92% inverter efficiency for AC load and 95% battery charging efficiency. It is a planning tool; actual charger behavior, heat and battery condition will move the result.</p>
         </div>

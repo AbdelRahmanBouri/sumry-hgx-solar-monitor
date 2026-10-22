@@ -49,6 +49,11 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt build
       - run: python -m build
+      - name: Check the installed wheel outside the checkout
+        run: |
+          pip install --force-reinstall --no-deps dist/*.whl
+          cd /tmp
+          python "$GITHUB_WORKSPACE/tools/check_package.py"
       - name: Exercise the simulator and render the pages
         run: |
           python run.py --demo > demo.log 2>&1 &
@@ -64,7 +69,7 @@ jobs:
           done
           if [ "$ready" != true ]; then cat demo.log; exit 1; fi
           python tools/check_demo.py
-          python tools/screenshot.py --all --login demo:demo-password --out demo-screenshots
+          python tools/screenshot.py --verify --all --login demo:demo-password --out demo-screenshots
       - uses: actions/upload-artifact@v4
         if: always()
         with:

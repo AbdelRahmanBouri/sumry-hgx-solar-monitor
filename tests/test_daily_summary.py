@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 import tempfile
 import unittest
+from zoneinfo import ZoneInfo
 
 from solar_monitor.db import Database
 
@@ -100,6 +101,18 @@ class DailySummaryTests(unittest.TestCase):
         self.assertAlmostEqual(before["pv_kwh"] + after["pv_kwh"], 0.010, delta=0.001)
         self.assertAlmostEqual(before["coverage_hours"], 2 / 60, delta=0.005)
         self.assertAlmostEqual(after["coverage_hours"], 1 / 60, delta=0.005)
+
+    def test_local_days_follow_both_daylight_saving_transitions(self):
+        zone = ZoneInfo("America/Los_Angeles")
+        for day, hours in (("2026-03-08", 23), ("2026-11-01", 25)):
+            start = datetime.fromisoformat(day).replace(tzinfo=zone).astimezone(UTC)
+            for minute in range(hours * 60 + 1):
+                self.db.save_sample((start + timedelta(minutes=minute)).isoformat(),
+                                    {"pv_watts": 1000})
+            row = self.db.daily_summary(day, 1, local_timezone=zone)[0]
+            self.assertEqual(row["samples"], hours * 60)
+            self.assertEqual(row["coverage_hours"], hours)
+            self.assertEqual(row["pv_kwh"], hours)
 
     def test_readings_outside_the_window_are_not_counted(self):
         self.db.save_sample("2026-09-05T12:00:00+00:00", {"pv_watts": 100})

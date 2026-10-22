@@ -32,22 +32,22 @@ The Python suite runs without a physical inverter. Node adds JavaScript syntax a
 .venv/bin/python run.py --demo
 # In another terminal, once /health is ready:
 .venv/bin/python tools/check_demo.py
-.venv/bin/python tools/screenshot.py --all --login demo:demo-password --out /tmp/solar-shots
+.venv/bin/python tools/screenshot.py --verify --all --login demo:demo-password --out /tmp/solar-shots
 ```
 
-`check_demo.py` refuses a collector whose port is not `sim://`. It checks telemetry, history, estimates, login, write refusal, a verified simulated change and restoration of the original value, then switches writes off. Chromium renders phone and desktop views and reports uncaught page errors. CI retains the screenshots and demo log. The browser uses a temporary profile.
+`check_demo.py` refuses a collector whose port is not `sim://`. It checks telemetry, history, estimates, login, write refusal, a verified simulated change and restoration of the original value, then switches writes off. Chromium renders phone and desktop views, requires populated demo data and charts with `--verify`, and fails on script exceptions, failed requests and HTTP errors for pages, scripts, styles and API calls. CI retains the screenshots and demo log. The browser uses a temporary profile.
 
-To check distribution contents, install `build` and run `python -m build`. Templates and static assets are included in the wheel; the documented `run.py` launcher is used from the source checkout.
+To check distribution contents, install `build` and run `python -m build`. CI installs the wheel and runs `tools/check_package.py` from outside the checkout to exercise its simulator, collector, API, templates and static assets. The check rejects imports from the source tree. The documented `run.py` launcher is used from the source checkout.
 
 ## Operational boundaries
 
 - The dashboard and telemetry API are public to anyone who can reach the service. Administration requires a session. The supplied proxy uses HTTP, so use it on a trusted private network; it is not an internet-facing deployment configuration.
 - Session cookies use `HttpOnly` and strict same-site handling. Browser changes from an explicitly different origin are rejected, admin responses are not cached, and pages cannot be embedded in a frame. This does not protect credentials sent over an untrusted HTTP connection.
 - Host controls, including reboot, service restart and Wi-Fi scanning or connection, are blocked when the collector uses `sim://`.
-- Writes default to off. Disabling waits for any write already in progress; it cannot undo bytes already sent. Queued requests fail closed if permission or policy has been revoked, and requests older than twelve hours expire. Failed or unverified changes require investigation rather than an automatic retry.
+- Writes default to off. Disabling waits for any write already in progress; it cannot undo bytes already sent. Queued requests fail closed if permission or policy has been revoked, and requests older than twelve hours expire. Numeric requests must fit the register resolution; read-back verification cannot accept a different register step. Failed or unverified changes require investigation rather than an automatic retry.
 - A valid status reply is required to refresh collector health. Corrupt or missing replies remain diagnostic records. An endless stream of serial bytes is bounded so the collector can return to its polling loop.
-- Charge counting becomes unavailable after a gap longer than five minutes until a new anchor. Energy summaries cap gaps at five minutes; that is an interpolation convention, not evidence of what happened during the missing interval.
-- Daily boundaries use the server's current UTC offset. Historical daylight-saving transitions are approximate. The dashboard preserves a full day at the supported ten-second minimum interval before client-side chart thinning.
+- Charge counting becomes unavailable after a gap longer than five minutes until a new anchor. Absorption holds cannot bridge missing telemetry longer than five minutes. Energy summaries cap gaps at five minutes; that is an interpolation convention, not evidence of what happened during the missing interval.
+- Daily boundaries follow the server's timezone rules for each date, including 23-hour and 25-hour days. The dashboard preserves a full day at the supported ten-second minimum interval before client-side chart thinning.
 - Weather is fetched from Open-Meteo for the configured coordinates. Local monitoring continues without a cloud account; the weather service is still an external dependency.
 
 Further hardware validation needs captured frames, the exact firmware and panel settings, and independent measurements. The simulator and software tests cannot substitute for those observations.
