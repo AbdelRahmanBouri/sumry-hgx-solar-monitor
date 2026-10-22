@@ -42,6 +42,7 @@ class WebConfig:
     host: str = "0.0.0.0"
     port: int = 5000
     expose_network_info: bool = False
+    secure_cookies: bool = False
 
 
 @dataclass(frozen=True)

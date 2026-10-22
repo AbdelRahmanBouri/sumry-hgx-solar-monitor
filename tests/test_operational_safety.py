@@ -259,7 +259,7 @@ class AdminBoundaryTests(DatabaseTestCase):
     def test_admin_responses_cannot_be_cached_or_framed(self):
         response = self.client().get('/admin')
         self.assertEqual(response.headers['Cache-Control'], 'no-store')
-        self.assertEqual(response.headers['Content-Security-Policy'], "frame-ancestors 'none'")
+        self.assertIn("frame-ancestors 'none'", response.headers['Content-Security-Policy'].split("; "))
 
 
 class TransportBoundaryTests(unittest.TestCase):

@@ -27,7 +27,7 @@ from .collector import Collector
 from .config import SerialConfig, SiteConfig
 from .db import Database
 from .protocols import create_protocol
-from .security import load_or_create_secret
+from .security import LoginLimiter, TransportSessionInterface, load_or_create_secret
 from .serial_io import Exchange, discover_usb_serial_ports, exchange
 
 P = ParamSpec("P")
@@ -49,8 +49,11 @@ def create_app(
     *,
     site: SiteConfig | None = None,
     expose_network_info: bool = False,
+    secure_cookies: bool = False,
 ) -> Flask:
     app = Flask(__name__)
+    app.session_interface = TransportSessionInterface()
+    login_limiter = LoginLimiter(database, PASSWORD_LOCKOUT_SECONDS)
     app.config["DATABASE"] = database
     serial_config = serial_config or SerialConfig()
     private_dir = database.path.parent
@@ -63,6 +66,9 @@ def create_app(
                  private_dir / "setup-token")
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SECURE=secure_cookies,
+        SESSION_COOKIE_PATH="/",
+        SESSION_REFRESH_EACH_REQUEST=False,
         SESSION_COOKIE_SAMESITE="Strict",
         PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
         MAX_CONTENT_LENGTH=1024 * 1024,
@@ -82,13 +88,31 @@ def create_app(
             if request.headers.get("Sec-Fetch-Site") == "cross-site":
                 return jsonify({"error": "Cross-site changes are not allowed"}), 403
 
+        if request.method == "POST" and request.path in {"/admin/login", "/admin/pin-login", "/admin/setup"}:
+            wait = (login_limiter.take("global", "login", 100)
+                    or login_limiter.take("source", request.remote_addr or "unknown", 20))
+            if wait:
+                return limited_login(wait)
         return None
+
+    def limited_login(wait: int) -> ResponseReturnValue:
+        return ("Too many login attempts. Try again later.", 429, {"Retry-After": str(wait)})
 
     @app.after_request
     def response_security_headers(response: Response) -> Response:
-        response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'none'; "
+            "img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; "
+            "base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'"
+        )
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        if request.is_secure:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000"
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "same-origin"
+        response.headers["Referrer-Policy"] = "no-referrer"
         if request.path.startswith(("/admin", "/api/admin")):
             response.headers["Cache-Control"] = "no-store"
         return response
@@ -543,29 +567,8 @@ def create_app(
                 return redirect(url_for("admin_home"))
         return render_template("admin_setup.html", token=supplied, error=error)
 
-    # Password guesses per account. The PIN locks for good after three
-    # failures because the password stays as the way back in; the password
-    # has no way back, so it locks for a while instead: long enough to make
-    # guessing hopeless, short enough that the only admin is never shut out.
-    # Past the limit every further wrong password locks it again, so after
-    # the first lock a guesser gets one try per lock; a correct password
-    # clears the count. Held in memory, so a restart clears it -- and restarting the service
-    # already takes access an attacker would not be guessing for.
-    password_failures: dict[str, tuple[int, float]] = {}
-
-    def password_locked_for(username: str) -> float:
-        failures, locked_until = password_failures.get(username, (0, 0.0))
-        return max(0.0, locked_until - time.monotonic()) if failures >= PASSWORD_ATTEMPTS else 0.0
-
-    def record_password_failure(username: str) -> None:
-        failures, _ = password_failures.get(username, (0, 0.0))
-        failures += 1
-        locked_until = time.monotonic() + PASSWORD_LOCKOUT_SECONDS if failures >= PASSWORD_ATTEMPTS else 0.0
-        password_failures[username] = (failures, locked_until)
-        if failures == PASSWORD_ATTEMPTS:
-            database.audit(now(), username, "auth.locked",
-                           f"{failures} wrong passwords; locked for {PASSWORD_LOCKOUT_SECONDS // 60} minutes")
-
+    # The account budget is reserved atomically before hashing, including
+    # unknown usernames. Success clears it; source/global budgets still apply.
     @app.route("/admin/login", methods=["GET", "POST"])
     def admin_login() -> ResponseReturnValue:
         if not database.admin_count():
@@ -575,14 +578,11 @@ def create_app(
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
             user = database.admin_by_username(username)
-            wait = password_locked_for(username) if user else 0.0
+            wait = login_limiter.take("account", username[:80], PASSWORD_ATTEMPTS)
             if wait:
-                # Refused before the hash is checked, so a locked account
-                # cannot be probed for its password at all.
-                minutes = max(1, round(wait / 60))
-                error = f"Too many wrong passwords. Try again in {minutes} minute{'s' if minutes != 1 else ''}."
-            elif user and check_password_hash(user["password_hash"], password):
-                password_failures.pop(username, None)
+                return limited_login(wait)
+            if user and check_password_hash(user["password_hash"], password):
+                login_limiter.clear("account", username[:80])
                 session.clear()
                 session["admin_user"] = username
                 session["auth_method"] = "password"
@@ -594,8 +594,6 @@ def create_app(
                 return redirect(target if target.startswith("/admin") else url_for("admin_home"))
             else:
                 database.audit(now(), username or None, "auth.failed", request.remote_addr or "")
-                if user:
-                    record_password_failure(username)
                 error = "Incorrect username or password."
         pin_admin = database.pin_admin()
         return render_template(

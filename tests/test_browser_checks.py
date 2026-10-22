@@ -25,6 +25,11 @@ class BrowserCheckTests(unittest.TestCase):
         ]
         self.assertEqual(len(page_errors(events, "page")), 2)
 
+    def test_security_policy_violations_are_not_silently_ignored(self):
+        events = [{"sessionId": "page", "method": "Log.entryAdded", "params": {
+            "entry": {"source": "security", "text": "Blocked inline script"}}}]
+        self.assertEqual(page_errors(events, "page"), ["Blocked inline script"])
+
     def test_evaluated_action_exception_is_not_a_successful_protocol_reply(self):
         browser = Browser.__new__(Browser)
         browser.send = Mock(return_value={"exceptionDetails": {"text": "missing button"}})

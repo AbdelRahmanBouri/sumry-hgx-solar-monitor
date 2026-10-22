@@ -76,7 +76,9 @@ def page_errors(events: list[dict], session: str) -> list[str]:
             if response["status"] >= 400:
                 errors.append(f"HTTP {response['status']}: {response['url']}")
         elif method == "Network.loadingFailed" and not params.get("canceled"):
-            errors.append(f"Request failed: {params.get('errorText', 'unknown error')}")
+            errors.append(f"Request failed: {params.get('errorText') or params.get('blockedReason') or 'unknown error'}")
+        elif method == "Log.entryAdded" and params.get("entry", {}).get("source") == "security":
+            errors.append(params["entry"].get("text", "Browser security policy violation"))
     return errors
 
 
@@ -226,6 +228,7 @@ def capture(browser: Browser, url: str, target: Path, width: int, height: int, *
         browser.send("Network.setCookie",
                      {"name": "session", "value": cookie, "domain": host, "path": "/", "httpOnly": True}, session)
     browser.send("Runtime.enable", {}, session)
+    browser.send("Log.enable", {}, session)
     browser.send("Page.enable", {}, session)
     navigation = browser.send("Page.navigate", {"url": url}, session)
     if navigation.get("errorText"):
