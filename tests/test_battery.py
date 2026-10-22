@@ -173,8 +173,9 @@ class CoulombCountTests(unittest.TestCase):
         rows = readings(T0, 15, 27.2, 3.0)
         rows += readings(T0 + timedelta(hours=3), 10, 25.0, -10.0)  # 3 h later, 10 min of load
         state = battery.count_charge(rows, 200)
-        # Only the 10 minutes actually observed count: ~1.5 Ah, not 30.
-        self.assertGreater(state["soc"], 98.5)
+        # The missing hours could contain any load; wait for another anchor.
+        self.assertIsNone(state["soc"])
+        self.assertAlmostEqual(state["ah_out_since_full"], 1.5)
 
     def test_absorption_current_does_not_count_as_full(self):
         # Holding the plateau but still pushing 20 A: still charging, not full.

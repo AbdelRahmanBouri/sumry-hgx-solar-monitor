@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -125,7 +126,7 @@ class WebTests(unittest.TestCase):
     def test_status_derives_utility_use_from_the_transfer_relay(self):
         # A night-time bypass reading: mains present, the inverter's own
         # output collapsed, and the load still served.
-        self.db.save_sample("2026-09-16T04:00:00+00:00", {
+        self.db.save_sample(datetime.now(UTC).isoformat(), {
             "grid_voltage": 121.6, "grid_frequency": 59.97,
             "output_voltage": 121.2, "output_current": 0.08,
             "ac_load_watts": 370.0, "pv_watts": 0.0,
@@ -138,7 +139,7 @@ class WebTests(unittest.TestCase):
     def test_legacy_grid_current_is_never_served_again(self):
         # Rows written before 2026-09-16 carry offset 76 under this name. The
         # column keeps them for diagnostics; no endpoint may hand them out.
-        self.db.save_sample("2026-09-16T04:00:00+00:00", {
+        self.db.save_sample(datetime.now(UTC).isoformat(), {
             "grid_voltage": 121.6, "ac_load_watts": 370.0,
         })
         with self.db.connect() as connection:
@@ -379,6 +380,7 @@ class WebTests(unittest.TestCase):
             from solar_monitor.protocols.sumry_8851 import Sumry8851Protocol
             protocol = Sumry8851Protocol()
             calls = []
+            lock = threading.Lock()
 
             def state(self):
                 return {"running": True}

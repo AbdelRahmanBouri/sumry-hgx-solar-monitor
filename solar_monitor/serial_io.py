@@ -121,7 +121,8 @@ def _transact(
             response = connection.read(512)
             # Collect bytes that arrive in short trailing bursts.
             trailing_deadline = time.monotonic() + 0.12
-            while time.monotonic() < trailing_deadline:
+            hard_deadline = time.monotonic() + 0.5
+            while len(response) < 4096 and time.monotonic() < min(trailing_deadline, hard_deadline):
                 waiting = connection.in_waiting
                 if waiting:
                     response += connection.read(min(waiting, 4096 - len(response)))

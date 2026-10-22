@@ -26,8 +26,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: pip install -r requirements.txt
-      - run: python -m unittest discover -v
+      - run: pip install -r requirements-dev.txt
+      - run: python -m coverage run --branch --source=solar_monitor -m unittest discover -v
+      - name: Require coverage of the serial and write boundaries
+        run: |
+          for module in collector.py change_policy.py propose.py serial_io.py protocols/base.py protocols/sumry_8851.py; do
+            python -m coverage report --fail-under=95 --include="solar_monitor/$module"
+          done
+      - name: Save coverage report
+        if: always()
+        run: python -m coverage xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-python-${{ matrix.python-version }}
+          path: coverage.xml
       - run: node --test tests/js/*.test.js
 
   lint:
@@ -39,3 +52,41 @@ jobs:
           python-version: "3.13"
       - run: pip install -r requirements-dev.txt
       - run: ruff check .
+
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt build
+      - run: python -m build
+      - name: Check the installed wheel outside the checkout
+        run: |
+          pip install --force-reinstall --no-deps dist/*.whl
+          cd /tmp
+          python "$GITHUB_WORKSPACE/tools/check_package.py"
+      - name: Exercise the simulator and render the pages
+        run: |
+          python run.py --demo > demo.log 2>&1 &
+          demo_pid=$!
+          trap 'kill "$demo_pid"' EXIT
+          ready=false
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:5000/health > /dev/null; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then cat demo.log; exit 1; fi
+          python tools/check_demo.py
+          python tools/screenshot.py --verify --all --login demo:demo-password --out demo-screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: demo-verification
+          path: |
+            demo.log
+            demo-screenshots/

@@ -1,0 +1,5 @@
+include README.md LICENSE pyproject.toml run.py diagnostic.py config.example.toml requirements*.txt
+recursive-include deploy *.sh *.toml *.service *.conf *.example
+recursive-include docs *.md *.png
+recursive-include tools *.py
+recursive-include tests *.py *.js

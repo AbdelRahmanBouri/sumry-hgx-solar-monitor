@@ -16,6 +16,7 @@ anything novel still gets a human.
 """
 from __future__ import annotations
 
+import math
 from typing import Any
 
 POLICY_SETTING = "inverter_auto_apply_policy"
@@ -35,12 +36,17 @@ def load_policy(settings: dict[str, str]) -> dict[str, Any]:
 
 def _allows(rule: Any, value: Any) -> bool:
     if isinstance(rule, list):
-        return value in rule
+        return any(isinstance(value, bool) == isinstance(choice, bool) and value == choice for choice in rule)
     if isinstance(rule, dict):
+        if not rule or set(rule) - {"min", "max"}:
+            return False
         low, high = rule.get("min"), rule.get("max")
         try:
             number = float(value)
-        except (TypeError, ValueError):
+            bounds = [float(bound) for bound in rule.values()]
+        except (TypeError, ValueError, OverflowError):
+            return False
+        if isinstance(value, bool) or not all(math.isfinite(n) for n in [number, *bounds]):
             return False
         if low is not None and number < float(low):
             return False
@@ -48,6 +54,31 @@ def _allows(rule: Any, value: Any) -> bool:
             return False
         return True
     return False
+
+
+def validate_policy(policy: dict, fields: dict) -> None:
+    """Reject malformed rules and ranges wider than the protocol allows."""
+    for name, rule in policy.items():
+        field = fields.get(name)
+        if field is None:
+            raise ValueError(f"Not a writable setting: {name}")
+        if isinstance(rule, list) and rule:
+            for value in rule:
+                if field["kind"] == "bits":
+                    if str(value).lower() not in field["choices"]:
+                        raise ValueError(f"{name}: invalid choice {value}")
+                elif not _allows({"min": field["low"], "max": field["high"]}, value):
+                    raise ValueError(f"{name}: choice outside the writable range")
+        elif isinstance(rule, dict) and field["kind"] != "bits":
+            if not rule or set(rule) - {"min", "max"}:
+                raise ValueError(f"{name}: expected min and/or max")
+            low, high = rule.get("min", field["low"]), rule.get("max", field["high"])
+            if not _allows({"min": field["low"], "max": field["high"]}, low) or not _allows(
+                {"min": field["low"], "max": field["high"]}, high,
+            ) or float(low) > float(high):
+                raise ValueError(f"{name}: invalid range")
+        else:
+            raise ValueError(f"{name}: expected a nonempty choice list or numeric range")
 
 
 def evaluate(changes: dict[str, Any], policy: dict[str, Any]) -> tuple[bool, list[str]]:

@@ -3,8 +3,17 @@ __pycache__/
 .venv/
 instance/
 *.log
+.DS_Store
+.coverage
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+demo-screenshots/
 
 .register-probe-mark
 
 # The live instance's own settings and site profile; copy config.example.toml.
 config.toml
+
+coverage.xml

@@ -51,32 +51,15 @@ def propose(
     silently waiting for an approval that would fail later."""
     settings = database.get_settings()
     protocol = create_protocol(protocol_name)
-    writable = getattr(protocol, "writable_fields", {})
-    if not changes:
-        raise ValueError("No changes given")
-    problems = []
-    for name, value in changes.items():
-        field = writable.get(name)
-        if field is None:
-            problems.append(f"{name} is not a writable setting")
-            continue
-        if field.kind == "bits":
-            allowed = {c.lower() for c in field.choices}
-            if str(value).lower() not in allowed:
-                problems.append(f"{name} must be one of {', '.join(field.choices)}")
-        else:
-            try:
-                number = float(value)
-            except (TypeError, ValueError):
-                problems.append(f"{name} must be a number")
-                continue
-            if not field.low <= number <= field.high:
-                problems.append(f"{name} must be between {field.low:g} and {field.high:g}")
-    if problems:
-        raise ValueError("; ".join(problems))
+    if not hasattr(protocol, "validate_config_changes"):
+        raise ValueError(f"Protocol {protocol.name} does not support writes")
+    protocol.validate_config_changes(changes)
 
     database.expire_change_requests((datetime.now(UTC) - timedelta(hours=PROPOSAL_TTL_HOURS)).isoformat())
     automatic, blocked = change_policy.evaluate(changes, change_policy.load_policy(settings))
+    if settings.get("writes_enabled") != "true":
+        automatic = False
+        blocked.append("inverter writes are switched off")
     request_id = database.create_change_request(
         _now(), requested_by, reason, changes,
         status="approved" if automatic else "pending",

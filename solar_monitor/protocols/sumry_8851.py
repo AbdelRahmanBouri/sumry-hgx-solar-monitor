@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 import struct
 from typing import Any
 
@@ -61,7 +62,7 @@ WRITABLE_FIELDS: dict[str, WritableField] = {
     # value written on 2026-09-04 can be restored to 0; they must not be used
     # to select a battery type until the real register is identified.
     "unknown_flag_byte8_bits34": WritableField(
-        "bits", 8, shift=3, mask=0x03, choices=("0", "1", "2", "3"),
+        "bits", 8, shift=3, mask=0x03, choices=("0",),
     ),
     "bulk_charge_voltage_v": WritableField("u16", 48, 100, 24.0, 29.2),
     "float_charge_voltage_v": WritableField("u16", 52, 100, 24.0, 29.2),
@@ -148,6 +149,8 @@ _WRITABLE_MASKS = _writable_masks()
 
 def _encode(field: WritableField, value: Any) -> int:
     if field.kind == "bits":
+        if field.choices == ("0",) and type(value) is int and value == 0:
+            value = "0"
         if isinstance(value, bool):
             value = "true" if value else "false"
         if isinstance(value, str) and value in field.choices:
@@ -160,11 +163,14 @@ def _encode(field: WritableField, value: Any) -> int:
         raise ValueError("must be a number")
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise ValueError("must be a number") from None
     if not field.low <= number <= field.high:
         raise ValueError(f"must be between {field.low:g} and {field.high:g}")
-    return int(round(number * field.scale))
+    encoded = round(number * field.scale)
+    if not math.isclose(number * field.scale, encoded, rel_tol=0, abs_tol=1e-8):
+        raise ValueError(f"must use increments of {1 / field.scale:g}")
+    return int(encoded)
 
 
 def _crc16_modbus(data: bytes) -> int:
@@ -214,6 +220,24 @@ class Sumry8851Protocol(Protocol):
             return self._decode_config(frame)
         return self._decode_state(frame)
 
+    def validate_config_changes(self, changes: dict[str, Any]) -> dict[str, int]:
+        """Validate intent without I/O; never round an approved value on the wire."""
+        if not changes:
+            raise ValueError("No settings to change")
+        encoded, problems = {}, []
+        for name, value in changes.items():
+            field = WRITABLE_FIELDS.get(name)
+            if field is None:
+                problems.append(f"{name}: not a writable setting")
+                continue
+            try:
+                encoded[name] = _encode(field, value)
+            except ValueError as exc:
+                problems.append(f"{name}: {exc}")
+        if problems:
+            raise ValueError("; ".join(problems))
+        return encoded
+
     def build_config_write(self, reply: bytes, changes: dict[str, Any]) -> bytes:
         """The inverter's own configuration reply with `changes` applied and
         the command switched to write. Raises ValueError for a reply that is
@@ -224,28 +248,16 @@ class Sumry8851Protocol(Protocol):
             raise ValueError(f"Cannot write from this reply: {invalid.note}")
         if reply[2:4] != _READ_COMMAND or reply[4:6] != _CONFIG_ADDRESS:
             raise ValueError("Cannot write from this reply: not a configuration read")
-        if not changes:
-            raise ValueError("No settings to change")
+        encoded_changes = self.validate_config_changes(changes)
         frame = bytearray(reply)
         frame[2:4] = _WRITE_COMMAND
-        problems = []
-        for name, value in changes.items():
-            field = WRITABLE_FIELDS.get(name)
-            if field is None:
-                problems.append(f"{name}: not a writable setting")
-                continue
-            try:
-                encoded = _encode(field, value)
-            except ValueError as exc:
-                problems.append(f"{name}: {exc}")
-                continue
+        for name, encoded in encoded_changes.items():
+            field = WRITABLE_FIELDS[name]
             if field.kind == "u16":
                 struct.pack_into("<H", frame, field.offset, encoded)
             else:
                 cleared = frame[field.offset] & ~(field.mask << field.shift)
                 frame[field.offset] = cleared | ((encoded & field.mask) << field.shift)
-        if problems:
-            raise ValueError("; ".join(problems))
         struct.pack_into("<H", frame, len(frame) - 2, _crc16_modbus(bytes(frame[:-2])))
         built = bytes(frame)
         self.assert_write_frame(built, reply)
@@ -257,6 +269,8 @@ class Sumry8851Protocol(Protocol):
         fields. Anything else is refused before it reaches the port."""
         if len(frame) != _CONFIG_FRAME_LENGTH or len(template) != _CONFIG_FRAME_LENGTH:
             raise PermissionError("Outbound write rejected: wrong frame length")
+        if template[:2] != _HEADER or template[4:6] != _CONFIG_ADDRESS or not self._decode_config(template).valid:
+            raise PermissionError("Outbound write rejected: invalid configuration template")
         if frame[:2] != _HEADER or frame[2:4] != _WRITE_COMMAND or frame[4:6] != _CONFIG_ADDRESS:
             raise PermissionError("Outbound write rejected: not a configuration write")
         if _u16(frame, 6) != _CONFIG_DATA_LENGTH:
@@ -269,6 +283,14 @@ class Sumry8851Protocol(Protocol):
                 raise PermissionError(
                     f"Outbound write rejected: byte {index} is not a writable setting"
                 )
+        unknown_mask = 0x03 << 3
+        if (frame[8] ^ template[8]) & unknown_mask and frame[8] & unknown_mask:
+            raise PermissionError("Unidentified bits may only be restored to zero")
+        for name, field in WRITABLE_FIELDS.items():
+            if field.kind == "u16" and frame[field.offset:field.offset + 2] != template[field.offset:field.offset + 2]:
+                value = _u16(frame, field.offset) / field.scale
+                if not field.low <= value <= field.high:
+                    raise PermissionError(f"Outbound write rejected: {name} is outside its range")
 
     def _validate(self, frame: bytes, expected_length: int, kind: str) -> DecodeResult | None:
         if len(frame) != expected_length:
@@ -290,6 +312,8 @@ class Sumry8851Protocol(Protocol):
         invalid = self._validate(frame, _FRAME_LENGTH, "status")
         if invalid:
             return invalid
+        if frame[2:6] != bytes.fromhex("00030000") or _u16(frame, 6) != _FRAME_LENGTH - 10:
+            return DecodeResult({}, False, "Unexpected HGX status response header")
 
         metrics = {
             name: value / divisor if divisor != 1 else value

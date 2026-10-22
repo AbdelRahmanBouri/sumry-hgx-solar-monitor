@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 import tempfile
 import unittest
+from zoneinfo import ZoneInfo
 
 from solar_monitor.db import Database
 
@@ -87,8 +88,31 @@ class DailySummaryTests(unittest.TestCase):
         rows = self.db.daily_summary("2026-09-10", 1)
         self.assertEqual([row["day"] for row in rows], ["2026-09-10"])
         self.assertEqual(rows[0]["samples"], 1)
-        self.assertAlmostEqual(rows[0]["coverage_hours"], 3 / 60, delta=0.01)
-        self.assertAlmostEqual(rows[0]["pv_kwh"], 200 * (3 / 60) / 1000, delta=0.001)
+        self.assertAlmostEqual(rows[0]["coverage_hours"], 1 / 60, delta=0.005)
+        self.assertAlmostEqual(rows[0]["pv_kwh"], (700 / 3 + 300) / 2 / 60 / 1000, delta=0.001)
+
+    def test_midnight_splits_energy_without_changing_the_total(self):
+        self.db.save_sample("2026-09-09T23:58:00+00:00", {"pv_watts": 100})
+        self.db.save_sample("2026-09-10T00:01:00+00:00", {"pv_watts": 300})
+        both = self.db.daily_summary("2026-09-10", 2)
+        before = self.db.daily_summary("2026-09-09", 1)[0]
+        after = self.db.daily_summary("2026-09-10", 1)[0]
+        self.assertEqual(both, [before, after])
+        self.assertAlmostEqual(before["pv_kwh"] + after["pv_kwh"], 0.010, delta=0.001)
+        self.assertAlmostEqual(before["coverage_hours"], 2 / 60, delta=0.005)
+        self.assertAlmostEqual(after["coverage_hours"], 1 / 60, delta=0.005)
+
+    def test_local_days_follow_both_daylight_saving_transitions(self):
+        zone = ZoneInfo("America/Los_Angeles")
+        for day, hours in (("2026-03-08", 23), ("2026-11-01", 25)):
+            start = datetime.fromisoformat(day).replace(tzinfo=zone).astimezone(UTC)
+            for minute in range(hours * 60 + 1):
+                self.db.save_sample((start + timedelta(minutes=minute)).isoformat(),
+                                    {"pv_watts": 1000})
+            row = self.db.daily_summary(day, 1, local_timezone=zone)[0]
+            self.assertEqual(row["samples"], hours * 60)
+            self.assertEqual(row["coverage_hours"], hours)
+            self.assertEqual(row["pv_kwh"], hours)
 
     def test_readings_outside_the_window_are_not_counted(self):
         self.db.save_sample("2026-09-05T12:00:00+00:00", {"pv_watts": 100})
@@ -96,6 +120,12 @@ class DailySummaryTests(unittest.TestCase):
         rows = self.db.daily_summary("2026-09-10", 5)
         self.assertEqual(len(rows), 5)
         self.assertEqual(sum(row["samples"] for row in rows), 0)
+
+    def test_capped_midnight_gap_is_independent_of_window_length(self):
+        self.db.save_sample("2026-09-09T23:00:00+00:00", {"pv_watts": 100})
+        self.db.save_sample("2026-09-10T00:01:00+00:00", {"pv_watts": 300})
+        day = self.db.daily_summary("2026-09-10", 1)[0]
+        self.assertEqual(day, self.db.daily_summary("2026-09-10", 2)[1])
 
 
 if __name__ == "__main__":
