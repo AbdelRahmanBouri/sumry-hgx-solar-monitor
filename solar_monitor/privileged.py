@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import subprocess
+from typing import Any
 
 # Every privileged action goes through one argument-validated helper script
 # rather than broad sudo rights for the service account. The sudoers rule
@@ -89,14 +90,14 @@ def _terse_fields(line: str) -> list[str]:
     return fields
 
 
-def parse_wifi_scan(output: str) -> list[dict]:
+def parse_wifi_scan(output: str) -> list[dict[str, Any]]:
     """Networks from `nmcli -t -f ssid,signal,security`, strongest first.
 
     nmcli lists every access point, so a network with two radios appears
     twice; it is listed once here, at its strongest signal. Hidden networks
     have no name to join by and are left out.
     """
-    strongest: dict[str, dict] = {}
+    strongest: dict[str, dict[str, Any]] = {}
     for line in output.splitlines():
         parts = _terse_fields(line)
         ssid = parts[0]

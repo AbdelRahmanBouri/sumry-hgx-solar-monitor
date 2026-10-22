@@ -56,7 +56,7 @@ def _allows(rule: Any, value: Any) -> bool:
     return False
 
 
-def validate_policy(policy: dict, fields: dict) -> None:
+def validate_policy(policy: dict[str, Any], fields: dict[str, Any]) -> None:
     """Reject malformed rules and ranges wider than the protocol allows."""
     for name, rule in policy.items():
         field = fields.get(name)

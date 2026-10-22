@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 import json
 import math
 import time
+from typing import Any
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -232,7 +233,7 @@ def cloud_attenuation(cloud_cover_percent: float) -> float:
     cloud cover to the reduction in surface solar radiation.
     """
     fraction = max(0.0, min(100.0, cloud_cover_percent)) / 100
-    return max(0.03, 1 - 0.75 * (fraction ** 3.4))
+    return float(max(0.03, 1 - 0.75 * (fraction ** 3.4)))
 
 
 def _cache_key(lat: float, lon: float) -> str:
@@ -350,7 +351,7 @@ def _percentile(values: list[float], fraction: float) -> float:
 
 
 def learn_efficiency(
-    samples: list[dict],
+    samples: list[dict[str, Any]],
     lat: float,
     lon: float,
     capacity_watts: float,
@@ -358,7 +359,7 @@ def learn_efficiency(
     azimuth_degrees: float | None = None,
     dual_slope: bool = False,
     cloud_by_hour: dict[str, float] | None = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Learn, per band of sun elevation, what share of the clear-sky model
     this array delivers when nothing is throttling it.
 
@@ -440,7 +441,7 @@ def estimate_series(
     dual_slope: bool = False,
     split_strings: bool = False,
     efficiency: dict[str, float] | None = None,
-) -> tuple[list[dict], str]:
+) -> tuple[list[dict[str, Any]], str]:
     """Modelled output in watts from `start` to `end` (inclusive-ish).
 
     Geometry (`tilt_degrees`, `azimuth_degrees`, `dual_slope`,
@@ -463,7 +464,7 @@ def estimate_series(
         "dual_slope": dual_slope, "split_strings": split_strings,
     }
 
-    points: list[dict] = []
+    points: list[dict[str, Any]] = []
     step = timedelta(minutes=max(1, step_minutes))
     cursor = start
     while cursor <= end:
@@ -494,7 +495,7 @@ def estimate_series(
 
 
 def _array_watts(
-    horizontal: float, elevation: float, azimuth: float, geometry: dict, capacity_watts: float, factor: float,
+    horizontal: float, elevation: float, azimuth: float, geometry: dict[str, Any], capacity_watts: float, factor: float,
 ) -> float:
     """DC watts from horizontal irradiance, capped a little above nameplate."""
     plane = array_irradiance(elevation, azimuth, horizontal, **geometry)

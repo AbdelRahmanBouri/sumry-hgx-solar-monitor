@@ -6,6 +6,7 @@ import json
 import logging
 from pathlib import Path
 import sys
+from typing import Any
 
 from solar_monitor.protocols import create_protocol
 from solar_monitor.serial_io import discover_usb_serial_ports, escaped_ascii, exchange
@@ -77,7 +78,7 @@ def main() -> int:
     return 0 if any(item.get("response_hex") for item in captures) else 1
 
 
-def print_record(record: dict) -> None:
+def print_record(record: dict[str, Any]) -> None:
     print(f"\n{record['port']} @ {record['baudrate']}  [{record['mode']}]")
     if record.get("request_hex"):
         print(f"TX HEX: {record['request_hex']}")

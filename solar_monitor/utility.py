@@ -100,7 +100,7 @@ def utility_state(sample: dict[str, Any] | None) -> dict[str, Any]:
     pv = _number(sample.get("pv_watts"))
     batt_volts = _number(sample.get("battery_voltage"))
     batt_amps = _number(sample.get("battery_current"))
-    if None not in (load, pv, batt_volts, batt_amps):
+    if load is not None and pv is not None and batt_volts is not None and batt_amps is not None and volts is not None:
         balance = load + batt_volts * batt_amps - pv
         watts = round(max(0.0, balance), 1)
         result["watts"] = watts

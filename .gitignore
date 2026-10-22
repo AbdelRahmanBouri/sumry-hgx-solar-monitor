@@ -17,3 +17,4 @@ demo-screenshots/
 config.toml
 
 coverage.xml
+.mypy_cache/

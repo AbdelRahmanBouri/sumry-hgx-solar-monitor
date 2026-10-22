@@ -7,7 +7,7 @@ PROTOCOLS = {Sumry8851Protocol.name: Sumry8851Protocol}
 LEGACY_NAMES = {"sumry_8851_probe": Sumry8851Protocol.name}
 
 
-def create_protocol(name: str):
+def create_protocol(name: str) -> Sumry8851Protocol:
     try:
         return PROTOCOLS[LEGACY_NAMES.get(name, name)]()
     except KeyError as exc:

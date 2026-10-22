@@ -186,7 +186,7 @@ def _crc16_modbus(data: bytes) -> int:
 
 
 def _u16(data: bytes, offset: int) -> int:
-    return struct.unpack_from("<H", data, offset)[0]
+    return int(struct.unpack_from("<H", data, offset)[0])
 
 
 class Sumry8851Protocol(Protocol):

@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.6,<1", "coverage>=7.6,<8"]
+dev = ["ruff>=0.6,<1", "coverage>=7.6,<8", "mypy==1.20.2", "types-pyserial==3.5.0.20260712", "types-waitress==3.0.1.20260724"]
 
 [tool.setuptools]
 packages = ["solar_monitor", "solar_monitor.protocols", "solar_monitor.serial_handlers"]
@@ -47,3 +47,9 @@ force-sort-within-sections = true
 [tool.coverage.report]
 precision = 1
 show_missing = true
+
+[tool.mypy]
+python_version = "3.11"
+files = ["solar_monitor", "run.py", "diagnostic.py"]
+strict = true
+warn_unreachable = true

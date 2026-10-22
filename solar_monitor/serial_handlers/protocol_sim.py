@@ -6,6 +6,11 @@ would, so the collector's transport code runs unchanged.
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing_extensions import Buffer
+
 from serial.serialutil import PortNotOpenError, SerialBase, SerialException
 
 
@@ -15,7 +20,7 @@ class Serial(SerialBase):
     def open(self) -> None:
         from .. import simulator  # deferred: the simulator is only needed once a port opens
 
-        if self._port is None:
+        if self.port is None:
             raise SerialException("Port must be configured before it can be used.")
         if self.is_open:
             raise SerialException("Port is already open.")
@@ -26,7 +31,7 @@ class Serial(SerialBase):
     def close(self) -> None:
         self.is_open = False
 
-    def _reconfigure_port(self, *args, **kwargs) -> None:
+    def _reconfigure_port(self, *args: object, **kwargs: object) -> None:
         """Line settings mean nothing to a simulator."""
 
     def _require_open(self) -> None:
@@ -44,7 +49,7 @@ class Serial(SerialBase):
         del self._pending[:size]
         return data
 
-    def write(self, data) -> int:
+    def write(self, data: Buffer) -> int:
         self._require_open()
         request = bytes(data)
         self._pending.extend(self._inverter.respond(request))

@@ -90,7 +90,7 @@ class AppConfig:
     site: SiteConfig = SiteConfig()
 
 
-SectionT = TypeVar("SectionT")
+SectionT = TypeVar("SectionT", SerialConfig, WebConfig, StorageConfig, SiteConfig)
 
 
 def _section(section_type: type[SectionT], name: str, raw: dict[str, Any]) -> SectionT:

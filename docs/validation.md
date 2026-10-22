@@ -24,8 +24,11 @@ python3 -m venv .venv
 .venv/bin/python -m coverage run --branch --source=solar_monitor -m unittest discover -v
 .venv/bin/python -m coverage report
 .venv/bin/ruff check .
+.venv/bin/mypy
 node --test tests/js/*.test.js
 ```
+
+Strict mypy checks every application module plus `run.py` and `diagnostic.py`, without per-module exclusions or ignored errors. SQLite rows and JSON payloads retain explicit dynamic value types; this check does not claim to validate their runtime schemas.
 
 The Python suite runs without a physical inverter. Node adds JavaScript syntax and chart checks. CI tests Python 3.11–3.13 and requires at least 95% combined line and branch coverage **for each** of `collector.py`, `change_policy.py`, `propose.py`, `serial_io.py`, `protocols/base.py` and `protocols/sumry_8851.py`. The report measures application code only and is retained as a CI artifact. Coverage shows which paths ran; assertions about results, audit records and prevented transmissions establish their expected behaviour.
 

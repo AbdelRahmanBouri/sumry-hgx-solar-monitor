@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import nullcontext
 import csv
 from datetime import UTC, datetime, timedelta
@@ -11,9 +12,11 @@ from pathlib import Path
 import secrets
 import shutil
 import time
+from typing import Any, ParamSpec, cast
 from urllib.parse import urlsplit
 
 from flask import Flask, Response, abort, jsonify, redirect, render_template, request, session, url_for
+from flask.typing import ResponseReturnValue
 import serial
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -26,6 +29,8 @@ from .db import Database
 from .protocols import create_protocol
 from .security import load_or_create_secret
 from .serial_io import Exchange, discover_usb_serial_ports, exchange
+
+P = ParamSpec("P")
 
 LOG = logging.getLogger(__name__)
 MANUAL_REFRESH_COOLDOWN_SECONDS = 5.0
@@ -64,7 +69,7 @@ def create_app(
     )
 
     @app.before_request
-    def reject_cross_origin_mutations():
+    def reject_cross_origin_mutations() -> ResponseReturnValue | None:
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             origin = request.headers.get("Origin")
             if origin is not None:
@@ -77,8 +82,10 @@ def create_app(
             if request.headers.get("Sec-Fetch-Site") == "cross-site":
                 return jsonify({"error": "Cross-site changes are not allowed"}), 403
 
+        return None
+
     @app.after_request
-    def response_security_headers(response):
+    def response_security_headers(response: Response) -> Response:
         response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -159,13 +166,13 @@ def create_app(
         A hand-kept counter had already drifted: the login pages asked for
         admin.css?v=3 while the portal asked for v=5."""
         try:
-            return str(int((Path(app.static_folder) / filename).stat().st_mtime))
+            return str(int((Path(app.static_folder or "static") / filename).stat().st_mtime))
         except OSError:
             return "0"
 
-    def login_required(function):
+    def login_required(function: Callable[P, ResponseReturnValue]) -> Callable[P, ResponseReturnValue]:
         @wraps(function)
-        def wrapped(*args, **kwargs):
+        def wrapped(*args: P.args, **kwargs: P.kwargs) -> ResponseReturnValue:
             if not session.get("admin_user"):
                 if request.path.startswith("/api/"):
                     return jsonify({"error": "authentication required"}), 401
@@ -179,7 +186,7 @@ def create_app(
     def audit(action: str, detail: str = "") -> None:
         database.audit(now(), session.get("admin_user"), action, detail[:1000])
 
-    def public_sample(sample):
+    def public_sample(sample: dict[str, Any] | None) -> dict[str, Any] | None:
         if sample is None:
             return None
         # This installation has neither a BMS nor a battery-temperature probe.
@@ -191,7 +198,7 @@ def create_app(
         hidden = {"battery_temperature", "bts_temperature", "grid_current"}
         return {key: value for key, value in sample.items() if key not in hidden}
 
-    def live_sample(sample):
+    def live_sample(sample: dict[str, Any] | None) -> dict[str, Any] | None:
         """The latest reading plus what the inverter does not report directly.
 
         Only the live endpoints pay for this. History rows stay lean -- a
@@ -205,12 +212,13 @@ def create_app(
     # Learning the efficiency curve reads a week of samples, so it is redone
     # at most every 15 minutes per array configuration rather than per page
     # load. Keyed on the geometry so an admin edit takes effect immediately.
-    efficiency_cache: dict = {"key": None, "at": 0.0, "value": None}
+    efficiency_cache: dict[str, Any] = {"key": None, "at": 0.0, "value": None}
 
-    def learned_efficiency(lat, lon, capacity_watts, tilt, azimuth, dual_slope, now_utc):
+    def learned_efficiency(lat: float, lon: float, capacity_watts: float, tilt: float | None,
+                           azimuth: float | None, dual_slope: bool, now_utc: datetime) -> dict[str, Any] | None:
         key = (lat, lon, capacity_watts, tilt, azimuth, dual_slope)
         if efficiency_cache["key"] == key and time.monotonic() - efficiency_cache["at"] < 900:
-            return efficiency_cache["value"]
+            return cast("dict[str, Any] | None", efficiency_cache["value"])
         since = now_utc - timedelta(days=solar_estimate.LEARNING_DAYS)
         samples = database.history(since.isoformat(), max_points=6000)
         learned = solar_estimate.learn_efficiency(
@@ -221,15 +229,15 @@ def create_app(
         return learned
 
     @app.get("/")
-    def dashboard():
+    def dashboard() -> ResponseReturnValue:
         return render_template("index.html")
 
     @app.get("/estimate")
     @app.get("/solar-potential")
-    def solar_potential():
+    def solar_potential() -> ResponseReturnValue:
         return render_template("estimate.html")
 
-    def status_payload(collector_state: dict) -> dict:
+    def status_payload(collector_state: dict[str, Any]) -> dict[str, Any]:
         # Whether the inverter can be written to is a setting the admin
         # portal toggles, so the dashboard must read it rather than assume.
         writes_enabled = inverter_writes_enabled()
@@ -243,8 +251,8 @@ def create_app(
         }
 
     @app.get("/api/status")
-    def status():
-        collector_state = (
+    def status() -> ResponseReturnValue:
+        collector_state: dict[str, Any] = (
             collector.state()
             if collector is not None
             else {"running": False, "reason": "collector is disabled"}
@@ -254,7 +262,7 @@ def create_app(
     last_manual_refresh = {"at": 0.0}
 
     @app.post("/api/refresh")
-    def refresh():
+    def refresh() -> ResponseReturnValue:
         if collector is None:
             return jsonify({"error": "The collector is disabled on this instance"}), 503
         remaining = MANUAL_REFRESH_COOLDOWN_SECONDS - (time.monotonic() - last_manual_refresh["at"])
@@ -274,7 +282,7 @@ def create_app(
             return default
 
     @app.get("/api/history")
-    def history():
+    def history() -> ResponseReturnValue:
         hours = _bounded_int("hours", 24, 1, 24 * 30)
         since = datetime.now(UTC) - timedelta(hours=hours)
         max_points = _bounded_int("points", DEFAULT_HISTORY_POINTS, 250, 10000)
@@ -286,21 +294,21 @@ def create_app(
         if wanted:
             keep = {name.strip() for name in wanted.split(",") if name.strip()}
             keep.add("captured_at")
-            rows = [{key: row[key] for key in keep if key in row} for row in rows]
+            rows = [{key: row[key] for key in keep if key in row} for row in rows if row is not None]
         response = jsonify(rows)
         response.headers["X-History-Points"] = str(len(rows))
         return response
 
     @app.get("/api/history/daily")
-    def history_daily():
+    def history_daily() -> ResponseReturnValue:
         days = _bounded_int("days", 30, 1, 90)
         # Calendar days follow the server timezone, including historical DST.
         local_now = datetime.now().astimezone()
         return jsonify(database.daily_summary(local_now.date().isoformat(), days, utc_offset_minutes=None))
 
     @app.get("/api/estimate")
-    def estimate():
-        unconfigured = {
+    def estimate() -> ResponseReturnValue:
+        unconfigured: dict[str, Any] = {
             "configured": False,
             "location": None,
             "capacity_watts": 0,
@@ -362,22 +370,23 @@ def create_app(
         # then moving the shaded half onto the sunny slope. The gains are
         # physics ratios over the identical window, applied to the live line
         # so "as built" always equals what the chart shows.
-        def window_kwh(series):
+        def window_kwh(series: list[dict[str, Any]]) -> float:
             if len(series) < 2:
                 return 0.0
             step_hours = (
                 datetime.fromisoformat(series[1]["timestamp"])
                 - datetime.fromisoformat(series[0]["timestamp"])
             ).total_seconds() / 3600
-            return sum(point["estimated_watts"] for point in series) * step_hours / 1000
+            return sum(float(point["estimated_watts"]) for point in series) * step_hours / 1000
 
         as_built = window_kwh(points)
         scenarios = {"as_built_kwh": round(as_built, 2)}
         if dual_slope and tilt_degrees is not None and azimuth_degrees is not None:
-            def physics_kwh(**geometry):
+            def physics_kwh(*, dual_slope: bool, split_strings: bool) -> float:
                 series, _ = solar_estimate.estimate_series(
                     lat, lon, capacity_watts, performance_ratio, *window,
-                    tilt_degrees=tilt_degrees, azimuth_degrees=azimuth_degrees, **geometry,
+                    tilt_degrees=tilt_degrees, azimuth_degrees=azimuth_degrees,
+                    dual_slope=dual_slope, split_strings=split_strings,
                 )
                 return window_kwh(series)
             baseline = physics_kwh(dual_slope=True, split_strings=split_strings) or 1.0
@@ -429,10 +438,10 @@ def create_app(
     # State of charge by counting charge, re-anchored on full and rest, with
     # per-day health gauges. Two weeks of readings go into it, so it is
     # recomputed at most once a minute rather than per request.
-    battery_cache: dict = {"at": 0.0, "value": None}
+    battery_cache: dict[str, Any] = {"at": 0.0, "value": None}
 
     @app.get("/api/battery")
-    def battery_state():
+    def battery_state() -> ResponseReturnValue:
         if battery_cache["value"] and time.monotonic() - battery_cache["at"] < 60:
             return jsonify(battery_cache["value"])
         settings = database.get_settings()
@@ -470,18 +479,18 @@ def create_app(
         return jsonify(payload)
 
     @app.get("/api/history/faults")
-    def history_faults():
+    def history_faults() -> ResponseReturnValue:
         days = _bounded_int("days", 30, 1, 90)
         since = datetime.now(UTC) - timedelta(days=days)
         return jsonify(database.fault_history(since.isoformat()))
 
     @app.get("/api/system")
-    def system_public():
+    def system_public() -> ResponseReturnValue:
         return jsonify(system_info.public_snapshot(include_network=expose_network_info))
 
     @app.get("/health")
-    def health():
-        collector_state = (
+    def health() -> ResponseReturnValue:
+        collector_state: dict[str, Any] = (
             collector.state()
             if collector is not None
             else {"running": False, "reason": "collector is disabled"}
@@ -505,7 +514,7 @@ def create_app(
         return jsonify(payload), (200 if ok else 503)
 
     @app.route("/admin/setup", methods=["GET", "POST"])
-    def admin_setup():
+    def admin_setup() -> ResponseReturnValue:
         if database.admin_count():
             return redirect(url_for("admin_login"))
         supplied = request.values.get("token", "")
@@ -558,7 +567,7 @@ def create_app(
                            f"{failures} wrong passwords; locked for {PASSWORD_LOCKOUT_SECONDS // 60} minutes")
 
     @app.route("/admin/login", methods=["GET", "POST"])
-    def admin_login():
+    def admin_login() -> ResponseReturnValue:
         if not database.admin_count():
             return render_template("admin_unconfigured.html")
         error = None
@@ -597,7 +606,7 @@ def create_app(
         )
 
     @app.post("/admin/pin-login")
-    def admin_pin_login():
+    def admin_pin_login() -> ResponseReturnValue:
         user = database.pin_admin()
         pin = request.form.get("pin", "")
         if not user or user["pin_locked"]:
@@ -620,14 +629,14 @@ def create_app(
 
     @app.post("/admin/logout")
     @login_required
-    def admin_logout():
+    def admin_logout() -> ResponseReturnValue:
         audit("auth.logout")
         session.clear()
         return redirect(url_for("admin_login"))
 
     @app.get("/admin")
     @login_required
-    def admin_home():
+    def admin_home() -> ResponseReturnValue:
         return render_template("admin.html", username=session["admin_user"])
 
     def serial_link() -> SerialConfig:
@@ -636,7 +645,7 @@ def create_app(
 
     @app.get("/api/admin/overview")
     @login_required
-    def admin_overview():
+    def admin_overview() -> ResponseReturnValue:
         disk = shutil.disk_usage(database.path.parent)
         link = serial_link()
         return jsonify({
@@ -660,21 +669,21 @@ def create_app(
 
     @app.post("/api/admin/system/reboot")
     @login_required
-    def system_reboot():
+    def system_reboot() -> ResponseReturnValue:
         ok, message = privileged.reboot()
         audit("system.reboot", "requested" if ok else message)
         return jsonify({"ok": ok, "message": message}), (200 if ok else 400)
 
     @app.post("/api/admin/system/restart-service")
     @login_required
-    def system_restart_service():
+    def system_restart_service() -> ResponseReturnValue:
         ok, message = privileged.restart_service()
         audit("system.restart_service", "requested" if ok else message)
         return jsonify({"ok": ok, "message": message}), (200 if ok else 400)
 
     @app.route("/api/admin/system/eco", methods=["GET", "POST"])
     @login_required
-    def system_eco():
+    def system_eco() -> ResponseReturnValue:
         if request.method == "GET":
             return jsonify({"governor": system_info.governor()})
         payload = request.get_json(silent=True) or {}
@@ -688,7 +697,7 @@ def create_app(
 
     @app.get("/api/admin/system/wifi")
     @login_required
-    def system_wifi_scan():
+    def system_wifi_scan() -> ResponseReturnValue:
         ok, message = privileged.wifi_scan()
         if not ok:
             return jsonify({"error": message}), 400
@@ -696,7 +705,7 @@ def create_app(
 
     @app.post("/api/admin/system/wifi")
     @login_required
-    def system_wifi_connect():
+    def system_wifi_connect() -> ResponseReturnValue:
         payload = request.get_json(silent=True) or {}
         ssid = str(payload.get("ssid", "")).strip()
         password = str(payload.get("password", ""))
@@ -708,20 +717,20 @@ def create_app(
 
     @app.post("/api/admin/system/update-check")
     @login_required
-    def system_update_check():
+    def system_update_check() -> ResponseReturnValue:
         result = system_info.check_updates(Path(__file__).resolve().parent.parent)
         audit("system.update_check")
         return jsonify(result)
 
     @app.get("/api/admin/frames")
     @login_required
-    def admin_frames():
+    def admin_frames() -> ResponseReturnValue:
         limit = _bounded_int("limit", 100, 1, 500)
         return jsonify(database.raw_frames(limit))
 
     @app.post("/api/admin/data/cleanup")
     @login_required
-    def admin_data_cleanup():
+    def admin_data_cleanup() -> ResponseReturnValue:
         settings = database.get_settings()
         result = database.cleanup_retention(
             int(settings.get("raw_success_days", "7")),
@@ -732,12 +741,12 @@ def create_app(
 
     @app.get("/api/admin/audit")
     @login_required
-    def admin_audit():
+    def admin_audit() -> ResponseReturnValue:
         return jsonify(database.recent_audit(100))
 
     @app.route("/api/admin/security", methods=["GET", "POST"])
     @login_required
-    def admin_security():
+    def admin_security() -> ResponseReturnValue:
         username = session["admin_user"]
         user = database.admin_by_username(username)
         if request.method == "GET":
@@ -765,12 +774,12 @@ def create_app(
         else:
             return jsonify({"error": "Unknown action"}), 400
         user = database.admin_by_username(username)
-        return jsonify({"pin_enabled": bool(user["pin_hash"]), "pin_locked": False,
+        return jsonify({"pin_enabled": bool(user and user["pin_hash"]), "pin_locked": False,
                         "pin_failures": 0, "auth_method": session.get("auth_method")})
 
     @app.route("/api/admin/settings", methods=["GET", "POST"])
     @login_required
-    def admin_settings():
+    def admin_settings() -> ResponseReturnValue:
         if request.method == "GET":
             return jsonify(database.get_settings())
         payload = request.get_json(silent=True) or {}
@@ -830,7 +839,7 @@ def create_app(
 
     @app.post("/api/admin/serial/<mode>")
     @login_required
-    def admin_serial(mode: str):
+    def admin_serial(mode: str) -> ResponseReturnValue:
         if mode not in {"listen", "probe"}:
             abort(404)
         link = serial_link()
@@ -874,7 +883,7 @@ def create_app(
     def inverter_writes_enabled() -> bool:
         return database.get_settings().get("writes_enabled") == "true"
 
-    def writable_fields() -> dict:
+    def writable_fields() -> dict[str, Any]:
         protocol = collector.protocol if collector is not None else create_protocol(serial_config.protocol)
         return {
             name: {
@@ -886,7 +895,7 @@ def create_app(
 
     @app.get("/api/admin/inverter")
     @login_required
-    def admin_inverter():
+    def admin_inverter() -> ResponseReturnValue:
         settings = database.get_settings()
         database.expire_change_requests(
             (datetime.now(UTC) - timedelta(hours=propose.PROPOSAL_TTL_HOURS)).isoformat()
@@ -904,7 +913,7 @@ def create_app(
 
     @app.post("/api/admin/inverter/requests/<int:request_id>/<decision>")
     @login_required
-    def admin_decide_request(request_id: int, decision: str):
+    def admin_decide_request(request_id: int, decision: str) -> ResponseReturnValue:
         if decision not in {"approve", "reject"}:
             abort(404)
         database.expire_change_requests(
@@ -931,7 +940,7 @@ def create_app(
 
     @app.post("/api/admin/inverter/auto-apply")
     @login_required
-    def admin_auto_apply():
+    def admin_auto_apply() -> ResponseReturnValue:
         payload = request.get_json(silent=True) or {}
         if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
             return jsonify({"error": "enabled must be a boolean"}), 400
@@ -966,7 +975,7 @@ def create_app(
 
     @app.post("/api/admin/inverter/writes")
     @login_required
-    def admin_inverter_writes():
+    def admin_inverter_writes() -> ResponseReturnValue:
         payload = request.get_json(silent=True) or {}
         if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
             return jsonify({"error": "enabled must be a boolean"}), 400
@@ -976,7 +985,7 @@ def create_app(
         audit("inverter.writes", "enabled" if enabled else "disabled")
         return jsonify({"writes_enabled": enabled})
 
-    def perform_inverter_write(changes: dict, origin: str):
+    def perform_inverter_write(changes: dict[str, Any], origin: str) -> ResponseReturnValue:
         if collector is None:
             return jsonify({"error": "The collector is disabled on this instance"}), 503
         if not inverter_writes_enabled():
@@ -1000,7 +1009,7 @@ def create_app(
 
     @app.post("/api/admin/inverter/settings")
     @login_required
-    def admin_inverter_write():
+    def admin_inverter_write() -> ResponseReturnValue:
         payload = request.get_json(silent=True) or {}
         if not isinstance(payload, dict):
             return jsonify({"error": "Expected a JSON object"}), 400
@@ -1011,12 +1020,12 @@ def create_app(
 
     @app.post("/api/admin/inverter/restore")
     @login_required
-    def admin_inverter_restore():
+    def admin_inverter_restore() -> ResponseReturnValue:
         payload = request.get_json(silent=True) or {}
         if not isinstance(payload, dict):
             return jsonify({"error": "Expected a JSON object"}), 400
         try:
-            snapshot = database.inverter_config_snapshot(int(payload.get("snapshot_id")))
+            snapshot = database.inverter_config_snapshot(int(payload.get("snapshot_id") or 0))
         except (TypeError, ValueError):
             snapshot = None
         if snapshot is None:
@@ -1027,7 +1036,7 @@ def create_app(
 
     @app.get("/api/admin/export/frames.jsonl")
     @login_required
-    def export_frames():
+    def export_frames() -> ResponseReturnValue:
         rows = reversed(database.raw_frames(500))
         body = "".join(json.dumps(row, default=str) + "\n" for row in rows)
         audit("data.export", "frames.jsonl")
@@ -1036,7 +1045,7 @@ def create_app(
 
     @app.get("/api/admin/export/samples.csv")
     @login_required
-    def export_samples():
+    def export_samples() -> ResponseReturnValue:
         rows = database.history("1970-01-01T00:00:00+00:00")
         output = io.StringIO()
         if rows:
