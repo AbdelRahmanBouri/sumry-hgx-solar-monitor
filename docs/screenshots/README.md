@@ -1,6 +1,6 @@
 # Demo screenshots
 
-These PNGs were captured from the running `sim://` demo on 22 October 2026 UTC. They show synthetic telemetry and estimates, not readings from a physical installation. The application source was at commit `b13d69bdabecf640f830dd64399a9bff5f3ff297`; this documentation update does not change application behaviour.
+These PNGs were captured from the running `sim://` demo on 22 October 2026 UTC. They show synthetic telemetry and estimates, not readings from a physical installation. The application source was at commit `b13d69bdabecf640f830dd64399a9bff5f3ff297`. They predate the later contrast, keyboard and chart-table changes; CI captures the current six views as a workflow artifact.
 
 | File | Viewport | Scheme |
 | --- | --- | --- |
