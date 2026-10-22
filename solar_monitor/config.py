@@ -42,6 +42,7 @@ class WebConfig:
     host: str = "0.0.0.0"
     port: int = 5000
     expose_network_info: bool = False
+    secure_cookies: bool = False
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,7 @@ class AppConfig:
     site: SiteConfig = SiteConfig()
 
 
-SectionT = TypeVar("SectionT")
+SectionT = TypeVar("SectionT", SerialConfig, WebConfig, StorageConfig, SiteConfig)
 
 
 def _section(section_type: type[SectionT], name: str, raw: dict[str, Any]) -> SectionT:

@@ -286,7 +286,8 @@ main { gap: 12px; }
   background: transparent;
   box-shadow: none;
 }
-.legend-toggle:not(.active) { opacity: .52; }
+.legend-toggle:not(.active) { opacity: 1; color: var(--color-muted); }
+.legend-toggle:not(.active) i { opacity: .45; }
 .legend-more { min-height: 32px; flex: 0 0 auto; padding-inline: 10px; font-size: 12px; }
 .legend-more[aria-expanded="true"] { border-style: solid; color: var(--muted-soft); }
 .chart-controls {

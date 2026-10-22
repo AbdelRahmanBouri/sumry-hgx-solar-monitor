@@ -45,7 +45,7 @@ For a permanent install, `deploy/solar-monitor.service` runs it under systemd (i
 | Table | Keys |
 | --- | --- |
 | `[serial]` | `port` (`"auto"` picks the first USB adapter; `"sim://"` the simulator), `baudrate`, `timeout_seconds`, `poll_seconds`, `protocol`, `require_clock_sync` |
-| `[web]` | `host`, `port`, `expose_network_info` |
+| `[web]` | `host`, `port`, `expose_network_info`, `secure_cookies` |
 | `[storage]` | `database` (SQLite path; its directory also holds the secret and setup-token files) |
 | `[site]` | `latitude`, `longitude`, `array_capacity_watts`, `performance_ratio`, `tilt_degrees`, `azimuth_degrees`, `dual_slope`, `split_strings`, `array_description`, `module_count`, `module_watts`, `wiring`, `vmp_volts`, `voc_volts`, `imp_amps`, `isc_amps`, `inverter_model`, `charge_limit_amps`, `battery_description`, `battery_nominal_volts`, `battery_capacity_ah` |
 
@@ -113,3 +113,13 @@ The portal's Raspberry Pi tab can switch the CPU governor, restart the service, 
 4. Wi-Fi actions need NetworkManager (`nmcli`), the default on Raspberry Pi OS Bookworm and later.
 
 Without this setup the buttons return a clear error instead of hanging.
+
+## Browser and authentication protections
+
+The content security policy allows scripts, styles, API requests and the app manifest from this server only. Inline scripts, inline style attributes, embedded frames and plugins are blocked. The browser verifier fails on CSP violations as well as request and script errors.
+
+Sessions use HttpOnly, SameSite=Strict, a host-only cookie and an eight-hour lifetime that ordinary page requests do not extend. Direct HTTPS sets Secure automatically. Behind a TLS-terminating proxy, set `[web] secure_cookies = true` and serve the browser-facing site over HTTPS; HTTP login cookies will then be refused by browsers. The application does not trust forwarded headers. HSTS is sent on direct HTTPS; configure it at your HTTPS proxy when TLS terminates there. The supplied HTTP LAN setup and localhost demo remain usable without Secure.
+
+Authentication attempts share SQLite rate-limit budgets across threads and restarts: five per username, twenty per source address, and one hundred overall in a fifteen-minute window. Password success resets the account budget; source and global budgets remain. PIN and setup requests share those source and global limits. Exhaustion returns HTTP 429 with Retry-After; it does not extend the window. PIN failures still require the full password after three failures. A reverse proxy's address is treated as one source, so size any additional proxy limits for your deployment. The global budget bounds stored keys but can temporarily deny legitimate logins during an attack.
+
+CI audits the resolved runtime dependency set against published advisories and saves the report. A clean audit means no known advisory was reported for that resolution at that time; it does not establish that the application has no vulnerabilities.

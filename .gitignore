@@ -17,3 +17,7 @@ demo-screenshots/
 config.toml
 
 coverage.xml
+.mypy_cache/
+node_modules/
+accessibility-reports/
+dependency-audit.json

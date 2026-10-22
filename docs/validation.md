@@ -24,8 +24,14 @@ python3 -m venv .venv
 .venv/bin/python -m coverage run --branch --source=solar_monitor -m unittest discover -v
 .venv/bin/python -m coverage report
 .venv/bin/ruff check .
+.venv/bin/mypy
 node --test tests/js/*.test.js
+npm ci --ignore-scripts
+npm audit --audit-level=low
+.venv/bin/pip-audit -r requirements.txt
 ```
+
+Strict mypy checks every application module plus `run.py` and `diagnostic.py`, without per-module exclusions or ignored errors. SQLite rows and JSON payloads retain explicit dynamic value types; this check does not claim to validate their runtime schemas.
 
 The Python suite runs without a physical inverter. Node adds JavaScript syntax and chart checks. CI tests Python 3.11–3.13 and requires at least 95% combined line and branch coverage **for each** of `collector.py`, `change_policy.py`, `propose.py`, `serial_io.py`, `protocols/base.py` and `protocols/sumry_8851.py`. The report measures application code only and is retained as a CI artifact. Coverage shows which paths ran; assertions about results, audit records and prevented transmissions establish their expected behaviour.
 
@@ -35,6 +41,7 @@ The focused tests include every single-bit mutation of the captured status and c
 .venv/bin/python run.py --demo
 # In another terminal, once /health is ready:
 .venv/bin/python tools/check_demo.py
+.venv/bin/python tools/check_accessibility.py
 .venv/bin/python tools/screenshot.py --verify --all --login demo:demo-password --out /tmp/solar-shots
 ```
 
@@ -54,3 +61,11 @@ To check distribution contents, install `build` and run `python -m build`. CI in
 - Weather is fetched from Open-Meteo for the configured coordinates. Local monitoring continues without a cloud account; the weather service is still an external dependency.
 
 Further hardware validation needs captured frames, the exact firmware and panel settings, and independent measurements. The simulator and software tests cannot substitute for those observations.
+
+## Browser accessibility checks
+
+`tools/check_accessibility.py` runs pinned axe-core checks for WCAG 2.0/2.1 A and AA rules and best practices on the same six phone/desktop views as the screenshot tool. It also scans the open dashboard customization dialog and expanded chart tables. Any reported violation, browser error or failed keyboard action fails the job; no axe rules are excluded. Before checking the app it verifies that axe detects a deliberately unnamed button and low-contrast text.
+
+Keyboard checks use real Tab, Enter, Escape and arrow-key events: reach the main content through a skip link, open and close the customization dialog with focus restored, stay inside the dialog while tabbing, change chart ranges, inspect solar values and expand the reading tables. The admin check reaches the inverter section without a pointer. Reports retain axe's `incomplete` results for manual follow-up rather than silently treating them as passes.
+
+The contrast pass covers the tested rendered states in light and dark schemes. A clean automated report is not a claim of full WCAG conformance: screen-reader usability, all data-dependent states and other browser/device combinations still need manual review. The canvas charts have reading tables; the solar chart also supports arrow keys. They remain visual summaries rather than a replacement for the tabular values.

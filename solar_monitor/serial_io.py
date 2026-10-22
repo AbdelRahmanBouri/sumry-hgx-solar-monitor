@@ -10,6 +10,7 @@ from typing import Any
 import serial
 
 from .protocols.base import Protocol, Query
+from .protocols.sumry_8851 import Sumry8851Protocol
 
 # Lets a port named `sim://` open the simulated inverter; see
 # solar_monitor/serial_handlers. Every other name opens a real device.
@@ -79,7 +80,7 @@ def write_exchange(
     port: str,
     baudrate: int,
     timeout: float,
-    protocol,
+    protocol: Sumry8851Protocol,
     frame: bytes,
     template: bytes,
     settle_seconds: float = 0.15,

@@ -1,0 +1,8 @@
+{
+  "name": "solar-monitor-checks",
+  "private": true,
+  "description": "Browser checks for the local solar monitor",
+  "devDependencies": {
+    "axe-core": "4.14.0"
+  }
+}

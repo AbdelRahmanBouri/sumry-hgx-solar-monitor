@@ -83,10 +83,11 @@ The dashboard is public to anyone who can reach it. Admin actions require a sess
 .venv/bin/python -m coverage run --branch --source=solar_monitor -m unittest discover -v
 .venv/bin/python -m coverage report
 .venv/bin/ruff check .
+.venv/bin/mypy
 node --test tests/js/*.test.js
 ```
 
-Node is optional locally and present in CI. The Python tests need no hardware. CI tests Python 3.11–3.13, checks coverage of the collector, protocol and write-control modules, installs and exercises the wheel, and runs the demo through API and browser checks.
+Node is optional locally and present in CI. The Python tests need no hardware. CI tests Python 3.11–3.13, checks coverage of the collector, protocol and write-control modules, installs and exercises the wheel, audits runtime dependencies, and runs the demo through API, keyboard and axe accessibility checks. See [validation](docs/validation.md) for the browser-check commands and their limits.
 
 Useful places to review:
 

@@ -128,7 +128,7 @@ _ROUTINE_FRAME_SQL = (
 
 
 class Database:
-    def __init__(self, path: str):
+    def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
@@ -285,10 +285,11 @@ class Database:
                 (created_at, requested_by, reason, json.dumps(changes, sort_keys=True),
                  status, decided_by, decided_at),
             )
-            return int(cursor.lastrowid)
+            assert cursor.lastrowid is not None
+            return cursor.lastrowid
 
     @staticmethod
-    def _change_request(row) -> dict[str, Any]:
+    def _change_request(row: sqlite3.Row) -> dict[str, Any]:
         record = dict(row)
         record["changes"] = json.loads(record.pop("changes_json"))
         result = record.pop("result_json", None)
@@ -334,7 +335,7 @@ class Database:
             )
             return cursor.rowcount > 0
 
-    def finish_change_request(self, request_id: int, status: str, applied_at: str, result: dict) -> None:
+    def finish_change_request(self, request_id: int, status: str, applied_at: str, result: dict[str, Any]) -> None:
         with self.connect() as connection:
             connection.execute(
                 "UPDATE inverter_change_requests SET status = ?, applied_at = ?, result_json = ? WHERE id = ?",
@@ -401,7 +402,7 @@ class Database:
         self,
         success_days: int = 7,
         diagnostic_days: int = 90,
-        reference_time=None,
+        reference_time: datetime | None = None,
     ) -> dict[str, int]:
         """Prune raw protocol captures. Either window may be KEEP_FOREVER.
 
@@ -417,6 +418,7 @@ class Database:
             return {"raw_frames_deleted": 0}
         reference_time = reference_time or datetime.now(UTC)
         normal_cutoff = (reference_time - timedelta(days=success_days)).isoformat()
+        parameters: tuple[str, ...]
         if diagnostic_days <= KEEP_FOREVER:
             condition, parameters = _ROUTINE_FRAME_SQL, (normal_cutoff,)
         else:
@@ -463,7 +465,7 @@ class Database:
             zone = timezone(timedelta(minutes=utc_offset_minutes))
         first = datetime.fromisoformat(today) - timedelta(days=max(1, int(days)) - 1)
         calendar = []
-        parameters = {"max_gap": max_gap_hours}
+        parameters: dict[str, str | float] = {"max_gap": max_gap_hours}
         for index in range(max(1, int(days))):
             day = first + timedelta(days=index)
             # Convert each local midnight separately: a civil day may be 23 or

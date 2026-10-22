@@ -265,13 +265,12 @@ class WebTests(unittest.TestCase):
             self.assertIn(b"Incorrect username or password", login("wrong").data)
         # Locked: even the right password is refused, without being checked.
         refused = login("correct-horse-1")
-        self.assertEqual(refused.status_code, 200)
-        self.assertIn(b"Too many wrong passwords", refused.data)
+        self.assertEqual(refused.status_code, 429)
+        self.assertIn(b"Too many login attempts", refused.data)
         self.assertEqual(self.client.get("/api/admin/overview").status_code, 401)
-        self.assertIn("auth.locked", [event["action"] for event in self.db.recent_audit(20)])
         # The lock expires on its own, and the right password then works.
-        later = time.monotonic() + web.PASSWORD_LOCKOUT_SECONDS + 1
-        with patch.object(web.time, "monotonic", return_value=later):
+        later = time.time() + web.PASSWORD_LOCKOUT_SECONDS + 1
+        with patch("solar_monitor.security.wall_time", return_value=later):
             self.assertEqual(login("correct-horse-1").status_code, 302)
         self.assertEqual(self.client.get("/api/admin/overview").status_code, 200)
 

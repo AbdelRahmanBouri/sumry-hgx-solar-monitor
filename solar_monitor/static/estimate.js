@@ -356,7 +356,13 @@ function drawPotentialChart() {
   const model = state.model.filter(row => timeOf(row) >= from && timeOf(row) <= to);
   const history = state.history.filter(row => timeOf(row) >= from && timeOf(row) <= now);
   $('#potential-empty').hidden = Boolean(model.length || history.length);
-  if (!model.length && !history.length) return;
+  state.chartRows = model;
+  renderSolarTables();
+  if (!model.length && !history.length) {
+    state.chartGeometry = null;
+    hidePotentialReading();
+    return;
+  }
 
   const pad = {left: 44, right: 12, top: 16, bottom: 30};
   const plotW = width - pad.left - pad.right;
@@ -470,7 +476,6 @@ function drawPotentialChart() {
   ctx.fillStyle = axisStrong; ctx.textAlign = 'center'; ctx.font = `9px ${ChartCore.FONT_STACK}`;
   ctx.fillText('now', nowX, pad.top - 3);
   ctx.font = `10px ${ChartCore.FONT_STACK}`;
-  state.chartRows = model;
   state.chartGeometry = {from, to, x, y, pad, width, height};
 }
 
@@ -484,11 +489,15 @@ function showPotentialReading(event) {
   const ratio = (localX - state.chartGeometry.pad.left) / (rect.width - state.chartGeometry.pad.left - state.chartGeometry.pad.right);
   const target = state.chartGeometry.from + ratio * (state.chartGeometry.to - state.chartGeometry.from);
   const point = state.chartRows.reduce((best, row) => Math.abs(timeOf(row) - target) < Math.abs(timeOf(best) - target) ? row : best);
-  const actual = interpolate(state.history, timeOf(point), 'pv_watts');
+  displayPotentialPoint(point);
+}
+
+function displayPotentialPoint(point) {
+  const actual = timeOf(point) > Date.now() ? null : interpolate(state.history, timeOf(point), 'pv_watts');
   const when = new Date(point.timestamp).toLocaleString([], {weekday: 'short', hour: 'numeric', minute: '2-digit'});
   $('#potential-reading').innerHTML = `<strong>${when}</strong>`
-    + `<span><i class="potential-key"></i>${watts(point.estimated_watts)}</span>`
-    + `<span><i class="captured-key"></i>${actual === null ? '—' : watts(actual)}</span>`
+    + `<span><i class="potential-key"></i>Potential ${watts(point.estimated_watts)}</span>`
+    + `<span><i class="captured-key"></i>Captured ${actual === null ? '—' : watts(actual)}</span>`
     + (point.forecast ? '<em>forecast</em>' : '');
   $('#potential-reading').hidden = false;
   $('#potential-hint').hidden = true;
@@ -627,7 +636,10 @@ async function refresh() {
 
 document.querySelectorAll('.range-tabs button').forEach(button => {
   button.addEventListener('click', () => {
-    document.querySelectorAll('.range-tabs button').forEach(item => item.classList.toggle('active', item === button));
+    document.querySelectorAll('.range-tabs button').forEach(item => {
+      item.classList.toggle('active', item === button);
+      item.setAttribute('aria-pressed', String(item === button));
+    });
     state.hours = Number(button.dataset.hours);
     refresh();
   });
@@ -674,3 +686,41 @@ window.addEventListener('resize', () => {
 calculate();
 refresh();
 setInterval(refresh, 60000);
+
+document.querySelectorAll('.range-tabs button').forEach(button => {
+  button.setAttribute('aria-pressed', String(button.classList.contains('active')));
+});
+
+let keyboardPoint = 0;
+chart.addEventListener('keydown', event => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || !state.chartRows.length) return;
+  event.preventDefault();
+  if (event.key === 'Home') keyboardPoint = 0;
+  else if (event.key === 'End') keyboardPoint = state.chartRows.length - 1;
+  else keyboardPoint = clamp(keyboardPoint + (event.key === 'ArrowRight' ? 1 : -1), 0, state.chartRows.length - 1);
+  displayPotentialPoint(state.chartRows[keyboardPoint]);
+});
+
+function renderSolarTables() {
+  const fill = (id, rows) => {
+    const body = document.querySelector(id);
+    body.closest('table').hidden = rows.length === 0;
+    body.replaceChildren(...rows.map(values => {
+      const row = document.createElement('tr');
+      values.forEach(value => {
+        const cell = document.createElement('td');
+        cell.textContent = String(value);
+        row.append(cell);
+      });
+      return row;
+    }));
+  };
+  fill('#potential-data', state.chartRows.map(point => {
+    const forecast = timeOf(point) > Date.now();
+    const captured = forecast ? null : interpolate(state.history, timeOf(point), 'pv_watts');
+    return [new Date(point.timestamp).toLocaleString(), captured === null ? 'Unavailable' : Math.round(captured),
+      Math.round(point.estimated_watts), forecast ? 'Forecast' : 'Past estimate'];
+  }));
+  fill('#opportunity-data', state.hourlyOpportunity.map(point => [new Date(point.timestamp).toLocaleString(),
+    point.high.toFixed(3), point.low.toFixed(3)]));
+}

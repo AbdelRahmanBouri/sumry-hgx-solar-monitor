@@ -31,6 +31,18 @@ class SimulatedInverterTests(unittest.TestCase):
         self.assertTrue(result.valid, result.note)
         return result.metrics
 
+    def test_incomplete_or_nonfinite_site_is_rejected_before_simulation(self):
+        for name in ('latitude', 'longitude', 'tilt_degrees', 'azimuth_degrees',
+                     'array_capacity_watts', 'vmp_volts', 'voc_volts'):
+            for value in (None, float('nan'), float('inf')):
+                with self.subTest(name=name, value=value), self.assertRaises(ValueError):
+                    simulator.SimulatedInverter(replace(site(), **{name: value}))
+        for value in (0, -1, float('nan'), float('inf')):
+            with self.subTest(capacity=value), self.assertRaises(ValueError):
+                simulator.SimulatedInverter(site(), capacity_ah=value)
+        with self.assertRaises(ValueError):
+            simulator.SimulatedInverter(replace(site(), array_capacity_watts=0))
+
     def test_frames_pass_the_decoders_own_checks(self):
         metrics = self.decode(NOON)
         self.assertEqual(metrics["output_voltage"], round(metrics["output_voltage"], 1))

@@ -79,7 +79,7 @@ ABSORPTION_TAIL_SAMPLES = 5  # Readings at the end of the hold that define its t
 DAYLIGHT_WATTS = 20
 
 
-def _when(row: dict) -> datetime:
+def _when(row: dict[str, Any]) -> datetime:
     stamp = datetime.fromisoformat(row["captured_at"])
     return stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC)
 
@@ -112,11 +112,11 @@ def soc_from_rest_voltage(volts: float, cells_nominal: int = 24) -> float:
 
 
 def count_charge(
-    samples: list[dict],
+    samples: list[dict[str, Any]],
     nominal_ah: float | None,
     bulk_setpoint_v: float | None = None,
     recommended_absorption_v: float = RECOMMENDED_ABSORPTION_V,
-) -> dict:
+) -> dict[str, Any]:
     """Walk the readings in order, integrating current and re-anchoring on
     full and rest events. Returns the state at the last reading.
 
@@ -173,8 +173,9 @@ def count_charge(
     for row in rows[1:]:
         now, before = _when(row), _when(previous)
         hours = (now - before).total_seconds() / 3600
-        amps = (_number(row["battery_current"]) + _number(previous["battery_current"])) / 2
-        volts = _number(row["battery_voltage"])
+        amps_now = float(row["battery_current"])
+        amps = (amps_now + float(previous["battery_current"])) / 2
+        volts = float(row["battery_voltage"])
         previous = row
         if hours <= 0:
             continue
@@ -211,7 +212,7 @@ def count_charge(
             or (last_absorption is not None
                 and (now - last_absorption) <= timedelta(hours=ABSORPTION_RECENCY_HOURS))
         )
-        if absorbed_recently and volts >= HOLDING_VOLTS and 0 <= _number(row["battery_current"]) < FULL_TAIL_AMPS:
+        if absorbed_recently and volts >= HOLDING_VOLTS and 0 <= amps_now < FULL_TAIL_AMPS:
             full_run_start = full_run_start or now
             if (now - full_run_start) >= timedelta(minutes=FULL_HOLD_MINUTES):
                 if not full_anchored:
@@ -229,7 +230,6 @@ def count_charge(
         # Rest anchor: a light enough load, for long enough, and with the
         # charger not pushing, so terminal voltage stands in for open
         # circuit. Fires once per rest; the count carries on from there.
-        amps_now = _number(row["battery_current"])
         if -capacity * REST_C_RATE < amps_now < REST_MAX_CHARGE_AMPS:
             rest_run_start = rest_run_start or now
             if (now - rest_run_start) >= timedelta(minutes=REST_MINUTES) and not rest_anchored:
@@ -271,12 +271,12 @@ def count_charge(
 
 
 def runtime_to_cutoff(
-    samples: list[dict],
-    state: dict,
+    samples: list[dict[str, Any]],
+    state: dict[str, Any],
     cutoff_volts: float,
     grid_available: bool = False,
     window_minutes: int = 20,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """How long until the inverter's low-voltage cutoff shuts the output down.
 
     Written after 2026-09-05, when a 578 W overnight load emptied a bank of
@@ -302,7 +302,7 @@ def runtime_to_cutoff(
     cutoff_time = _when(recent) - timedelta(minutes=window_minutes)
     window = [s for s in samples if _when(s) >= cutoff_time
               and _number(s.get("battery_current")) is not None]
-    draw = -sum(_number(s["battery_current"]) for s in window) / len(window) if window else -amps
+    draw = -sum(float(s["battery_current"]) for s in window) / len(window) if window else -amps
 
     capacity = float(state.get("capacity_ah") or 0)
     soc = float(state["soc"])
@@ -311,7 +311,7 @@ def runtime_to_cutoff(
     floor_soc = soc_from_rest_voltage(cutoff_volts)
     usable_ah = max(0.0, capacity * (soc - floor_soc) / 100)
 
-    result = {
+    result: dict[str, Any] = {
         "draw_amps": round(draw, 1),
         "capacity_ah": round(capacity, 1),
         "soc": round(soc, 1),
@@ -333,7 +333,7 @@ def _local_day(stamp: datetime, offset: timedelta | None) -> str:
     return (stamp.astimezone() if offset is None else stamp + offset).strftime("%Y-%m-%d")
 
 
-def daily_health(samples: list[dict], bulk_setpoint_v: float, utc_offset_minutes: int | None = 0) -> list[dict]:
+def daily_health(samples: list[dict[str, Any]], bulk_setpoint_v: float, utc_offset_minutes: int | None = 0) -> list[dict[str, Any]]:
     """Per local day: pre-dawn voltage, absorption held and its tail
     current, and charge in and out. These are the recovery gauges: a bank
     that is being brought back rests higher each morning and finishes
@@ -341,7 +341,7 @@ def daily_health(samples: list[dict], bulk_setpoint_v: float, utc_offset_minutes
     offset = None if utc_offset_minutes is None else timedelta(minutes=utc_offset_minutes)
     rows = [row for row in samples if _number(row.get("battery_voltage")) is not None]
     rows.sort(key=_when)
-    by_day: dict[str, list[dict]] = {}
+    by_day: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         by_day.setdefault(_local_day(_when(row), offset), []).append(row)
 
@@ -357,24 +357,23 @@ def daily_health(samples: list[dict], bulk_setpoint_v: float, utc_offset_minutes
             dawn = _when(day_rows[dawn_index])
             window = [row for row in day_rows[:dawn_index] if dawn - _when(row) <= timedelta(hours=1)]
             if len(window) >= 3:
-                volts = sorted(_number(row["battery_voltage"]) for row in window)
+                volts = sorted(float(row["battery_voltage"]) for row in window)
                 predawn = round(volts[len(volts) // 2], 2)
-                amps = [_number(row.get("battery_current")) for row in window]
-                amps = [a for a in amps if a is not None]
+                amps = [a for row in window if (a := _number(row.get("battery_current"))) is not None]
                 predawn_amps = round(sum(amps) / len(amps), 1) if amps else None
 
         # Absorption is the *longest* stretch spent holding the setpoint, not
         # the first touch of it: the bank crosses the band briefly on the way
         # up, and taking that transient reported minutes and a bulk-current
         # tail for a hold that actually ran an hour and tapered to 4 A.
-        runs: list[list[dict]] = []
-        completed_runs: list[list[dict]] = []
-        current_run: list[dict] = []
+        runs: list[list[dict[str, Any]]] = []
+        completed_runs: list[list[dict[str, Any]]] = []
+        current_run: list[dict[str, Any]] = []
         for row in day_rows:
             if current_run and (_when(row) - _when(current_run[-1])).total_seconds() / 3600 > MAX_GAP_HOURS:
                 runs.append(current_run)
                 current_run = []
-            if _number(row["battery_voltage"]) >= bulk_setpoint_v - ABSORPTION_BAND:
+            if float(row["battery_voltage"]) >= bulk_setpoint_v - ABSORPTION_BAND:
                 current_run.append(row)
             elif current_run:
                 runs.append(current_run)
@@ -383,7 +382,7 @@ def daily_health(samples: list[dict], bulk_setpoint_v: float, utc_offset_minutes
         if current_run:
             runs.append(current_run)
 
-        def run_minutes(run):
+        def run_minutes(run: list[dict[str, Any]]) -> float:
             return (_when(run[-1]) - _when(run[0])).total_seconds() / 60
 
         longest = max(runs, key=run_minutes, default=None)
@@ -401,9 +400,9 @@ def daily_health(samples: list[dict], bulk_setpoint_v: float, utc_offset_minutes
                 _number(row.get("battery_current"))
                 for row in longest[-ABSORPTION_TAIL_SAMPLES:]
             ]
-            tail = sorted(amps for amps in tail if amps is not None)
-            if tail:
-                tail_amps = tail[len(tail) // 2]
+            valid_tail = sorted(amps for amps in tail if amps is not None)
+            if valid_tail:
+                tail_amps = valid_tail[len(valid_tail) // 2]
 
         ah_in = ah_out = 0.0
         for before, row in zip(day_rows, day_rows[1:]):

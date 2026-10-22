@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import socket
 import subprocess
+from typing import Any
 
 
 def _run(args: list[str], timeout: float = 3.0) -> str | None:
@@ -45,7 +46,7 @@ def cpu_load_percent() -> float | None:
         return None
 
 
-def memory_info() -> dict | None:
+def memory_info() -> dict[str, Any] | None:
     try:
         raw = Path("/proc/meminfo").read_text()
     except OSError:
@@ -78,7 +79,7 @@ _THROTTLE_BITS = {
 }
 
 
-def throttled_flags() -> dict | None:
+def throttled_flags() -> dict[str, Any] | None:
     output = _run(["vcgencmd", "get_throttled"])
     if not output or "=" not in output:
         return None
@@ -102,7 +103,7 @@ def local_ip_address() -> str | None:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.connect(("8.8.8.8", 80))
-            return sock.getsockname()[0]
+            return str(sock.getsockname()[0])
     except OSError:
         return None
 
@@ -121,7 +122,7 @@ def _wifi_interface() -> str | None:
     return interface
 
 
-def wifi_status() -> dict | None:
+def wifi_status() -> dict[str, Any] | None:
     interface = _wifi_interface()
     if not interface:
         return None
@@ -148,7 +149,7 @@ def wifi_status() -> dict | None:
     }
 
 
-def network_info() -> dict:
+def network_info() -> dict[str, Any]:
     return {
         "hostname": socket.gethostname(),
         "ip_address": local_ip_address(),
@@ -163,7 +164,7 @@ def service_active(name: str) -> bool | None:
     return output.strip() == "active"
 
 
-def public_snapshot(include_network: bool = False) -> dict:
+def public_snapshot(include_network: bool = False) -> dict[str, Any]:
     """System health for the unauthenticated dashboard.
 
     Network identity is left out unless asked for: this payload is served
@@ -182,7 +183,7 @@ def public_snapshot(include_network: bool = False) -> dict:
     return snapshot
 
 
-def admin_snapshot(service_name: str = "solar-monitor") -> dict:
+def admin_snapshot(service_name: str = "solar-monitor") -> dict[str, Any]:
     return {
         **public_snapshot(include_network=True),
         "cpu_load_percent": cpu_load_percent(),
@@ -192,8 +193,8 @@ def admin_snapshot(service_name: str = "solar-monitor") -> dict:
     }
 
 
-def check_updates(repo_root: Path) -> dict:
-    result: dict = {"git": None, "apt": None}
+def check_updates(repo_root: Path) -> dict[str, Any]:
+    result: dict[str, Any] = {"git": None, "apt": None}
     if (repo_root / ".git").exists():
         # -C, because the process's working directory is wherever the
         # service was started from, which need not be the checkout.

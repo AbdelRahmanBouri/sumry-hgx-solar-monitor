@@ -5,14 +5,16 @@ import logging
 from pathlib import Path
 import threading
 import time
+from typing import Any
 
 from . import change_policy
 from .config import SerialConfig
 from .db import Database
 from .propose import PROPOSAL_TTL_HOURS
 from .protocols import create_protocol
-from .protocols.base import DecodeResult
-from .serial_io import discover_usb_serial_ports, exchange, write_exchange
+from .protocols.base import DecodeResult, Protocol, Query
+from .protocols.sumry_8851 import Sumry8851Protocol
+from .serial_io import Exchange, discover_usb_serial_ports, exchange, write_exchange
 
 LOG = logging.getLogger(__name__)
 
@@ -24,10 +26,10 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _same_setting(requested, reported) -> bool:
+def _same_setting(requested: Any, reported: Any) -> bool:
     """A requested value matches a decoded read-back: numbers to the
     exact requested precision, switches by truth, names exactly."""
-    def truth(value):
+    def truth(value: Any) -> bool | None:
         if isinstance(value, bool):
             return value
         text = str(value).strip().lower()
@@ -52,7 +54,7 @@ class Collector:
         self.stop_event = threading.Event()
         self.settings_event = threading.Event()
         self._interval_seconds = max(10, config.poll_seconds)
-        self.protocol = create_protocol(config.protocol)
+        self.protocol: Protocol = create_protocol(config.protocol)
         # Guards collect_once() so a manually triggered "pull now" refresh
         # from the web UI can never overlap the background poll on the same
         # serial port.
@@ -75,7 +77,7 @@ class Collector:
         # rejuvenate the last success.
         self._last_success_monotonic: float | None = None
         self.last_maintenance_at: str | None = None
-        self.last_maintenance_result: dict | None = None
+        self.last_maintenance_result: dict[str, Any] | None = None
         self._maintenance_monotonic = 0.0
         self._newest_stored: str | None = None
 
@@ -95,7 +97,7 @@ class Collector:
             return None
         return max(0.0, time.monotonic() - self._last_success_monotonic)
 
-    def state(self) -> dict:
+    def state(self) -> dict[str, Any]:
         return {
             "running": bool(self.thread and self.thread.is_alive()),
             "started_at": self.started_at,
@@ -142,7 +144,7 @@ class Collector:
             self._run_maintenance_if_due()
             return success
 
-    def _check_write_permission(self, changes: dict, automatic: bool) -> None:
+    def _check_write_permission(self, changes: dict[str, Any], automatic: bool) -> None:
         settings = self.database.get_settings()
         if settings.get("writes_enabled") != "true":
             raise PermissionError("Inverter writes are switched off")
@@ -151,7 +153,7 @@ class Collector:
             if not allowed:
                 raise PermissionError("Automatic approval no longer applies: " + "; ".join(reasons))
 
-    def apply_config(self, changes: dict, settle_seconds: float = 0.6, *, automatic: bool = False) -> dict:
+    def apply_config(self, changes: dict[str, Any], settle_seconds: float = 0.6, *, automatic: bool = False) -> dict[str, Any]:
         """Change inverter settings: read the current block, write it back
         with `changes`, then read again and report what the inverter now
         says. Holds the port lock throughout so no poll can interleave.
@@ -160,7 +162,7 @@ class Collector:
         `verified` is true only when the read-back carries every requested
         value; `mismatches` lists the ones it does not.
         """
-        if not hasattr(self.protocol, "build_config_write"):
+        if not isinstance(self.protocol, Sumry8851Protocol):
             raise ValueError(f"Protocol {self.protocol.name} does not support writes")
         with self.lock:
             self._check_write_permission(changes, automatic)
@@ -215,7 +217,7 @@ class Collector:
                 "write_reply_hex": written.response.hex(" ").upper(),
             }
 
-    def apply_approved_changes(self) -> list[dict]:
+    def apply_approved_changes(self) -> list[dict[str, Any]]:
         """Put approved change requests on the wire, one at a time, between
         polls. This runs in the process that owns the serial port -- the whole
         reason proposals are queued rather than applied by whoever made them.
@@ -276,15 +278,15 @@ class Collector:
             self._newest_stored = (latest or {}).get("captured_at") or ""
         return timestamp >= self._newest_stored
 
-    def _save_frame(self, result, decoded) -> None:
+    def _save_frame(self, result: Exchange, decoded: DecodeResult) -> None:
         self.database.save_raw_frame(result.record(self.protocol.name, decoded.note, decoded.valid))
 
-    def _record(self, result, decoded) -> None:
+    def _record(self, result: Exchange, decoded: DecodeResult) -> None:
         self._save_frame(result, decoded)
         if decoded.metrics and result.query_name == "current_settings_0200":
             self.database.save_inverter_config(result.timestamp, decoded.metrics)
 
-    def _run_maintenance_if_due(self, force: bool = False) -> dict | None:
+    def _run_maintenance_if_due(self, force: bool = False) -> dict[str, Any] | None:
         if not hasattr(self.database, "cleanup_retention"):
             return None
         current = time.monotonic()
@@ -307,7 +309,7 @@ class Collector:
         self.consecutive_failures += 1
         self.failing_since = self.failing_since or timestamp
 
-    def _collect_query(self, port, query, *, update_health: bool = True) -> bool:
+    def _collect_query(self, port: str, query: Query, *, update_health: bool = True) -> bool:
         # Read before the exchange stamps its timestamp; see _timestamp_is_trustworthy.
         synced_when_stamped = self._clock_synced()
         result = exchange(

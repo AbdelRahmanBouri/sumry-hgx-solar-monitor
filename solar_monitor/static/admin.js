@@ -44,6 +44,7 @@ async function submitSettings(form, result) {
 document.querySelectorAll('nav button').forEach(button => {
   button.onclick = () => {
     document.querySelectorAll('nav button, .view').forEach(node => node.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(node => node.setAttribute('aria-pressed', String(node === button)));
     button.classList.add('active');
     $(`#${button.dataset.view}`).classList.add('active');
     const loaders = {data: loadFrames, audit: loadAudit, security: loadSecurity, inverter: loadInverter};
@@ -590,3 +591,8 @@ $('#auto-apply-form').onsubmit = async event => {
     $('#auto-apply-result').textContent = error.message;
   }
 };
+
+document.querySelectorAll('nav button').forEach(button => {
+  button.setAttribute('aria-pressed', String(button.classList.contains('active')));
+  button.setAttribute('aria-controls', button.dataset.view);
+});

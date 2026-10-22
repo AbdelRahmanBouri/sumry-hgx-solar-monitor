@@ -17,17 +17,18 @@
   <link rel="stylesheet" href="/static/dashboard.css?v={{ version('dashboard.css') }}">
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="app-bar">
     <div class="header-metrics">
-      <div class="header-reading pv-now" aria-label="Current solar input">
+      <div class="header-reading pv-now" role="group" aria-label="Current solar input">
         <span>Solar</span>
         <strong><span data-metric="pv_watts">—</span><small> W</small></strong>
       </div>
-      <div class="header-reading utility-now" id="header-utility" aria-label="Current utility draw" hidden>
+      <div class="header-reading utility-now" id="header-utility" role="group" aria-label="Current utility draw" hidden>
         <span>Utility</span>
         <strong><span id="utility-header-watts">—</span><small> W</small></strong>
       </div>
-      <div class="header-reading load-now" aria-label="Current home load">
+      <div class="header-reading load-now" role="group" aria-label="Current home load">
         <span>Load</span>
         <strong><span data-metric="ac_load_watts">—</span><small> W</small></strong>
       </div>
@@ -47,7 +48,8 @@
     </div>
   </header>
 
-  <main>
+  <main id="main-content" tabindex="-1">
+    <h1 class="sr-only">Solar Monitor dashboard</h1>
     <section class="alert" id="alert-banner" hidden>
       <span class="alert-icon"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.7 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/></svg></span>
       <div><strong id="alert-title">System alert</strong><span id="alert-copy">Check system status.</span></div>
@@ -202,11 +204,11 @@
         <div class="chart-reading" id="chart-reading" hidden></div>
       </div>
       <div class="chart-wrap">
-        <canvas id="power-chart" aria-label="Solar and load power history"></canvas>
+        <canvas id="power-chart" role="img" aria-describedby="chart-window-label" aria-label="Solar and load power history"></canvas>
         <canvas id="power-chart-overlay" aria-hidden="true"></canvas>
         <div class="chart-empty" id="chart-empty" hidden><strong>No samples in this range</strong><span>New readings will appear automatically.</span></div>
       </div>
-      <div class="chart-controls" aria-label="Chart tools">
+      <div class="chart-controls" role="group" aria-label="Chart tools">
         <div class="chart-mode" role="group" aria-label="Touch mode">
           <button type="button" id="chart-inspect" class="active" aria-pressed="true">Read</button>
           <button type="button" id="chart-pan" aria-pressed="false">Move</button>
@@ -225,7 +227,8 @@
         <div><span>Battery low</span><strong id="trend-battery-min">— V</strong></div>
       </div>
       <details class="chart-data" id="chart-data">
-        <summary><span><strong>Reading table</strong><small id="chart-window-label">Visible chart data</small></span><span class="chart-data-actions"><button type="button" id="chart-export">Export CSV</button><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span></summary>
+        <summary><span><strong>Reading table</strong><small id="chart-window-label">Visible chart data</small></span><span class="chart-data-actions"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span></summary>
+        <button type="button" id="chart-export">Export CSV</button>
         <div class="chart-table-wrap"><table><thead><tr><th id="chart-table-time">Time</th><th>Solar</th><th>Load</th><th id="chart-table-battery">Battery</th></tr></thead><tbody id="chart-table-body"></tbody></table></div>
       </details>
     </section>
@@ -289,10 +292,10 @@
     </section>
   </main>
 
-  <dialog class="customize-dialog" id="customize-dialog">
+  <dialog class="customize-dialog" id="customize-dialog" aria-labelledby="customize-title">
     <form method="dialog">
       <div class="dialog-heading">
-        <div><span class="kicker">YOUR DASHBOARD</span><h2>Customize cards</h2></div>
+        <div><span class="kicker">YOUR DASHBOARD</span><h2 id="customize-title">Customize cards</h2></div>
         <button class="dialog-close" value="cancel" aria-label="Close"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
       </div>
       <p class="dialog-help">Choose which cards appear and arrange them for this device.</p>
@@ -313,7 +316,7 @@
       </div>
       <div class="preference-section compact">
         <span><strong>Presentation mode</strong><small>Hide technical details for a cleaner showcase.</small></span>
-        <label class="visibility-toggle"><input id="presentation-mode" type="checkbox"><i></i></label>
+        <label class="visibility-toggle"><input id="presentation-mode" type="checkbox" aria-label="Presentation mode"><i></i></label>
       </div>
       <div class="preference-section compact">
         <span><strong>Fault notifications</strong><small id="notification-status">Ask this device to show critical alerts.</small></span>

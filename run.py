@@ -49,6 +49,7 @@ def main() -> None:
     app = create_app(
         database, config.serial, collector,
         site=config.site, expose_network_info=config.web.expose_network_info,
+        secure_cookies=config.web.secure_cookies,
     )
     host = args.host or config.web.host
     port = args.port or config.web.port

@@ -34,6 +34,7 @@ from pathlib import Path
 import random
 import struct
 import threading
+from typing import Any
 
 from werkzeug.security import generate_password_hash
 
@@ -175,8 +176,22 @@ class SimulatedInverter:
     may both ask it for frames."""
 
     def __init__(self, site: SiteConfig | None = None, *, capacity_ah: float = 180.0,
-                 start: datetime | None = None, soc: float = 70.0):
+                 start: datetime | None = None, soc: float = 70.0) -> None:
         self.site = site or demo_site()
+        def required(value: float | None, name: str) -> float:
+            if value is None or not math.isfinite(value):
+                raise ValueError(f"Simulator site requires a finite {name}")
+            return value
+
+        self._latitude = required(self.site.latitude, "latitude")
+        self._longitude = required(self.site.longitude, "longitude")
+        self._tilt_degrees = required(self.site.tilt_degrees, "tilt_degrees")
+        self._azimuth_degrees = required(self.site.azimuth_degrees, "azimuth_degrees")
+        self._array_capacity_watts = required(self.site.array_capacity_watts, "array_capacity_watts")
+        self._vmp_volts = required(self.site.vmp_volts, "vmp_volts")
+        self._voc_volts = required(self.site.voc_volts, "voc_volts")
+        if self._array_capacity_watts <= 0 or not math.isfinite(capacity_ah) or capacity_ah <= 0:
+            raise ValueError("Simulator array and battery capacities must be positive")
         self.protocol = Sumry8851Protocol()
         self.capacity_ah = capacity_ah  # what the bank really holds; the nameplate says 200
         self._lock = threading.Lock()
@@ -202,7 +217,7 @@ class SimulatedInverter:
         self.max_charge_amps = settings["maximum_charge_current_a"]
         self.cutoff_amps = settings["charge_cutoff_current_a"]
 
-    def settings(self) -> dict:
+    def settings(self) -> dict[str, Any]:
         """The configuration block as the protocol decodes it."""
         with self._lock:
             return self.protocol.decode(self._config).metrics
@@ -217,23 +232,23 @@ class SimulatedInverter:
     def _site_clock(self, at: datetime) -> datetime:
         """Local solar time at the site. The household keeps it, so its day
         follows the site's sun whatever time zone the host runs in."""
-        return (at + timedelta(hours=self.site.longitude / 15)).replace(tzinfo=None)
+        return (at + timedelta(hours=self._longitude / 15)).replace(tzinfo=None)
 
     def _pv_available(self, at: datetime) -> tuple[float, float]:
         """(watts the array could make, share of clear sky getting through)."""
-        elevation, azimuth = solar_estimate.solar_position(self.site.latitude, self.site.longitude, at)
+        elevation, azimuth = solar_estimate.solar_position(self._latitude, self._longitude, at)
         if elevation <= 0:
             return 0.0, 1.0
         local = self._site_clock(at)
         sky = self._day(local.date()).sky(local.hour * 60 + local.minute + local.second / 60)
         plane = solar_estimate.plane_of_array_irradiance(
             elevation, azimuth, solar_estimate.clear_sky_ghi(elevation) * sky,
-            self.site.tilt_degrees, self.site.azimuth_degrees,
+            self._tilt_degrees, self._azimuth_degrees,
         )
         # Heat and glass reflection cost more at low sun: 72% of nameplate
         # per kW/m^2 near the horizon, 84% with the sun high.
         efficiency = 0.72 + 0.12 * min(1.0, elevation / 45)
-        return self.site.array_capacity_watts * plane / 1000 * efficiency, sky
+        return self._array_capacity_watts * plane / 1000 * efficiency, sky
 
     def _household(self, at: datetime) -> float:
         local = self._site_clock(at)
@@ -259,7 +274,7 @@ class SimulatedInverter:
                 watts += extra
         return watts * (1 + 0.04 * _unit_noise(seconds, 1))
 
-    def _step(self, at: datetime, pv_available: float, load: float, hours: float) -> dict:
+    def _step(self, at: datetime, pv_available: float, load: float, hours: float) -> dict[str, Any]:
         """Advance the bank by one slot and return the DC picture."""
         inverter_dc = load / INVERTER_EFFICIENCY + INVERTER_IDLE_WATTS
         surplus = pv_available - inverter_dc
@@ -282,6 +297,7 @@ class SimulatedInverter:
                 amps = min(wanted, accepted)
                 volts = target if accepted <= wanted else ocv + amps * RESISTANCE_OHMS + (target - ocv) * amps / accepted
                 if (self._stage == "absorption" and accepted < self.cutoff_amps
+                        and self._absorbing_since is not None
                         and at - self._absorbing_since >= timedelta(minutes=10)):
                     self._stage = "float"
             pv_used = min(pv_available, inverter_dc + amps * volts)
@@ -295,7 +311,7 @@ class SimulatedInverter:
         self._soc = max(0.0, min(100.0, soc + stored / capacity * 100))
         return {"amps": amps, "volts": volts, "pv_used": pv_used}
 
-    def _compute(self, at: datetime, *, advance: bool = True) -> dict:
+    def _compute(self, at: datetime, *, advance: bool = True) -> dict[str, Any]:
         pv_available, _sky = self._pv_available(at)
         load = self._household(at)
         hours = STEP.total_seconds() / 3600
@@ -307,8 +323,8 @@ class SimulatedInverter:
         pv_watts = dc["pv_used"] if pv_available > 5 else 0.0
         curtailed = 1 - (pv_watts / pv_available) if pv_available > 5 else 0.0
         if pv_available > 5:
-            vmp = self.site.vmp_volts * (0.9 + 0.1 * min(1.0, pv_available / self.site.array_capacity_watts))
-            pv_volts = vmp + (self.site.voc_volts - vmp) * min(1.0, curtailed * 1.6)
+            vmp = self._vmp_volts * (0.9 + 0.1 * min(1.0, pv_available / self._array_capacity_watts))
+            pv_volts = vmp + (self._voc_volts - vmp) * min(1.0, curtailed * 1.6)
         else:
             pv_volts = max(0.0, 2.5 + 2 * _unit_noise(seconds, 2))
         local = self._site_clock(at)
@@ -343,7 +359,7 @@ class SimulatedInverter:
             "bts_temperature": 25,
         }
 
-    def reading(self, at: datetime) -> dict:
+    def reading(self, at: datetime) -> dict[str, Any]:
         """The decoded status reading at `at`, advancing the model to it in
         30-second slots. Asking for an earlier time returns the latest."""
         with self._lock:
@@ -398,7 +414,7 @@ class SimulatedInverter:
         return bytes(frame)
 
 
-def encode_status(metrics: dict) -> bytes:
+def encode_status(metrics: dict[str, Any]) -> bytes:
     """A status frame carrying `metrics`, laid out by the decoder's own table."""
     frame = bytearray(STATUS_TEMPLATE)
     for name, (offset, layout, divisor) in STATUS_FIELDS.items():
@@ -430,7 +446,7 @@ def installed() -> SimulatedInverter:
         return _installed
 
 
-def backfill(database, inverter: SimulatedInverter, *, days: int = 7, until: datetime | None = None) -> int:
+def backfill(database: Database, inverter: SimulatedInverter, *, days: int = 7, until: datetime | None = None) -> int:
     """Write `days` of readings ending at `until` straight into the database,
     as if the collector had been running all along. Returns the count."""
     until = until or datetime.now(UTC)

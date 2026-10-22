@@ -10,7 +10,7 @@ h1,h2,p{margin-top:0}
 h1{margin-bottom:0;font-size:23px;line-height:1.1;letter-spacing:-.035em}
 h2{margin-bottom:10px;font-size:18px;letter-spacing:-.025em}
 .muted,article>span{color:var(--muted)}
-button,.button{min-height:38px;padding:0 14px;border:0;border-radius:9px;background:var(--green);color:#fff;font:inherit;font-size:12px;font-weight:750;text-decoration:none;cursor:pointer}
+button,.button{min-height:38px;padding:0 14px;border:0;border-radius:9px;background:var(--green);color:var(--button-ink, #fff);font:inherit;font-size:12px;font-weight:750;text-decoration:none;cursor:pointer}
 .secondary{border:1px solid var(--line);background:var(--panel);color:var(--muted)}
 .warning{background:var(--amber);color:#fff}
 .admin-header,.admin-main{width:min(1120px,calc(100% - 28px));margin:auto}
@@ -127,3 +127,8 @@ details summary{color:var(--green);font-size:11px;font-weight:700;cursor:pointer
 .visibility-toggle input:disabled+i{opacity:.45}
 .grid .muted-line{display:block;margin-top:6px;color:var(--quiet);font-size:11px;font-weight:600}
 @media(prefers-reduced-motion:reduce){.visibility-toggle i,.visibility-toggle i::after{transition:none}}
+
+.spaced-head { margin-top: 16px; }
+.warning-note { color: var(--amber); }
+
+:root[data-theme="dark"] { --button-ink: #10251c; }

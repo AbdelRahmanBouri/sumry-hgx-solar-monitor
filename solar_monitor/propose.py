@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 import getpass
 import json
 import sys
+from typing import Any
 
 from . import change_policy
 from .config import DEFAULT_PATH, load_config
@@ -30,7 +31,7 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def parse_value(raw: str):
+def parse_value(raw: str) -> str | bool | int | float:
     lowered = raw.strip().lower()
     if lowered in ("true", "on", "yes"):
         return True
@@ -44,8 +45,8 @@ def parse_value(raw: str):
 
 
 def propose(
-    database: Database, changes: dict, reason: str, requested_by: str, protocol_name: str = "sumry_8851",
-) -> dict:
+    database: Database, changes: dict[str, Any], reason: str, requested_by: str, protocol_name: str = "sumry_8851",
+) -> dict[str, Any]:
     """Validate against the protocol, then queue. Raises ValueError if the
     change could never be written, so bad input fails here rather than
     silently waiting for an approval that would fail later."""

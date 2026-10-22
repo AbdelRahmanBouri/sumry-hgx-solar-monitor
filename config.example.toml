@@ -10,6 +10,8 @@ protocol = "sumry_8851"
 # require_clock_sync = true
 
 [web]
+# Enable behind HTTPS termination; direct HTTPS also sets Secure automatically.
+secure_cookies = false
 host = "0.0.0.0"
 port = 5000
 # The dashboard needs no login. Turning this on adds the hostname, LAN

@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='admin.css', v=version('admin.css')) }}">
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="admin-header">
     <div class="admin-brand">
       <span class="admin-mark"><svg viewBox="0 0 24 24"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"/></svg></span>
@@ -26,7 +27,7 @@
       <form method="post" action="/admin/logout"><button class="secondary">Sign out</button></form>
     </div>
   </header>
-  <main class="admin-main">
+  <main class="admin-main" id="main-content" tabindex="-1">
     <nav aria-label="Admin sections">
       <button data-view="overview" class="active">Overview</button>
       <button data-view="pi">Raspberry Pi</button>
@@ -77,8 +78,8 @@
             <article><span>Wi-Fi network</span><strong id="pi-net-wifi">—</strong></article>
             <article><span>Signal</span><strong id="pi-net-signal">—</strong></article>
           </div>
-          <div class="panel-head" style="margin-top:16px"><h2>Switch Wi-Fi network</h2><button id="wifi-scan" class="secondary" type="button">Scan</button></div>
-          <div class="table-wrap"><table><thead><tr><th>Network</th><th>Signal</th><th>Security</th><th></th></tr></thead><tbody id="wifi-networks"><tr><td colspan="4">Press Scan to list nearby networks.</td></tr></tbody></table></div>
+          <div class="panel-head spaced-head"><h2>Switch Wi-Fi network</h2><button id="wifi-scan" class="secondary" type="button">Scan</button></div>
+          <div class="table-wrap"><table><thead><tr><th>Network</th><th>Signal</th><th>Security</th><th scope="col">Actions</th></tr></thead><tbody id="wifi-networks"><tr><td colspan="4">Press Scan to list nearby networks.</td></tr></tbody></table></div>
           <form id="wifi-form" class="settings" hidden>
             <label>Network name<input name="ssid" id="wifi-ssid" readonly></label>
             <label>Password<input name="password" type="password" autocomplete="off"></label>
@@ -117,7 +118,7 @@
         </article>
 
         <article class="panel">
-          <div class="panel-head"><div><h2>Battery charging &amp; behaviour</h2><p class="muted" style="color:var(--amber)">Battery type can only be set on the inverter's own panel (menu 05): the serial protocol has no confirmed register for it. Custom charge voltages apply only while that menu reads User-defined.</p><p class="muted" id="inverter-current-stamp">Waiting for a configuration snapshot…</p></div><div><button type="button" class="secondary" id="inverter-preset-agm" title="14.6 V absorption, 13.6 V float per 12 V block">24 V AGM preset</button><button type="button" class="secondary" id="inverter-reload">Reload</button></div></div>
+          <div class="panel-head"><div><h2>Battery charging &amp; behaviour</h2><p class="muted warning-note">Battery type can only be set on the inverter's own panel (menu 05): the serial protocol has no confirmed register for it. Custom charge voltages apply only while that menu reads User-defined.</p><p class="muted" id="inverter-current-stamp">Waiting for a configuration snapshot…</p></div><div><button type="button" class="secondary" id="inverter-preset-agm" title="14.6 V absorption, 13.6 V float per 12 V block">24 V AGM preset</button><button type="button" class="secondary" id="inverter-reload">Reload</button></div></div>
           <form id="inverter-form" class="settings inverter-settings">
             <label>Maximum charge current<div><input name="maximum_charge_current_a" type="number" step="1" min="10" max="130" inputmode="decimal"><small>A · PV and grid combined</small></div></label>
             <label>Bulk / absorption voltage<div><input name="bulk_charge_voltage_v" type="number" step="0.1" min="24" max="29.2" inputmode="decimal"><small>V · only honoured with the User-defined type</small></div></label>
@@ -140,12 +141,12 @@
             <div class="actions"><button type="button" class="warning" id="inverter-write">Write to inverter</button><button type="button" class="secondary" id="inverter-cancel">Cancel</button></div>
           </div>
           <p id="inverter-result" class="muted"></p>
-          <div class="table-wrap" id="inverter-verify-wrap" hidden><table><thead><tr><th>Setting</th><th>Requested</th><th>Inverter reports</th><th></th></tr></thead><tbody id="inverter-verify"></tbody></table></div>
+          <div class="table-wrap" id="inverter-verify-wrap" hidden><table><thead><tr><th>Setting</th><th>Requested</th><th>Inverter reports</th><th scope="col">Actions</th></tr></thead><tbody id="inverter-verify"></tbody></table></div>
         </article>
 
         <article class="panel">
           <div class="panel-head"><div><h2>Proposed changes</h2><p class="muted" id="requests-note">Changes queued by automation or tooling. Nothing reaches the inverter until it is approved here or released by the policy below.</p></div></div>
-          <div class="table-wrap"><table><thead><tr><th>Proposed</th><th>By</th><th>Change</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody id="change-requests"><tr><td colspan="6">Loading…</td></tr></tbody></table></div>
+          <div class="table-wrap"><table><thead><tr><th>Proposed</th><th>By</th><th>Change</th><th>Reason</th><th>Status</th><th scope="col">Actions</th></tr></thead><tbody id="change-requests"><tr><td colspan="6">Loading…</td></tr></tbody></table></div>
         </article>
 
         <article class="panel">
@@ -164,7 +165,7 @@
         <article class="panel">
           <div class="panel-head"><h2>Previous configurations</h2></div>
           <p>One row for each configuration the inverter has held, from when it took effect. Restoring writes its charging, protection and boost values back.</p>
-          <div class="table-wrap"><table><thead><tr><th>In effect from</th><th>Bulk</th><th>Float</th><th>Cut-off</th><th>Low V</th><th>Boost</th><th></th></tr></thead><tbody id="inverter-snapshots"><tr><td colspan="7">Loading…</td></tr></tbody></table></div>
+          <div class="table-wrap"><table><thead><tr><th>In effect from</th><th>Bulk</th><th>Float</th><th>Cut-off</th><th>Low V</th><th>Boost</th><th scope="col">Actions</th></tr></thead><tbody id="inverter-snapshots"><tr><td colspan="7">Loading…</td></tr></tbody></table></div>
         </article>
       </section>
 
