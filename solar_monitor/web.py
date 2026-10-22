@@ -106,7 +106,7 @@ def create_app(
             "base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'"
         )
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(self)"
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         if request.is_secure:

@@ -1,6 +1,6 @@
 # Decisions
 
-Each entry states a rule the code follows and the evidence that put it there. Dates identify the observation on this installation that settled the matter. Sources are the module docstrings, the comments beside the code, and the commit history.
+Each entry states a rule the code follows and the observation or assumption behind it. Dates and numerical observations come from the original installation notes, module docstrings, comments and commit history. The repository includes a small set of captured frames, but not the full historical datasets or independent instrument calibration. Treat those historical figures as context; [validation and limits](validation.md) identifies what can be checked from this checkout.
 
 ## Frames are validated by CRC16/MODBUS before anything is decoded
 
@@ -34,7 +34,7 @@ The community structure labels it the equalization on/off flag, and it was decod
 
 **Rule.** A decoded reading is not stored if systemd-timesyncd has not yet set the clock, or if it is stamped earlier than a reading already stored. The raw frame is kept either way.
 
-A Raspberry Pi has no real-time clock. On a cold boot it restores a stale time until NTP syncs. On 2026-09-05 that stored two genuine readings nearly ten hours in the past, showing 599 W of sun at midnight. The collector now checks the system's own sync flag at `/run/systemd/timesync/synchronized` and refuses any timestamp that goes backwards. Nothing is lost for diagnosis, because the raw exchange is still written.
+A host without a working battery-backed clock can boot with stale time until network time synchronization completes. The installation notes record two readings nearly ten hours in the past on 2026-09-05, showing 599 W of sun at midnight. The collector checks the system's sync flag at `/run/systemd/timesync/synchronized` and refuses any timestamp that goes backwards. The raw exchange is still written for diagnosis.
 
 The sync flag cannot be the whole rule. With a battery-backed RTC and no internet, timesyncd runs but never syncs, the flag never appears, and every reading would be discarded for good. `require_clock_sync` turns that half off for such a Pi; the backwards-timestamp half always applies.
 
@@ -54,13 +54,13 @@ Float voltage alone used to fire the full anchor. On a fading afternoon the curr
 
 **Rule.** The counter re-anchors from the open-circuit voltage curve when the current has stayed between -C/50 and +1 A for thirty minutes. Terminal voltage is corrected by 3 milliohms of internal resistance first.
 
-A true zero-current rest never happens on a lived-in system. This bank's quietest overnight stretch sits at 3 to 4 A and never spends thirty minutes under 1.5 A, so a fixed low threshold would have meant the capacity was never measured at all. C/50 is light enough that terminal voltage is within millivolts of open circuit once polarisation settles, and it scales with the bank. The charge-current limit matters as much: 26.98 V at +3 A is the charger holding the bank up, and reading the chemistry curve off it returned a confident, wrong, 100%. A depleted bank at float would pull many amps, so a trickle under 1 A does mean the charger has nothing left to push.
+The installation notes describe overnight loads of 3 to 4 A, so requiring near-zero current would rarely produce a rest anchor. C/50 means one fiftieth of the configured capacity in amperes; it scales the permitted load with the bank. The +1 A limit excludes readings where the charger may be holding the voltage up. These thresholds and the resistance correction are model assumptions. Temperature, battery condition and residual load still affect terminal voltage, so an accepted rest anchor is an estimate, not an independent charge measurement.
 
-## A low absorption setpoint makes measured capacity a lower bound
+## Capacity from a low full anchor is treated as a lower bound
 
-**Rule.** When the bulk setpoint is more than 0.1 V below 28.8 V, the state carries `charger_limited` and every capacity measurement is labelled a lower bound.
+**Rule.** When the bulk setpoint is more than 0.1 V below the model's 28.8 V reference, the state carries `charger_limited` and each capacity estimate is labelled a lower bound.
 
-Both genuine absorptions on 2026-09-04 completed at 28.18 V where the chemistry wants 28.8 V for this bank. The charger's "full" is therefore perhaps 85 to 95%. Measured capacity is the charge taken out divided by the share of the bank it emptied, so an anchor that is short of full reads light: by roughly a quarter at a 90% anchor. The dashboard shows the figure with the reason rather than presenting it as a measurement. Raising the setpoint will raise it.
+Capacity is inferred from charge removed between a full anchor and a later rest anchor. If the first anchor is labelled 100% before the bank is actually full, the inferred depth of discharge is too large and the capacity estimate can be too low. The flag makes that assumption visible. The reference voltage and resulting lower-bound label are part of this bank's model; they do not validate a charging setpoint or establish the bank's actual capacity.
 
 ## Efficiency is learned per sun-elevation band as an envelope
 
@@ -84,7 +84,7 @@ Each of this array's 4-module series strings carries two modules on each face. S
 
 ## Writes are whole-block rewrites, gated three ways
 
-**Rule.** A write frame is the inverter's own last configuration reply with command `0x0010` in place of `0x0003`, the requested fields changed, and a fresh checksum. It passes the auto-apply policy or an admin's approval, the writable-field table, and `assert_write_frame` before the port is opened.
+**Rule.** A write frame is the inverter's freshly read configuration reply with command `0x0010` in place of `0x0003`, the requested fields changed, and a fresh checksum. The collector checks authorization before reading and again before transmitting. The writable-field table and `assert_write_frame` also validate the proposed frame before transmission.
 
 The HGX has no per-register write. Command `0x0010` takes the entire 94-byte block, so the only safe frame is the block the inverter just sent. `build_config_write` refuses a reply that is not a valid configuration read, an unknown field, or a value outside the inverter's own menu range. `assert_write_frame` then compares the frame to the reply it was built from and rejects any byte that differs outside the writable masks, any wrong length or command, and any bad checksum. The collector checks the global write switch before the read and again before transmission. Automatic requests also have to pass the current policy, even if they were approved earlier. Switch and policy changes share the collector lock; disabling waits for any write already in progress to finish. The collector holds the port lock through read, write and read-back, and reports each requested value as verified only when the second read carries it. Proposals from tooling are queued rather than written, because the collector is the one process that owns the port; a proposal is released by an admin or by a policy that can only narrow what the table already permits, and a pending or approved proposal expires after twelve hours so it cannot be approved later against a baseline that has moved.
 
@@ -110,7 +110,7 @@ A stand-in at the collector or API level would have shown the pages but not the 
 
 ## The dashboard has no build step, with static and browser checks
 
-**Rule.** Pages are served as plain `<script>` tags with no bundler, no `node_modules` and no lockfile. The test suite checks the scripts statically, and uses Node only when it happens to be present.
+**Rule.** Pages are served as plain `<script>` tags with no bundler or front-end build step. Running the application needs no Node installation. Development browser checks use a pinned `axe-core` dependency recorded in `package-lock.json`; CI installs it and always runs the Node tests.
 
 The Pi has no browser and no JavaScript engine, so a syntax error or a script loaded in the wrong order fails silently in production and nowhere else. `tests/test_templates.py` scrapes every `#id` a script resolves at load time and requires the template to supply it, because a missing hook throws a TypeError and the whole page stops updating. `tests/test_static_assets.py` checks bracket balance with a lexer that understands strings, template literals, comments and regex literals, verifies that `chart-core.js` loads before its consumers and `theme.js` before the stylesheets, and asserts that no template points at a retired asset. When Node is available the suite additionally parses every script with `node --check` and runs the charting unit tests, which use Node's built-in runner; when it is absent those tests skip. `chart-core.js` carries a two-line CommonJS footer so the browser global and the test runner load the same file. To see the pages rather than reason about them, `tools/screenshot.py` drives headless Chromium over the DevTools protocol, standard library only, and reports any uncaught page error.
 

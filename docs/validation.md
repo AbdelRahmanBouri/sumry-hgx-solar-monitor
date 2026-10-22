@@ -68,4 +68,6 @@ Further hardware validation needs captured frames, the exact firmware and panel 
 
 Keyboard checks use real Tab, Enter, Escape and arrow-key events: reach the main content through a skip link, open and close the customization dialog with focus restored, stay inside the dialog while tabbing, change chart ranges, inspect solar values and expand the reading tables. The admin check reaches the inverter section without a pointer. Reports retain axe's `incomplete` results for manual follow-up rather than silently treating them as passes.
 
+The same temporary browser profile grants location permission and supplies synthetic coordinates to the admin location button. The check verifies that the form receives those coordinates and that stored settings stay unchanged until saved. It does not read the machine's location.
+
 The contrast pass covers the tested rendered states in light and dark schemes. A clean automated report is not a claim of full WCAG conformance: screen-reader usability, all data-dependent states and other browser/device combinations still need manual review. The canvas charts have reading tables; the solar chart also supports arrow keys. They remain visual summaries rather than a replacement for the tabular values.

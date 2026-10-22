@@ -5,7 +5,9 @@
 
 A Raspberry Pi monitor for a SUMRY HGX 4 kW, 24 V inverter. It shows where solar power is going, keeps a local history, and estimates battery charge and unused solar output. The aim is to make one household installation easier to understand and investigate, with raw serial evidence behind the readings.
 
-Python, Flask, SQLite and plain JavaScript. Three runtime dependencies, no front-end build step, no cloud account. The optional weather forecast comes from Open-Meteo.
+Python, Flask, SQLite and plain JavaScript. Three direct Python runtime dependencies, no front-end build step, no cloud account. The optional weather forecast comes from Open-Meteo.
+
+[Read the case study](docs/case-study.md) for the problem, constraints, design decisions and verified results.
 
 ## Run the demo
 
@@ -18,6 +20,8 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python run.py --demo
 ```
+
+When reviewing a pull request, switch to its head branch after `cd solar-monitor` and before installing dependencies; a fresh clone starts on the default branch.
 
 Open <http://127.0.0.1:5000>. The admin login is `demo` / `demo-password` at `/admin`. Stop the server with Ctrl-C.
 
