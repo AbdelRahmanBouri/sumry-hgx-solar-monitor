@@ -37,7 +37,8 @@ class WebSecurityTests(unittest.TestCase):
                 self.assertEqual(response.headers['X-Frame-Options'], 'DENY')
                 self.assertEqual(response.headers['X-Content-Type-Options'], 'nosniff')
                 self.assertEqual(response.headers['Referrer-Policy'], 'no-referrer')
-                self.assertIn('camera=()', response.headers['Permissions-Policy'])
+                self.assertEqual(response.headers['Permissions-Policy'],
+                                 'camera=(), microphone=(), geolocation=(self)')
                 response.close()
         self.assertEqual(self.client.get('/admin/login').headers['Cache-Control'], 'no-store')
         self.assertNotIn('Strict-Transport-Security', self.client.get('/').headers)

@@ -57,7 +57,7 @@ def verify_engine(browser, axe):
     browser.send('Target.closeTarget', {'targetId': target})
 
 
-def keyboard_check(browser, session, name, report):
+def keyboard_check(browser, session, name, report, base):
     tab_to(browser, session, '.skip-link')
     press(browser, session, 'Enter')
     if not browser.evaluate("document.activeElement.id === 'main-content'", session):
@@ -103,6 +103,23 @@ def keyboard_check(browser, session, name, report):
         tab_to(browser, session, '[data-view="inverter"]')
         press(browser, session, 'Enter')
         browser.wait_until(READY[name], session)
+        # Use synthetic coordinates in this temporary browser profile. The
+        # location button fills the form; it must not save settings itself.
+        original = browser.evaluate("fetch('/api/admin/settings').then(r => r.json())", session)
+        browser.send('Browser.grantPermissions', {'origin': base, 'permissions': ['geolocation']})
+        browser.send('Emulation.setGeolocationOverride', {
+            'latitude': 35.12345, 'longitude': -5.54321, 'accuracy': 1}, session)
+        tab_to(browser, session, '[data-view="estimator"]')
+        press(browser, session, 'Enter')
+        tab_to(browser, session, '#estimator-locate')
+        press(browser, session, 'Enter')
+        browser.wait_until("document.querySelector('#estimator-result').textContent === 'Location filled in — review and save.'", session)
+        coordinates = browser.evaluate("['estimator_latitude', 'estimator_longitude'].map(name => document.querySelector('[name=' + name + ']').value)", session)
+        if coordinates != ['35.12345', '-5.54321']:
+            raise AssertionError(f'Location button did not fill the simulated coordinates: {coordinates}')
+        if browser.evaluate("fetch('/api/admin/settings').then(r => r.json())", session) != original:
+            raise AssertionError('Location button saved settings without confirmation')
+        report['states'].append(axe_report(browser, session))
 
 
 def check(base, out, axe_path):
@@ -142,7 +159,7 @@ def check(base, out, axe_path):
             report['states'] = []
             report['keyboard_errors'] = []
             try:
-                keyboard_check(browser, session, name, report)
+                keyboard_check(browser, session, name, report, base)
             except (AssertionError, RuntimeError, TimeoutError) as exc:
                 report['keyboard_errors'].append(str(exc))
             report['page_errors'] = page_errors(browser.events, session)
